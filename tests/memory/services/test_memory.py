@@ -78,6 +78,7 @@ async def test_consolidation_after_compaction_writes_one_file_per_memory(tmp_pat
 async def test_background_failure_is_logged_and_manual_extract_raises(tmp_path, caplog):
     updater = FakeUpdater(fail=ModelError("provider_unavailable", "down"))
     _, history, service = await service_at(tmp_path, updater)
+    caplog.set_level(logging.DEBUG)
     try:
         await service.compacted()
         await service.collect()

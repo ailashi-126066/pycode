@@ -92,17 +92,16 @@ class MemoryService:
         )
 
     async def background(self, run_id):
+        # A failed background consolidation stays silent and never fails the run.
         try:
             await self.consolidate(run_id)
-        except Exception as error:  # noqa: BLE001 - background work must not affect chat
-            logger.warning(
+        except Exception as error:  # noqa: BLE001 - nothing awaits this task
+            logger.debug(
                 "Memory consolidation failed: %s", getattr(error, "code", type(error).__name__)
             )
 
     async def consolidate(self, run_id):
         """One LangMem Store Manager pass per scope; filtered entries are skipped."""
-        if self.updater is None:
-            raise StorageError("memory_unavailable", "No memory updater is configured")
         snapshot = await self.history.snapshot()
         summary, messages = consolidation_source(snapshot)
         if not summary and not messages:
@@ -121,7 +120,8 @@ class MemoryService:
             return
         if cancel:
             task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        # background() keeps every failure inside the task; this only waits for it.
+        await asyncio.wait((task,))
 
     async def aclose(self):
         self.closed = True
