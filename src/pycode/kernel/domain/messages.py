@@ -148,11 +148,30 @@ class Message:
         return result
 
 
+COMPACTION_SUMMARY_PREFIX = (
+    "The conversation history before this point was compacted into the following summary:\n"
+    "<summary>\n"
+)
+COMPACTION_SUMMARY_SUFFIX = "\n</summary>"
+BRANCH_SUMMARY_PREFIX = (
+    "The following is a summary of a branch that this conversation came back from:\n<summary>\n"
+)
+BRANCH_SUMMARY_SUFFIX = "</summary>"
+
+
+def llm_message(message: Message) -> Message:
+    if message.role == "compaction_summary":
+        text = COMPACTION_SUMMARY_PREFIX + message.text + COMPACTION_SUMMARY_SUFFIX
+        return replace(message, role="user", content=text)
+    if message.role == "branch_summary":
+        text = BRANCH_SUMMARY_PREFIX + message.text + BRANCH_SUMMARY_SUFFIX
+        return replace(message, role="user", content=text)
+    if message.role in CUSTOM_ROLES:
+        return replace(message, role="user")
+    return message
+
+
 # Pi: convertToLlm (coding-agent/src/core/messages.ts)
 def convert_to_llm(messages: tuple[Message, ...]) -> tuple[Message, ...]:
-    """Custom AgentMessage roles become user text; LLM roles pass through."""
-    return tuple(
-        replace(message, role="user") if message.role in CUSTOM_ROLES else message
-        for message in messages
-        if not message.exclude_from_context
-    )
+    """Custom AgentMessage roles become user text; summaries get Pi's <summary> wrapping."""
+    return tuple(llm_message(message) for message in messages if not message.exclude_from_context)

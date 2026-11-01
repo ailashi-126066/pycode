@@ -34,7 +34,10 @@ async def test_real_summary_process_death_uses_completed_object_or_regenerates_l
         .replace('"total_tokens": 25', '"total_tokens": 17300')
         .encode()
     )
-    with protocol_server([initial, chat_completion(), chat_completion()]) as (url, requests):
+    with protocol_server([initial, chat_completion(), chat_completion(), chat_completion()]) as (
+        url,
+        requests,
+    ):
         child = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
@@ -63,7 +66,8 @@ async def test_real_summary_process_death_uses_completed_object_or_regenerates_l
             except StorageError as error:
                 assert error.code == "no_pending_run"
             result = await restored.run(Message("arrived", "user", "new input " + "y" * 7000))
-            assert result.outcome == "completed" and len(requests) == 3
+            # The split turn adds a summary-turn-prefix request.
+            assert result.outcome == "completed" and len(requests) == 4
             assert not any(
                 "old task 0" in str(message.get("content", ""))
                 for message in requests[-1]["body"]["messages"]

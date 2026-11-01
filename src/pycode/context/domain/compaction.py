@@ -1,5 +1,6 @@
-# Source: https://github.com/earendil-works/pi/blob/42a3497d03ad17e308a2299fa824727894f2c0ec/packages/coding-agent/src/core/compaction/compaction.ts
-# Adaptation: native projected entries, UTF-16 ceil estimates and explicit immutable cut results.
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/compaction/compaction.ts
+# Adaptation: native projected entries, UTF-16 ceil estimates and explicit immutable cut results;
+# no recovery-omission suffix rule.
 """Pi retention selection; the caller validates pairing before applying a compaction."""
 
 import math
@@ -33,15 +34,18 @@ class CutPoint:
     split_turn: bool
 
 
+# Pi: findProjectedCutPoint
 def find_cut_point(
-    entries: tuple[SessionEntry, ...], projection: ProjectedContext, keep_recent_tokens: int
+    entries: tuple[SessionEntry, ...],
+    projection: ProjectedContext,
+    start_index: int,
+    keep_recent_tokens: int,
 ) -> CutPoint:
-    if keep_recent_tokens < 1:
-        raise ValueError("Recent-message budget must be positive")
     messages = {item.entry_id: item.messages for item in projection.entries}
     valid = []
     turn_starts = []
-    for index, entry in enumerate(entries):
+    for index in range(start_index, len(entries)):
+        entry = entries[index]
         if entry.type == "compaction":
             continue
         roles = {message.role for message in messages.get(entry.id, ())}
@@ -50,10 +54,10 @@ def find_cut_point(
         if roles.intersection({"user", "custom"}):
             turn_starts.append(index)
     if not valid:
-        return CutPoint(0, -1, False)
+        return CutPoint(start_index, -1, False)
     cut = valid[0]
     accumulated = 0
-    for index in range(len(entries) - 1, -1, -1):
+    for index in range(len(entries) - 1, start_index - 1, -1):
         tokens = sum(
             estimate_compaction_message(message) for message in messages.get(entries[index].id, ())
         )
@@ -63,7 +67,7 @@ def find_cut_point(
         if accumulated >= keep_recent_tokens:
             cut = next((candidate for candidate in valid if candidate >= index), valid[-1])
             break
-    while cut > 0:
+    while cut > start_index:
         previous = entries[cut - 1]
         if previous.type == "compaction" or messages.get(previous.id):
             break

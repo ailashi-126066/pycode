@@ -55,4 +55,8 @@ def test_convert_to_llm_turns_custom_roles_into_user_text():
         Message("a", "assistant", "reply"),
     )
     assert [m.role for m in convert_to_llm(messages)] == ["system", "user", "user", "assistant"]
-    assert convert_to_llm(messages)[1].text == "summary"
+    assert convert_to_llm(messages)[1].text == (
+        "The conversation history before this point was compacted into the following summary:\n"
+        "<summary>\nsummary\n</summary>"
+    )
+    assert convert_to_llm(messages)[2].text == "note"

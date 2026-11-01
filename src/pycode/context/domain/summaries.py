@@ -25,8 +25,14 @@ class SummarySource:
     prefix_hash: str
     config_hash: str
     checkpoint: dict[str, Any]
+    # Pi: CompactionPreparation — previousSummary, messagesToSummarize, turnPrefixMessages,
+    # fileOps and tokensBefore.
+    previous_summary: str | None
     messages: tuple[Message, ...]
-    turn_prefix_start: int | None
+    turn_prefix_messages: tuple[Message, ...]
+    read_files: tuple[str, ...]
+    modified_files: tuple[str, ...]
+    tokens_before: int
     selection: ModelSelection
 
 

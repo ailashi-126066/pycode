@@ -6,7 +6,7 @@ from dataclasses import replace
 class ConfiguredSummaryGenerator:
     def __init__(self, provider, model_factory, records_factory, workflow_factory):
         self.provider = replace(
-            provider, supports_tools=False, max_output_tokens=min(provider.max_output_tokens, 4096)
+            provider, supports_tools=False, max_output_tokens=min(provider.max_output_tokens, 8192)
         )
         self.model_factory = model_factory
         self.records_factory = records_factory

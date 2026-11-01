@@ -31,6 +31,7 @@ async def test_cut_moves_before_a_call_whose_result_follows_an_intervening_remin
             config_hash="config",
             checkpoint={},
             keep_recent_tokens=2005,
+            tokens_before=0,
         )
         assert source.first_kept_entry_id == call
         path = SessionTree(snapshot.entries).path(snapshot.leaf_id)

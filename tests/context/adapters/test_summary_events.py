@@ -40,7 +40,10 @@ async def test_summary_can_publish_ready_while_main_runtime_is_closed_and_user_i
     started, release = threading.Event(), threading.Event()
     summary.started, summary.release = started, release
     observer = Observer()
-    with protocol_server([initial, summary, chat_completion()]) as (url, requests):
+    with protocol_server([initial, summary, chat_completion(), chat_completion()]) as (
+        url,
+        requests,
+    ):
         session = await compose_application(
             config, (replace(provider(url), context_window=20000, max_output_tokens=1000),)
         ).open_session("s1", consumers=(observer,), refresh_models=False)
@@ -54,7 +57,8 @@ async def test_summary_can_publish_ready_while_main_runtime_is_closed_and_user_i
             assert (
                 await session.run(Message("later", "user", "after idle " + "y" * 7000))
             ).outcome == "completed"
-            assert len(requests) == 3
+            # The split turn adds a summary-turn-prefix request.
+            assert len(requests) == 4
             assert not any(
                 "old task 0" in str(message.get("content", ""))
                 for message in requests[-1]["body"]["messages"]

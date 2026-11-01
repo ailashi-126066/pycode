@@ -75,7 +75,7 @@ switch 本身使用 update=null，且不夹带工具调用。保存切换后，�
 
 prepare_model_boundary 在权限过滤、工具披露和校准这条现有链中补充固定输出契约。History 随后用 attach_task_context 加入动态任务数据消息，避免最近输入 ID 的变化使固定系统配置失效。calibrate_model_request 记录固定系统提示和工具定义；ContextMeter 单独计算动态任务块及历史 JSON envelope 的开销，使用真实用量作起点时只追加动态部分的估算差值。任务变更使投影重新计算，普通无关追加保留原有增量路径。
 
-后台摘要预生成与旧工具输出清理算法不变。执行观察只展示工具名、错误状态、退出码和结果引用，不重复贴结果正文。长结果继续用 output_id 和 ReadToolResult 回读。
+后台摘要预生成（何时压缩）与旧工具输出清理算法不变；摘要写法照 Pi：首次、增量更新（`<previous-summary>`）和拆开 turn 的前半段三套模板，工具结果截到 2000 字符并写明 full_output 路径，读过和改过的文件跨压缩累加，写进 compaction 的 `details` 并附在正文末尾的 `<read-files>`/`<modified-files>`，发给模型时用 `<summary>` 包装。执行观察只展示工具名、错误状态、退出码和结果引用，不重复贴结果正文。长结果继续用 output_id 和 ReadToolResult 回读。
 
 ## 参考信息的任务范围
 

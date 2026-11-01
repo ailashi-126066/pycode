@@ -38,7 +38,7 @@ def test_pi_cut_vectors_use_effective_native_projection(case):
         parent = identifier
     snapshot = SessionSnapshot(SessionHeader("s1", "/project", "t"), tuple(entries), parent, 0, 0)
     result = find_cut_point(
-        tuple(entries), ContextProjector().transform_context(snapshot), case["budget"]
+        tuple(entries), ContextProjector().transform_context(snapshot), 0, case["budget"]
     )
     assert result.first_kept_index == case["expected"]
     assert result.split_turn == case["split"]

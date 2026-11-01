@@ -7,7 +7,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.context.adapters.summary import SUMMARY_SYSTEM
+from pycode.context.adapters.summary import SUMMARIZATION_SYSTEM_PROMPT
 from pycode.context.services.context_projector import ContextProjector
 from pycode.kernel.domain.messages import Message
 from pycode.models.adapters.storage.requests import SQLiteRequestStore
@@ -54,7 +54,7 @@ async def test_manual_compaction_uses_native_sdk_metering_checkpoint_and_restart
         await restored.aclose()
         assert len(received) == 2
         assert not received[0]["body"].get("tools")
-        assert "context checkpoints" in received[0]["body"]["messages"][0]["content"]
+        assert received[0]["body"]["messages"][0]["content"] == SUMMARIZATION_SYSTEM_PROMPT
         assert not any(
             "old task 0" in str(message.get("content", ""))
             for message in received[1]["body"]["messages"]
@@ -111,7 +111,11 @@ async def test_80_percent_background_is_nonblocking_and_capacity_wait_preserves_
     cached = chat_completion()
     started, release = threading.Event(), threading.Event()
     cached.started, cached.release = started, release
-    with protocol_server([initial, cached, chat_completion()]) as (url, requests):
+    # The split turn adds a summary-turn-prefix request after the blocked history request.
+    with protocol_server([initial, cached, chat_completion(), chat_completion()]) as (
+        url,
+        requests,
+    ):
         selected = provider(url)
         selected = replace(selected, context_window=20000, max_output_tokens=1000)
         session = await compose_application(config, (selected,)).open_session(
@@ -130,8 +134,8 @@ async def test_80_percent_background_is_nonblocking_and_capacity_wait_preserves_
             assert not pending.done() and len(requests) == 2
             release.set()
             assert (await asyncio.wait_for(pending, 5)).outcome == "completed"
-            assert len(requests) == 3
-            third = requests[2]["body"]["messages"]
+            assert len(requests) == 4
+            third = requests[3]["body"]["messages"]
             assert any("new input " in str(message.get("content", "")) for message in third)
             assert not any("old task 0" in str(message.get("content", "")) for message in third)
         finally:
@@ -201,7 +205,10 @@ async def test_next_turn_continues_while_summary_runs_then_reuses_it_without_new
     summary = chat_completion()
     started, release = threading.Event(), threading.Event()
     summary.started, summary.release = started, release
-    with protocol_server([initial, summary, chat_completion(), chat_completion()]) as (
+    # The split turn adds a summary-turn-prefix request after the blocked history request.
+    with protocol_server(
+        [initial, summary, chat_completion(), chat_completion(), chat_completion()]
+    ) as (
         url,
         requests,
     ):
@@ -224,17 +231,17 @@ async def test_next_turn_continues_while_summary_runs_then_reuses_it_without_new
             release.set()
             report = await asyncio.wait_for(session.compact(), 5)
             assert report.applied_job_id is not None
-            assert len(requests) == 3
+            assert len(requests) == 4
             assert (
                 await session.run(Message("after", "user", "continue after compression"))
             ).outcome == "completed"
-            assert len(requests) == 4
+            assert len(requests) == 5
             latest = str(requests[-1]["body"]["messages"])
             assert "this arrived during compression" in latest
             assert "continue after compression" in latest
             assert "old task 0" not in latest
             attempts = await session.usage()
-            assert attempts["by_purpose"]["summary"]["request_count"] == 1
+            assert attempts["by_purpose"]["summary"]["request_count"] == 2
             assert attempts["by_purpose"]["agent"]["request_count"] == 3
         finally:
             release.set()
@@ -255,7 +262,7 @@ async def test_default_auto_memory_does_not_hide_capacity_or_interrupt_backgroun
 
     def respond(request):
         system = request["body"]["messages"][0]["content"]
-        if system == SUMMARY_SYSTEM:
+        if system == SUMMARIZATION_SYSTEM_PROMPT:
             return summary
         response = chat_completion()
         names = {tool["function"]["name"] for tool in request["body"].get("tools", [])}
@@ -311,11 +318,11 @@ async def test_default_auto_memory_does_not_hide_capacity_or_interrupt_backgroun
             assert "preserve this new input" in latest
             assert "old task 0" not in latest
             usage = await session.usage()
-            assert usage["by_purpose"]["summary"]["request_count"] == 1
+            assert usage["by_purpose"]["summary"]["request_count"] == 2
             assert usage["by_purpose"]["memory_extract"]["request_count"] == len(memory_requests)
             assert len(memory_requests) > 0
             assert usage["by_purpose"]["agent"]["request_count"] == 3
-            assert len(requests) == len(memory_requests) + 4
+            assert len(requests) == len(memory_requests) + 5
         finally:
             release.set()
             if pending is not None and not pending.done():

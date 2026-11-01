@@ -1,7 +1,13 @@
+from dataclasses import replace
+
 import pytest
 from langchain_core.messages import AIMessage
 
-from pycode.context.adapters.summary import SUMMARY_SYSTEM, serialize_source
+from pycode.context.adapters.summary import (
+    SUMMARIZATION_SYSTEM_PROMPT,
+    history_prompt,
+    turn_prefix_prompt,
+)
 from pycode.context.module import ContextModule
 from pycode.kernel.domain.errors import ModelError
 from pycode.kernel.services.events import EventStream
@@ -27,7 +33,7 @@ from tests.support.requests import MemoryRequestStore, TestTiming
         "tool",
     ],
 )
-async def test_summary_is_a_real_single_framework_request_with_usage_and_no_tool_execution(
+async def test_split_turn_summary_is_two_framework_requests_with_usage_and_no_tool_execution(
     tmp_path, case
 ):
     history, _, settings, _, service = await setup(tmp_path, Generator())
@@ -42,6 +48,7 @@ async def test_summary_is_a_real_single_framework_request_with_usage_and_no_tool
         from pycode.context.adapters.storage.summaries import FileSummaryStore
 
         captured = (await FileSummaryStore(tmp_path / "summaries").load(source))[0]
+        captured = replace(captured, read_files=("a.py",), modified_files=("b.py",))
         response = AIMessage(
             content="Goal: continue the task",
             usage_metadata={
@@ -76,7 +83,7 @@ async def test_summary_is_a_real_single_framework_request_with_usage_and_no_tool
                 content="",
                 tool_calls=[{"id": "c1", "name": "Bash", "args": {"command": "must-not-run"}}],
             )
-        model = ScriptedChatModel(responses=[response])
+        model = ScriptedChatModel(responses=[response, response])
         context = ContextModule(
             request_step=ModelsModule.model_request_step, stop_reason=ModelsModule.stop_reason
         )
@@ -95,17 +102,27 @@ async def test_summary_is_a_real_single_framework_request_with_usage_and_no_tool
         )
         if case in {"valid", "valid-tags", "content-blocks"}:
             completion = await context.workflow(model).run(captured, runner)
-            assert completion.text == "Goal: continue the task"
-            assert (
-                completion.usage[0].purpose == "summary" and completion.usage[0].total_tokens == 120
+            assert completion.text == (
+                "Goal: continue the task\n\n---\n\n**Turn Context (split turn):**\n\n"
+                "Goal: continue the task"
+                "\n\n<read-files>\na.py\n</read-files>\n\n<modified-files>\nb.py\n</modified-files>"
             )
+            assert [item.total_tokens for item in completion.usage] == [120, 120]
+            assert all(item.purpose == "summary" for item in completion.usage)
+            assert len(model.requests) == 2
+            assert model.requests[1][0].content == SUMMARIZATION_SYSTEM_PROMPT
+            assert model.requests[1][1].content == turn_prefix_prompt(captured)
+            assert [record.logical_id for record in await records.list_requests()] == [
+                "summary",
+                "summary-turn-prefix",
+            ]
         else:
             with pytest.raises(ModelError):
                 await context.workflow(model).run(captured, runner)
-        assert len(model.requests) == 1
-        assert model.requests[0][0].content == SUMMARY_SYSTEM
-        assert model.requests[0][1].content == serialize_source(captured)
-        assert "<conversation>" in model.requests[0][1].content
+            assert len(model.requests) == 1
+        assert captured.messages and captured.turn_prefix_messages
+        assert model.requests[0][0].content == SUMMARIZATION_SYSTEM_PROMPT
+        assert model.requests[0][1].content == history_prompt(captured)
         assert (await records.list_requests())[0].purpose == "summary"
     finally:
         await service.aclose()

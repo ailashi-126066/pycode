@@ -212,6 +212,7 @@ class SummaryService:
             config_hash=fingerprint,
             checkpoint=self.checkpoint(projection),
             keep_recent_tokens=self._settings.keep_recent_tokens,
+            tokens_before=check.tokens,
         )
         if source is not None:
             await self._objects.save_source(source)
@@ -289,6 +290,12 @@ class SummaryService:
             "prefix_hash": source.prefix_hash,
             "config_hash": source.config_hash,
             "usage": [plain_data(item) for item in result.usage],
+            # Pi: CompactionEntry.tokensBefore and details{readFiles, modifiedFiles}
+            "tokens_before": source.tokens_before,
+            "details": {
+                "read_files": list(source.read_files),
+                "modified_files": list(source.modified_files),
+            },
         }
         entry = SessionEntry(identifier, snapshot.leaf_id, "compaction", "summary", data=data)
         candidate = replace(snapshot, entries=(*snapshot.entries, entry), leaf_id=identifier)
