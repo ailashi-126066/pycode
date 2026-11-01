@@ -14,7 +14,7 @@ def model_tool_text(result: ToolResult) -> str:
         status.append(f"exit code {result.exit_code}")
     if not status:
         return result.text
-    mode = "tail" if result.name.lower() in {"bash", "command"} else "head"
+    mode = "tail" if result.name == "bash" else "head"
     footer = "\n[" + "; ".join(status) + "]"
     reserve = max(512, len(footer.encode()) + 192)
     preview = truncate(result.text, mode, max_lines=MAX_LINES - 2, max_bytes=MAX_BYTES - reserve)

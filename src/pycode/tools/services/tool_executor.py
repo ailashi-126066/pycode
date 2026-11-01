@@ -139,11 +139,9 @@ class ToolExecutor:
             operation_id=context.operation_id,
         )
         if self.outputs is not None:
-            mode = "tail" if call.name.lower() in {"bash", "command"} else "head"
+            mode = "tail" if call.name == "bash" else "head"
             result = await self.outputs.prepare(context, result, mode)
-        if before is not None:
-            if self.snapshots is None:
-                raise SnapshotError("snapshot_unavailable", "No snapshot service for this call")
+        if before is not None and self.snapshots is not None:
             try:
                 after = await self.snapshots.capture()
                 paths = []
