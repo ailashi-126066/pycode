@@ -133,7 +133,12 @@ async def test_plan_denies_workspace_writes_commands_and_other_plan_files(tmp_pa
                 await asyncio.to_thread(Path(plan.storage_path).exists)
             )
             results = tool_results(await session.inspect())
-            assert [result["error_code"] for result in results] == ["plan_read_only"] * 3
+            # bash is not in the planning tool list, so its call fails the name check first.
+            assert [result["error_code"] for result in results] == [
+                "plan_read_only",
+                "tool_not_declared",
+                "plan_read_only",
+            ]
         finally:
             await session.aclose()
 
