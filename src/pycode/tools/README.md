@@ -1,7 +1,7 @@
 # Tools
 
 Core package: validates, authorizes, executes and settles tool calls, and provides Pi's builtin
-file tools. It knows optional modules only through `pycode.kernel.Feature`.
+file tools. The application supplies concrete gates and async execution callbacks.
 
 | File | Contents |
 |---|---|
@@ -21,15 +21,16 @@ executor = ToolExecutor(
     validator,
     InterruptToolGate(),
     run,
-    features,
     outputs,
-    gates=(config.tool_gate,) if config.tool_gate else (),
+    gates=gates,
+    before_tool_call=(hooks.before_tool_call, snapshots.before_tool_call),
+    after_tool_call=(snapshots.after_tool_call, skills.after_tool_call),
 )
 ```
 
-Authorization (design 2.3): the user's gate, then every feature's `gates(run)` in list order. Any
+Authorization (design 2.3): the user's gate, then the concrete service gates in explicit order. Any
 `ToolError` denies; one `"allow"` skips approval; otherwise the core approval gate decides. Then
-each feature's `before_tool_call` runs; `block=True` turns the call into a `hook_rejected` result.
+each registered `before_tool_call` callback runs; `block=True` turns the call into a `hook_rejected` result.
 Only executed calls reach `after_tool_call`, whose overrides chain in list order before settlement
 persists the result.
 

@@ -1,7 +1,7 @@
 # Pi 没有，pycode 新增；参照 MewCode local sandbox/seatbelt.py
 # SHA-256: b16d640a21d057388a858dd047302916167e49e08bafbc23c4b2f058750267af
 # Adaptation: explicit argv, owned async probe, protected state and no launch fallback.
-"""SandboxFeature: the bash tool, command gates and sandboxed commands for hooks.
+"""SandboxService: the bash tool, command gates and sandboxed commands for hooks.
 
 Seatbelt is enabled only after an actual executable probe succeeds.
 """
@@ -16,7 +16,6 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from pycode.kernel import (
-    Feature,
     RunScope,
     SessionScope,
     ToolContext,
@@ -299,9 +298,7 @@ class CommandGate:
         return None
 
 
-class SandboxFeature(Feature):
-    name = "sandbox"
-
+class SandboxService:
     def __init__(
         self,
         settings: SandboxSettings,

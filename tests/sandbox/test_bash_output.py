@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from pycode.kernel import MAX_BYTES, EventStream, Message, SessionHeader, ToolCall, ToolContext
-from pycode.sandbox import Bash, Sandbox, SandboxFeature, SandboxSettings, find_bash
+from pycode.sandbox import Bash, Sandbox, SandboxService, SandboxSettings, find_bash
 from pycode.session import SqliteSessionStore
 from pycode.tools.executor import ToolExecutor, ToolRegistry
 from pycode.tools.output import TempOutputStore
@@ -44,7 +44,6 @@ async def assemble(tmp_path, *, passthrough=()):
         validator,
         ApprovedGate(),
         run_scope(EventStream("s1", "r1", (Recorder(),))),
-        (),
         outputs,
     )
     context = ToolContext("s1", "r1", "op1", str(tmp_path))
@@ -124,7 +123,7 @@ async def test_evaluation_path_prefix_survives_final_child_environment_filter(
     _, context, journal, outputs = await assemble(tmp_path)
     context = replace(context, call_id="path-prefix", tool_name="bash")
     prefix = tmp_path / "evaluation-python-bin"
-    feature = SandboxFeature(SandboxSettings(), path_prefix=(str(prefix),))
+    feature = SandboxService(SandboxSettings(), path_prefix=(str(prefix),))
     (bash,) = feature.tools(run_scope(EventStream("s1", "r1", ())))
     captured = {}
 
@@ -259,7 +258,7 @@ async def test_run_command_adds_env_to_the_allowlist_and_reports_hook_failures(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("FAKE_API_KEY", "fake-secret-value")
-    feature = SandboxFeature(SandboxSettings())
+    feature = SandboxService(SandboxSettings())
     session = run_scope(EventStream("s1", "r1", ())).session
     await feature.open(session)
     shell = find_bash()

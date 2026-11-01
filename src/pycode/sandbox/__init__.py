@@ -8,14 +8,14 @@ from pycode.sandbox.process import (
     subprocess_environment,
     validate_passthrough,
 )
-from pycode.sandbox.sandbox import Sandbox, SandboxFeature, build_profile
+from pycode.sandbox.sandbox import Sandbox, SandboxService, build_profile
 from pycode.sandbox.tools import Bash, find_bash
 from pycode.sandbox.types import SandboxSettings, SandboxStatus
 
 __all__ = [
     "Bash",
     "Sandbox",
-    "SandboxFeature",
+    "SandboxService",
     "SandboxSettings",
     "SandboxStatus",
     "auto_approvable",

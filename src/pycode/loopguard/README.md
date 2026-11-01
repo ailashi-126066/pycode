@@ -1,6 +1,6 @@
 # Loopguard
 
-Optional module. `LoopGuardFeature(threshold, asks_user)` watches settled tool calls through
+Optional module. `LoopGuard(threshold, asks_user)` watches settled tool calls through
 `on_event` (`tool_execution_start` for the arguments, `tool_execution_end` for the result) and
 `before_tool_call` (the tool's category). A detection is either the same call with the same result
 `threshold` times (reads only when back to back) or the workspace changing back to a tree seen
@@ -14,7 +14,7 @@ Optional module. `LoopGuardFeature(threshold, asks_user)` watches settled tool c
   compaction is applied.
 
 ```python
-from pycode.loopguard import LoopGuardFeature
+from pycode.loopguard import LoopGuard
 
-loopguard = LoopGuardFeature(threshold=3, asks_user=True)
+loopguard = LoopGuard(threshold=3, asks_user=True)
 ```

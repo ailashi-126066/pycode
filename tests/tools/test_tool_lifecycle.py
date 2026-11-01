@@ -8,7 +8,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel import Feature, Message, SessionHeader, ToolError, ToolResult
+from pycode.kernel import Message, SessionHeader, ToolError, ToolResult
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from pycode.tools.executor import ToolExecutor
 from pycode.tools.permissions import InterruptToolGate
@@ -227,7 +227,7 @@ async def test_after_tool_call_overrides_executed_results_before_persistence():
     )
     seen = []
 
-    class Rewrite(Feature):
+    class Rewrite:
         name = "rewrite"
 
         async def after_tool_call(self, run, call, result):
@@ -236,7 +236,11 @@ async def test_after_tool_call_overrides_executed_results_before_persistence():
 
     executor = context.executor
     context.executor = ToolExecutor(
-        executor.registry, executor.validator, executor.approval, executor.run, (Rewrite(),)
+        executor.registry,
+        executor.validator,
+        executor.approval,
+        executor.run,
+        after_tool_call=(Rewrite().after_tool_call,),
     )
     await runtime.run((Message("u", "user", "go"),), context)
     # Only the executed call reaches the hook; the rejection keeps its own result.

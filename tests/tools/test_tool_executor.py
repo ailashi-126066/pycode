@@ -6,7 +6,6 @@ import pytest
 
 from pycode.kernel import (
     EventStream,
-    Feature,
     RunScope,
     SessionScope,
     ToolCall,
@@ -57,14 +56,20 @@ class Recorder:
         self.events.append(event)
 
 
-def make_executor(tool=None, gate=None, features=(), gates=()):
+def make_executor(tool=None, gate=None, gates=(), before=(), after=()):
     validator = JsonSchemaValidator()
     tool = tool or EchoTool()
     recorder = Recorder()
     events = EventStream("session-1", "run-1", (recorder,))
     registry = ToolRegistry(validator, (tool,))
     executor = ToolExecutor(
-        registry, validator, gate or ReadOnlyToolGate(), run_scope(events), features, gates=gates
+        registry,
+        validator,
+        gate or ReadOnlyToolGate(),
+        run_scope(events),
+        gates=gates,
+        before_tool_call=before,
+        after_tool_call=after,
     )
     context = ToolContext("session-1", "run-1", "operation-1", "/workspace")
     return executor, context, tool, recorder
@@ -273,80 +278,90 @@ class Gate:
         return self.answer
 
 
-def recording_feature(name, log, *, gate=None, block=False, override=None):
-    class Recording(Feature):
-        def gates(self, run):
-            return () if gate is None else (Gate(name + ".gate", gate, log),)
-
-        async def before_tool_call(self, run, spec, call):
-            log.append(name + ".before")
-            return {"block": True, "reason": name + " blocked"} if block else None
-
-        async def after_tool_call(self, run, call, result):
-            log.append((name + ".after", result.text))
-            return override
-
-    Recording.name = name
-    return Recording()
-
-
-async def test_gates_run_in_order_before_before_tool_call_then_approval():
+async def test_gates_run_before_approval_and_callbacks():
     log = []
-    features = (recording_feature("a", log, gate=None), recording_feature("b", log, gate=None))
-    user = Gate("user", None, log)
-    executor, context, tool, _ = make_executor(gate=Approval(log), features=features, gates=(user,))
+
+    async def before(run, spec, call):
+        log.append("before")
+
+    async def after(run, call, result):
+        log.append(("after", result.text))
+
+    executor, context, tool, _ = make_executor(
+        gate=Approval(log), gates=(Gate("user", None, log),), before=(before,), after=(after,)
+    )
     result = await executor.execute(context, ToolCall("c", "echo", {"value": "x"}), "tool_use")
     assert not result.is_error and tool.executed == ["x"]
-    assert log == [
-        "user",
-        "approval",
-        "a.before",
-        "b.before",
-        ("a.after", "echoed: x"),
-        ("b.after", "echoed: x"),
-    ]
+    assert log == ["user", "approval", "before", ("after", "echoed: x")]
 
 
-async def test_a_feature_allow_skips_approval_and_a_denial_wins():
+@pytest.mark.parametrize(
+    "answers", [(None, None), ("allow", None), ("allow", "deny"), ("deny", "allow")]
+)
+async def test_gate_denial_wins_even_after_allow(answers):
     log = []
-    allow = recording_feature("allow", log, gate="allow")
-    executor, context, tool, _ = make_executor(gate=Approval(log), features=(allow,))
-    await executor.execute(context, ToolCall("c", "echo", {"value": "x"}), "tool_use")
-    assert "approval" not in log and tool.executed == ["x"]
-
-    log.clear()
-    deny = recording_feature("deny", log, gate="deny")
-    executor, context, tool, _ = make_executor(gate=Approval(log), features=(allow, deny))
+    gates = tuple(Gate(str(i), answer, log) for i, answer in enumerate(answers))
+    executor, context, tool, _ = make_executor(gate=Approval(log), gates=gates)
     result = await executor.execute(context, ToolCall("c", "echo", {"value": "x"}), "tool_use")
-    assert result.error_code == "permission_denied" and tool.executed == []
-    # A rejected call never reaches before_tool_call or after_tool_call.
-    assert log == ["allow.gate", "deny.gate"]
+    assert result.is_error == ("deny" in answers)
+    assert bool(tool.executed) == ("deny" not in answers)
+    assert ("approval" in log) == (all(answer is None for answer in answers))
+    assert log[:2] == (["0"] if answers[0] == "deny" else ["0", "1"])
 
 
-async def test_block_stops_execution_and_skips_after_tool_call():
-    log = []
-    features = (recording_feature("hooks", log, block=True), recording_feature("late", log))
-    executor, context, tool, _ = make_executor(features=features)
+async def test_block_stops_execution_and_later_callbacks():
+    seen = []
+
+    async def block(run, spec, call):
+        return {"block": True, "reason": "blocked"}
+
+    async def late(*args):
+        seen.append(args)
+
+    executor, context, tool, _ = make_executor(before=(block, late), after=(late,))
     result = await executor.execute(context, ToolCall("c", "echo", {"value": "x"}), "tool_use")
-    assert (result.error_code, result.text) == ("hook_rejected", "hooks blocked")
-    assert tool.executed == [] and log == ["hooks.before"]
+    assert (result.error_code, result.text) == ("hook_rejected", "blocked")
+    assert tool.executed == [] and seen == []
 
 
-async def test_after_tool_call_overrides_chain_in_list_order():
-    log = []
-    features = (
-        recording_feature("first", log, override={"text": "rewritten", "is_error": True}),
-        recording_feature("second", log, override={"details": {"seen": True}}),
-    )
-    executor, context, _, _ = make_executor(features=features)
+async def test_after_callbacks_chain_and_preserve_other_metadata():
+    async def snapshot(run, call, result):
+        return {
+            "text": "rewritten",
+            "details": {**result.details, "file_snapshot": {"before": "a", "after": "b"}},
+        }
+
+    async def skill(run, call, result):
+        assert result.text == "rewritten"
+        return {"details": {**result.details, "skill": "testing"}}
+
+    executor, context, _, _ = make_executor(after=(snapshot, skill))
     result = await executor.execute(context, ToolCall("c", "echo", {"value": "x"}), "tool_use")
-    assert ("second.after", "rewritten") in log
-    assert (result.text, result.is_error, result.details) == ("rewritten", True, {"seen": True})
+    assert result.details == {"file_snapshot": {"before": "a", "after": "b"}, "skill": "testing"}
 
 
-async def test_after_tool_call_only_sees_executed_calls():
-    log = []
-    executor, context, _, _ = make_executor(features=(recording_feature("f", log),))
-    await executor.execute(context, ToolCall("c", "echo", {}), "tool_use")
-    await executor.execute(context, ToolCall("d", "echo", {"value": "x"}), "length")
-    assert log == []
+async def test_after_callbacks_only_see_executed_calls_including_tool_errors():
+    seen = []
+
+    async def after(run, call, result):
+        seen.append((call.id, result.error_code))
+
+    class Broken(EchoTool):
+        async def execute(self, context, arguments):
+            raise OSError("disk unavailable")
+
+    executor, context, _, _ = make_executor(tool=Broken(), after=(after,))
+    await executor.execute(context, ToolCall("invalid", "echo", {}), "tool_use")
+    await executor.execute(context, ToolCall("truncated", "echo", {"value": "x"}), "length")
+    await executor.execute(context, ToolCall("executed", "echo", {"value": "x"}), "tool_use")
+    assert seen == [("executed", "tool_io_error")]
+
+
+async def test_callback_defect_propagates():
+    async def broken(run, spec, call):
+        raise RuntimeError("callback defect")
+
+    executor, context, tool, _ = make_executor(before=(broken,))
+    with pytest.raises(RuntimeError, match="callback defect"):
+        await executor.execute(context, ToolCall("c", "echo", {"value": "x"}), "tool_use")
+    assert tool.executed == []

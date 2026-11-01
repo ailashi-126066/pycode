@@ -12,7 +12,7 @@ from pycode.kernel import (
     ToolSpec,
     plain_data,
 )
-from pycode.loopguard import LoopGuardFeature
+from pycode.loopguard import LoopGuard
 from pycode.loopguard.loopguard import (
     ProgressGuard,
     enter_tree,
@@ -120,8 +120,8 @@ def runtime(turn=2):
     )
 
 
-async def test_feature_reminds_once_then_its_middleware_ends_the_run():
-    feature = LoopGuardFeature(threshold=2, asks_user=False)
+async def test_guard_reminds_once_then_its_middleware_ends_the_run():
+    feature = LoopGuard(threshold=2, asks_user=False)
     (middleware,) = feature.middleware(run())
     await feature.on_event(Event(0, "s", "r", "agent_start", {}))
     for index in range(2):
@@ -138,7 +138,7 @@ async def test_feature_reminds_once_then_its_middleware_ends_the_run():
 
 
 async def test_continue_answer_clears_the_counts(monkeypatch):
-    feature = LoopGuardFeature(threshold=2, asks_user=True)
+    feature = LoopGuard(threshold=2, asks_user=True)
     (middleware,) = feature.middleware(run())
     questions = []
 
@@ -155,12 +155,12 @@ async def test_continue_answer_clears_the_counts(monkeypatch):
 
 
 async def test_reads_count_by_category_and_compaction_or_new_step_resets():
-    feature = LoopGuardFeature(threshold=2, asks_user=False)
+    feature = LoopGuard(threshold=2, asks_user=False)
     await settle(feature, "r1", "read", {"path": "a"}, category="read")
     await feature.on_event(Event(0, "s", "r", "compaction", {"job_id": "j", "status": "applied"}))
     await settle(feature, "r2", "read", {"path": "a"}, category="read")
     assert feature.guard.evidence is None
     await settle(feature, "r3", "read", {"path": "a"}, category="read")
     assert "returned the same result 2 times" in feature.guard.evidence
-    await settle(feature, "t1", "TaskUpdate", {"status": "in_progress"})
+    feature.step_started()
     assert feature.guard.evidence is None

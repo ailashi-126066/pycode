@@ -1,6 +1,6 @@
 # Sandbox
 
-Optional module. `SandboxFeature(settings, *, required, passthrough, path_prefix, read_roots)`:
+Optional module. `SandboxService(settings, *, required, passthrough, path_prefix, read_roots)`:
 
 - `tools(run)`: the `bash` tool. Its output streams to `$TMPDIR/pycode/<session>/`; child
   processes get an allowlisted environment without credentials, plus the `passthrough` names.
@@ -17,7 +17,7 @@ behind ordinary approval. `required=True` (isolated workers) refuses to run a co
 enabled sandbox.
 
 ```python
-from pycode.sandbox import SandboxFeature, SandboxSettings
+from pycode.sandbox import SandboxService, SandboxSettings
 
-sandbox = SandboxFeature(SandboxSettings(mode="on-auto"), passthrough=("LANG",))
+sandbox = SandboxService(SandboxSettings(mode="on-auto"), passthrough=("LANG",))
 ```

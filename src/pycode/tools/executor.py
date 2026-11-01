@@ -15,9 +15,10 @@ from langchain_core.messages import ToolMessage
 
 from pycode.kernel import (
     SECRET_PATTERNS,
+    AfterToolCall,
     AgentTool,
+    BeforeToolCall,
     DomainError,
-    Feature,
     RunScope,
     StopReason,
     ToolError,
@@ -193,7 +194,7 @@ class ToolRegistry:
 
 
 class ToolExecutor:
-    """One per run. gates come first (the user's AppConfig.tool_gate), then each feature's."""
+    """One per run. app supplies the ordered gates and execution callbacks."""
 
     def __init__(
         self,
@@ -201,18 +202,20 @@ class ToolExecutor:
         validator: JsonSchemaValidator,
         approval: InterruptToolGate | ReadOnlyToolGate,
         run: RunScope,
-        features: tuple[Feature, ...] = (),
         outputs: TempOutputStore | None = None,
         *,
         gates: tuple[ToolGate, ...] = (),
+        before_tool_call: tuple[BeforeToolCall, ...] = (),
+        after_tool_call: tuple[AfterToolCall, ...] = (),
     ):
         self.registry = registry
         self.validator = validator
         self.approval = approval
         self.run = run
         self.events = run.events
-        self.features = features
-        self.gates = (*gates, *(gate for feature in features for gate in feature.gates(run)))
+        self.before_callbacks = before_tool_call
+        self.after_callbacks = after_tool_call
+        self.gates = gates
         self.outputs = outputs
         # Keyed by operation_id; one executor lives as long as one run container.
         self.tool_calls: dict[str, ToolCallState] = {}
@@ -276,8 +279,8 @@ class ToolExecutor:
             # the resumed authorize returns only when the user approved.
             await self.authorize(context, spec, prepared)
             # Pi: beforeToolCall, after validation and before execution.
-            for feature in self.features:
-                before = await feature.before_tool_call(self.run, spec, prepared)
+            for callback in self.before_callbacks:
+                before = await callback(self.run, spec, prepared)
                 if before is not None and before.get("block"):
                     raise ToolError(
                         "hook_rejected", before.get("reason") or "Tool execution was blocked"
@@ -326,11 +329,11 @@ class ToolExecutor:
             result = await self.after_tool_call(call, result)
         return result
 
-    # Pi: finalizeExecutedToolCall. Features override fields of an executed call's result
+    # Pi: finalizeExecutedToolCall. Callbacks override fields of an executed call's result
     # in list order before it is persisted; a replaced text drops its structured content.
     async def after_tool_call(self, call, result):
-        for feature in self.features:
-            override = await feature.after_tool_call(self.run, call, result)
+        for callback in self.after_callbacks:
+            override = await callback(self.run, call, result)
             if override is not None:
                 if "text" in override:
                     result = replace(result, structured_content=None)

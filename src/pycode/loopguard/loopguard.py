@@ -1,5 +1,5 @@
 # Pi 没有，pycode 新增
-"""LoopGuardFeature: the same call with the same result again and again, or a workspace
+"""LoopGuard: the same call with the same result again and again, or a workspace
 changed back to an earlier tree.
 
 11.1 section 40: a fingerprint is the action (tool name, arguments hash) plus the result
@@ -23,7 +23,7 @@ from uuid import uuid4
 from langchain.agents.middleware import AgentMiddleware, hook_config
 from langgraph.types import interrupt
 
-from pycode.kernel import Event, Feature, Message, RunScope, ToolCall, ToolSpec, data_hash
+from pycode.kernel import Event, Message, RunScope, ToolCall, ToolSpec, data_hash
 
 Fingerprint = tuple[str, str, bool, str | None, int | None, str]
 
@@ -137,7 +137,7 @@ class LoopGuardMiddleware(AgentMiddleware):
     The agent's RunContext (runtime.context) carries run_state; loop_detected is its reason.
     """
 
-    def __init__(self, feature: "LoopGuardFeature", run: RunScope):
+    def __init__(self, feature: "LoopGuard", run: RunScope):
         self.feature = feature
         self.run = run
 
@@ -164,9 +164,7 @@ class LoopGuardMiddleware(AgentMiddleware):
         return None
 
 
-class LoopGuardFeature(Feature):
-    name = "loopguard"
-
+class LoopGuard:
     def __init__(self, threshold: int, asks_user: bool):
         self.threshold = threshold
         self.asks_user = asks_user
@@ -205,16 +203,13 @@ class LoopGuardFeature(Feature):
                 result,
                 read_only=not result["is_error"] and category == "read",
             )
-            # 11.1 section 39 #3: a new step may rerun the previous step's check.
-            if (
-                not result["is_error"]
-                and data["tool_name"] == "TaskUpdate"
-                and arguments["status"] == "in_progress"
-            ):
-                reset_repeats(self.guard)
         elif event.kind == "compaction" and data["status"] == "applied":
             # The summary tells the model to reread files and Skills it had loaded.
             reset_repeats(self.guard)
+
+    def step_started(self) -> None:
+        """Reset repeats when the task service starts a new step (wired by app)."""
+        reset_repeats(self.guard)
 
     def transform_context(
         self, run: RunScope, messages: tuple[Message, ...]

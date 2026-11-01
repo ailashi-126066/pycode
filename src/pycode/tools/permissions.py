@@ -1,7 +1,7 @@
 # Pi 没有，pycode 新增
 """The core approval step: a live framework interrupt per operation, or read-only refusal.
 
-Feature gates (sandbox command rules, memory, plans, skills) run before this in
+Service gates (sandbox command rules, memory, plans, skills) run before this in
 ToolExecutor.authorize; one of them returning "allow" skips the approval below.
 """
 
