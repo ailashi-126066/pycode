@@ -708,6 +708,7 @@ def check_branding(root: Path = ROOT) -> list[str]:
         ".venv",
         ".source-cache",
         ".git",
+        ".agents",
         ".worktrees",
         ".pytest_cache",
         ".ruff_cache",
@@ -736,7 +737,8 @@ def check_branding(root: Path = ROOT) -> list[str]:
         if branding_excluded(relative):
             continue
         # Source attribution keeps actual upstream directory names; licenses keep notices.
-        if relative.as_posix() == "docs/source-map.md" or relative.parts[:2] == (
+        # The 11.1 design document names its upstream sources the same way.
+        if relative.as_posix() in {"docs/source-map.md", "11.1.md"} or relative.parts[:2] == (
             "docs",
             "licenses",
         ):
