@@ -392,11 +392,13 @@ async def run_until_loop_question(tmp_path, responses, answer):
     return asked, question, result, model, tool, recorder
 
 
-async def test_a_repeat_is_reminded_then_the_user_is_asked_and_can_stop(tmp_path):
+# Anything but an explicit "continue", such as an Other answer, stops the run.
+@pytest.mark.parametrize("answer", ["stop", {"other": "keep going"}])
+async def test_a_repeat_is_reminded_then_the_user_is_asked_and_can_stop(tmp_path, answer):
     asked, question, result, model, tool, recorder = await run_until_loop_question(
         tmp_path,
         [same_echo(1), same_echo(2), same_echo(3), AIMessage(id="unused", content="unused")],
-        "stop",
+        answer,
     )
     reminders = [
         [m.content for m in request if "Progress guard" in str(m.content)]

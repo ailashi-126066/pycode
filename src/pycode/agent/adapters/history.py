@@ -211,7 +211,10 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             stop = True
             if context.loop_asks_user:
                 answer = interrupt(loop_question(context, guard.evidence))
-                stop = answer.get("decision") == "cancel" or answer["answers"]["loop"] == "stop"
+                # Only an explicit "continue" keeps going; an Other answer stops.
+                stop = (
+                    answer.get("decision") == "cancel" or answer["answers"]["loop"] != "continue"
+                )
             if stop:
                 run.reason = "loop_detected"
                 await self.fail_board(context, guard.evidence)
