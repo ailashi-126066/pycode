@@ -129,6 +129,9 @@ async def test_guard_reminds_once_then_its_middleware_ends_the_run():
     messages = (Message("u", "user", "go"),)
     reminded = feature.transform_context(run(), messages)
     assert reminded[:1] == messages and "Progress guard" in reminded[1].content
+    # Budget estimation may inspect the same reminder before a model request.
+    assert "Progress guard" in feature.transform_context(run(), messages)[-1].text
+    await feature.on_event(Event(0, "s", "r", "message_start", {"message": {"role": "assistant"}}))
     assert feature.transform_context(run(), messages) == messages
     assert await middleware.abefore_model({}, runtime()) is None
     await settle(feature, "c2", "bash", {"command": "make"})
@@ -150,6 +153,9 @@ async def test_continue_answer_clears_the_counts(monkeypatch):
     for index in range(3):
         await settle(feature, f"c{index}", "bash", {"command": "make"})
         feature.transform_context(run(), ())
+        await feature.on_event(
+            Event(0, "s", "r", "message_start", {"message": {"role": "assistant"}})
+        )
     assert await middleware.abefore_model({}, runtime(turn=4)) is None
     assert questions[0]["operation_id"] == "r:loop-4" and feature.guard.evidence is None
 

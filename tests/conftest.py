@@ -41,3 +41,16 @@ def disclosed_tools(monkeypatch):
         return request
 
     monkeypatch.setattr(ToolDiscovery, "disclose", disclose)
+
+
+@pytest.fixture(autouse=True)
+async def close_graph_histories():
+    from tests.support.history import OWNED_HISTORIES
+
+    yield
+    while OWNED_HISTORIES:
+        store, directory = OWNED_HISTORIES.pop()
+        try:
+            await store.aclose()
+        finally:
+            directory.cleanup()

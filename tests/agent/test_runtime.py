@@ -1,14 +1,13 @@
 import asyncio
 import json
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
 from pycode.agent import AgentMessagePublisher, AgentRuntime, RunContext, RuntimeBindings
-from pycode.context.services.context_projector import ContextProjector
+from pycode.context import ContextProjector, EvictionBudget, ToolEvictionService
 from pycode.kernel import (
     EventStream,
     Message,
@@ -20,31 +19,30 @@ from pycode.kernel import (
     ToolSpec,
     plain_data,
 )
-from pycode.models.adapters.failures import ProviderFailureClassifier
-from pycode.models.adapters.model_requests import ModelRequestRunner
-from pycode.models.domain.requests import RetryPolicy
-from pycode.models.module import ModelsModule
-from pycode.session.adapters.storage.session import SqliteSessionStore
-from pycode.session.services.input_queue import PendingInputs
-from pycode.tools.adapters.schema import JsonSchemaValidator
-from pycode.tools.adapters.tool_errors import execute_tool_errors
-from pycode.tools.module import ToolsModule
-from pycode.tools.services.permissions import ReadOnlyToolGate
-from pycode.tools.services.tool_executor import ToolExecutor
-from pycode.tools.services.tool_registry import ToolRegistry
+from pycode.models import (
+    ModelRequestRunner,
+    ProviderFailureClassifier,
+    RetryPolicy,
+    from_assistant,
+    model_request_step,
+    to_framework,
+    to_framework_messages,
+)
+from pycode.session import PendingInputs, SqliteSessionStore
+from pycode.tools import (
+    JsonSchemaValidator,
+    ReadOnlyToolGate,
+    ToolDiscovery,
+    ToolExecutor,
+    ToolRegistry,
+    ToolSettlementMiddleware,
+    make_framework_tool,
+)
+from tests.support.history import Journal, QueuedInputs
 from tests.support.model import ScriptedChatModel
 from tests.support.requests import MemoryRequestStore, TestTiming
 
 VECTORS = json.loads((Path(__file__).parents[1] / "fixtures/pi-agent-loop.json").read_text())
-
-
-class Journal:
-    def __init__(self):
-        self.messages = []
-
-    async def append_message(self, message):
-        self.messages.append(message)
-        return message.id
 
 
 class Recorder:
@@ -96,26 +94,24 @@ async def no_hook(*args, **kwargs):
 
 
 def runtime_for(model, **options):
-    tools = ToolsModule()
-    converter = partial(tools.framework_tool, native_bindings=())
     bindings = RuntimeBindings(
-        to_framework=ModelsModule.to_framework,
-        to_framework_messages=ModelsModule.to_framework_messages,
-        from_assistant=ModelsModule.from_assistant,
-        make_framework_tool=converter,
-        disclose_model_tools=tools.discovery(converter).disclose,
-        model_request_step=ModelsModule.model_request_step,
+        to_framework=to_framework,
+        to_framework_messages=to_framework_messages,
+        from_assistant=from_assistant,
+        make_framework_tool=make_framework_tool,
+        disclose_model_tools=ToolDiscovery(make_framework_tool).disclose,
+        model_request_step=model_request_step,
         run_hook=no_hook,
-        settlement_middleware_factory=lambda bound: tools.settlement(
-            publisher=AgentMessagePublisher(bound), converter=ModelsModule.to_framework
+        settlement_middleware_factory=lambda bound: ToolSettlementMiddleware(
+            publish=AgentMessagePublisher(bound).publish, converter=to_framework
         ),
     )
     return AgentRuntime(model, bindings=bindings, **options)
 
 
-def run_scope(events):
+def run_scope(events, history):
     session = SessionScope(
-        "session-1", Path("/workspace"), Path("/data"), None, events, False, "lead"
+        "session-1", Path("/workspace"), Path("/data"), history, events, False, "lead"
     )  # type: ignore[arg-type]
     return RunScope(session, "run-1", events)
 
@@ -129,9 +125,7 @@ def assemble(responses, **options):
     validator = JsonSchemaValidator()
     registry = ToolRegistry(validator, (tool,))
     events = EventStream("session-1", "run-1", (recorder,))
-    executor = ToolExecutor(
-        registry, validator, ReadOnlyToolGate(), events, error_boundary=execute_tool_errors
-    )
+    executor = ToolExecutor(registry, validator, ReadOnlyToolGate(), run_scope(events, journal))
     selection = ModelSelection("test", "scripted", "deepseek")
     timing = TestTiming()
     requests = ModelRequestRunner(
@@ -156,7 +150,11 @@ def assemble(responses, **options):
         registry=registry,
         requests=requests,
         max_turns=100,
-        scope=run_scope(events),
+        scope=run_scope(events, journal),
+        history_store=journal,
+        projector=ContextProjector(),
+        eviction=ToolEvictionService(journal, ContextProjector(), EvictionBudget(100000), events),
+        durable_inputs=QueuedInputs(queue),
     )
     runtime = runtime_for(model, **options)
     return runtime, context, model, tool, journal, recorder
@@ -180,6 +178,13 @@ async def test_fixed_model_uses_actual_framework_and_pi_event_order():
     )
     result = await runtime.run((Message("u1", "user", "Hello"),), context)
     assert result.final_text == "Hi there!"
+    user_end = next(
+        event
+        for event in recorder.events
+        if event.kind == "message_end" and event.data["message"]["role"] == "user"
+    )
+    stored = await journal.snapshot()
+    assert stored.index[user_end.data["entry_id"]].message.id == "u1"
     assert model.call_index == 1
     assert [message.role for message in journal.messages] == ["user", "assistant"]
     types = [event.kind for event in recorder.events]
@@ -342,9 +347,7 @@ async def test_sequential_tool_forces_barrier_under_parallel_default():
     validator = JsonSchemaValidator()
     registry = ToolRegistry(validator, (BarrierTool(),))
     context.registry = registry
-    context.executor = ToolExecutor(
-        registry, validator, ReadOnlyToolGate(), context.events, error_boundary=execute_tool_errors
-    )
+    context.executor = ToolExecutor(registry, validator, ReadOnlyToolGate(), context.scope)
     await runtime.run((Message("u1", "user", "start"),), context)
 
 
@@ -423,7 +426,7 @@ async def test_non_domain_failure_finishes_the_run_with_error():
         def set_tools(self, tools):
             pass
 
-        async def prepare(self):
+        async def prepare(self, **options):
             raise RuntimeError("summary broke")
 
         async def cancel_background(self):
@@ -461,9 +464,7 @@ async def test_graph_tool_cancellation_is_collected_before_run_returns():
     validator = JsonSchemaValidator()
     registry = ToolRegistry(validator, (WaitingTool(),))
     context.registry = registry
-    context.executor = ToolExecutor(
-        registry, validator, ReadOnlyToolGate(), context.events, error_boundary=execute_tool_errors
-    )
+    context.executor = ToolExecutor(registry, validator, ReadOnlyToolGate(), context.scope)
     running = asyncio.create_task(runtime.run((Message("u1", "user", "start"),), context))
     await started.wait()
     running.cancel()
@@ -505,3 +506,32 @@ async def test_partial_stream_is_saved_as_aborted_reply_with_its_text():
 
 # This suite tests execution with tool definitions already disclosed.
 pytestmark = pytest.mark.usefixtures("disclosed_tools")
+
+
+async def test_summary_budget_includes_service_context_without_consuming_it():
+    from types import SimpleNamespace
+
+    extra = Message("service-tail", "system", "Task board and progress reminder")
+    observed = []
+
+    def append(run, messages):
+        return (*messages, extra)
+
+    class Summary:
+        def set_tools(self, tools):
+            pass
+
+        async def prepare(self, *, tail=(), **options):
+            observed.append(tail)
+            return SimpleNamespace(applied_job_id=None, protected_entry_ids=())
+
+        async def cancel_background(self):
+            pass
+
+    runtime, context, model, _, _, _ = assemble(
+        [AIMessage(id="answer", content="done")], context_transforms=(append,)
+    )
+    context.summary = Summary()
+    await runtime.run((Message("u", "user", "go"),), context)
+    assert observed[0] == (extra,)
+    assert any(extra.text in str(message.content) for message in model.requests[0])

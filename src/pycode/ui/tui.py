@@ -593,16 +593,8 @@ class PyApp(App):
                 catalog = entry["data"]["entries"]
                 break
             current = entry["parent_id"]
-        self.commands.set_skills(catalog if self.active_session.skills is not None else ())
-        hidden = set()
-        for service, commands in (
-            (self.active_session.memory, ("/memory",)),
-            (self.active_session.skills, ("/skill", "/skills", "/reload")),
-            (self.active_session.subagents, ("/agents",)),
-        ):
-            if service is None:
-                hidden.update(commands)
-        self.commands.hidden = hidden
+        self.commands.set_skills(catalog)
+        self.commands.hidden = {"/agents"} if self.active_session.subagents is None else set()
         self.query_one("#chat-input", ChatInput).update_completion()
 
     def on_option_list_option_selected(self, event):

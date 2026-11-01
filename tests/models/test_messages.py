@@ -203,6 +203,12 @@ def test_interleaved_provider_blocks_keep_their_order():
         "text",
     ]
     assert normalized.text == "look then"
+    restored = to_framework(normalized, selection)
+    assert restored.content == response.content
+    from langchain_anthropic.chat_models import _format_messages
+
+    _, wire = _format_messages([restored], model=selection.model_id)
+    assert wire[0]["content"] == response.content
     assert normalized.stop_reason == "tool_use"
 
 

@@ -7,12 +7,12 @@ from dataclasses import replace
 import pytest
 from langchain_core.messages import AIMessage
 
-from pycode.context.services.context_projector import ContextProjector
+from pycode.context.projector import ContextProjector
 from pycode.kernel import Message, SessionHeader, ToolError, ToolResult
-from pycode.session.adapters.storage.session import SqliteSessionStore
+from pycode.session.store import SqliteSessionStore
 from pycode.tools.executor import ToolExecutor
 from pycode.tools.permissions import InterruptToolGate
-from tests.agent.adapters.test_agent import assemble
+from tests.agent.test_runtime import assemble
 from tests.support.requests import TestTiming
 from tests.tools.test_tool_executor import run_scope
 
@@ -96,10 +96,10 @@ async def test_undeclared_tool_is_paired():
         [reply(("hidden", "echo")), AIMessage(id="done", content="done")]
     )
 
-    async def hide(request):
-        return request.override(tools=[item for item in request.tools if item.name != "echo"])
+    def hide(run, specs):
+        return tuple(item for item in specs if item.name != "echo")
 
-    runtime.bindings = replace(runtime.bindings, model_filters=(hide,))
+    runtime.tool_filters = (hide,)
     await runtime.run((Message("u", "user", "go"),), context)
     assert_paired(recorder, ["hidden"])
 

@@ -8,7 +8,7 @@ from pycode.ui.approval import ApprovalPanel
 from pycode.ui.theme import themes
 
 VECTORS = json.loads(
-    (Path(__file__).parents[2] / "fixtures/tui-baselines.json").read_text(encoding="utf-8")
+    (Path(__file__).parents[1] / "fixtures/tui-baselines.json").read_text(encoding="utf-8")
 )
 
 

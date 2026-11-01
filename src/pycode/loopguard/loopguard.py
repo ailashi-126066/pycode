@@ -186,6 +186,10 @@ class LoopGuard:
             self.guard = ProgressGuard()
             self.arguments.clear()
             self.categories.clear()
+        elif event.kind == "message_start" and data["message"]["role"] == "assistant":
+            if self.guard.evidence is not None and not self.guard.reminded:
+                self.guard.evidence = None
+                self.guard.reminded = True
         elif event.kind == "tool_execution_start":
             self.arguments[data["tool_call_id"]] = data["args"]
         elif event.kind == "tool_execution_end":
@@ -218,7 +222,7 @@ class LoopGuard:
         guard = self.guard
         if guard.evidence is None or guard.reminded:
             return messages
-        evidence, guard.evidence, guard.reminded = guard.evidence, None, True
+        evidence = guard.evidence
         text = (
             f"Progress guard: {evidence}. This is not progress; change your approach. "
             "To wait for an outside state (a service, build or CI), wait in one bash command "

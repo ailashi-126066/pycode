@@ -292,3 +292,14 @@ def responses_completion(*, tool=False):
     )
     content = "".join(f"event: {event['type']}\ndata: {json.dumps(event)}\n\n" for event in events)
     return HTTPResponse(content.encode())
+
+
+def command_reply(command):
+    reply = chat_completion(tool=True)
+    reply.body = (
+        reply.body.decode()
+        .replace('"name": "echo"', '"name": "bash"')
+        .replace(json.dumps('{"value":"wire"}'), json.dumps(json.dumps({"command": command})))
+        .encode()
+    )
+    return reply

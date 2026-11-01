@@ -9,7 +9,7 @@ from pycode.tools.executor import ToolExecutor, ToolRegistry
 from pycode.tools.output import TempOutputStore
 from pycode.tools.permissions import ReadOnlyToolGate
 from pycode.tools.schema import JsonSchemaValidator
-from tests.agent.adapters.test_agent import assemble
+from tests.agent.test_runtime import assemble
 from tests.support.model import ScriptedChatModel
 from tests.support.runtime import build_agent_runtime
 from tests.tools.test_tool_executor import run_scope
@@ -57,7 +57,7 @@ async def test_large_tool_output_is_read_back_with_read_through_the_same_executo
     registry = ToolRegistry(validator, (BigOutput(), Read(backend)))
     context.registry = registry
     context.executor = ToolExecutor(
-        registry, validator, ReadOnlyToolGate(), run_scope(context.events), (), outputs
+        registry, validator, ReadOnlyToolGate(), run_scope(context.events), outputs
     )
     context.outputs = outputs
     runtime = build_agent_runtime(model)

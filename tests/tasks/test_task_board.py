@@ -123,12 +123,15 @@ async def test_board_exits_completed_and_blocked(tmp_path, monkeypatch):
             await session.aclose()
 
 
-def test_full_view_is_injected_once_after_compaction():
+async def test_full_view_is_injected_once_after_compaction():
     board = Board("b1", "fix login", ("tests pass",), (Step("s1", "locate", ()),), revision=1)
     service = TaskBoardService(None, None, on_step_started=lambda: None)
     service.board = board
     service.full_view = True
     (first,) = service.transform_context(None, ())
+    from pycode.kernel import Event
+
+    await service.on_event(Event(0, "s", "r", "message_start", {"message": {"role": "assistant"}}))
     (second,) = service.transform_context(None, ())
     assert first.role == "system"
     assert "Critical path: s1" in first.content and "Done when:" in first.content

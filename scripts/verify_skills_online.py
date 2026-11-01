@@ -7,8 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pycode.skills.catalog import FileSkillCatalog
-from pycode.skills.install import GitHubSkillInstaller
+from pycode.skills import FileSkillCatalog, GitHubSkillInstaller
 
 
 def verify_files(report):

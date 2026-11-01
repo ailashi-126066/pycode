@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from pycode.kernel import Message, ToolContext
 from pycode.tools.discovery import ToolDiscovery
 from pycode.tools.framework_tool import make_framework_tool
-from tests.agent.adapters.test_agent import assemble, tool_response
+from tests.agent.test_runtime import assemble, tool_response
 from tests.support.model import ScriptedChatModel
 
 
@@ -131,7 +131,7 @@ async def test_failed_search_record_does_not_load_and_same_batch_cannot_call_tar
 
 
 async def test_readonly_catalog_filters_write_tools_before_search():
-    from pycode.agent.adapters.boundaries import filter_model_tools
+    from pycode.agent.boundaries import filter_model_tools
     from tests.support.probe import Probe
 
     discovery, request, context, _ = setup_request()
@@ -140,7 +140,7 @@ async def test_readonly_catalog_filters_write_tools_before_search():
     context.registry.register(write)
     context.read_only = True
     request = request.override(tools=[*request.tools, make_framework_tool(write.spec, context)])
-    first = await discovery.disclose(await filter_model_tools(request))
+    first = await discovery.disclose(filter_model_tools(request))
     assert "write_external" not in first.system_message.content
     result = await discovery.execute(
         ToolContext("s", "r", "op", "/workspace"), {"query": "write_external"}
@@ -149,7 +149,7 @@ async def test_readonly_catalog_filters_write_tools_before_search():
 
 
 async def test_direct_tools_are_declared_with_pi_prompt_but_permissions_still_filter_them():
-    from pycode.agent.adapters.boundaries import filter_model_tools
+    from pycode.agent.boundaries import filter_model_tools
     from tests.support.probe import Probe
 
     discovery, request, context, _ = setup_request()
@@ -181,6 +181,6 @@ async def test_direct_tools_are_declared_with_pi_prompt_but_permissions_still_fi
     # Deferred tools stay in the catalog until ToolSearch loads them.
     assert "echo" in prompt and "echo" not in {tool.name for tool in disclosed.tools}
     context.read_only = True
-    disclosed = await discovery.disclose(await filter_model_tools(request))
+    disclosed = await discovery.disclose(filter_model_tools(request))
     assert {tool.name for tool in disclosed.tools} == {"ToolSearch", "read"}
     assert "bash" not in disclosed.system_message.content

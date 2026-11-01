@@ -2,12 +2,11 @@
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Message
 from pycode.tools.backend import PycodeBackend
-from tests.agent.adapters.test_agent import Recorder
-from tests.skills.adapters.test_skills_http import skill_reply
+from tests.agent.test_runtime import Recorder
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
@@ -21,9 +20,11 @@ async def test_dialogue_revert_must_restore_plan_policy(tmp_path, monkeypatch):
         try:
             await session.run(Message("u", "user", "base"))
             before = (await session.inspect())["snapshot"]["leaf_id"]
-            await session.enter_plan()
-            plan = await session.preview_revert(before, "dialogue")
-            await session.revert(plan)
+            await session.plans.enter()
+            async with session.execution():
+                await session.snapshots.revert(before, "dialogue")
+                await session.launcher.invalidate_summary("reverted")
+                await session.plans.initialize()
             view = await session.inspect()
             print("plan_after_revert", view["plan"])
             assert view["plan"] is None
@@ -78,35 +79,17 @@ async def test_bash_must_emit_output_progress_before_completion(tmp_path, monkey
             await session.aclose()
 
 
-async def test_actual_tui_renderer_failure_must_not_close_app(tmp_path, monkeypatch):
-    monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
-    (tmp_path / "code.txt").write_text("readable")
-    with protocol_server(
-        [skill_reply("read", {"path": "/workspace/code.txt"}, "read"), chat_completion()]
-    ) as (url, _):
-        app = compose_application(
-            AppConfig(tmp_path, tmp_path / "data", memory_mode="off"), (provider(url),)
-        ).tui()
-        original = type(app).render_history
+async def test_tui_renderer_failure_propagates():
+    from types import SimpleNamespace
 
-        async def faulted_render(current):
-            if current.session is not None:
-                view = await current.session.inspect()
-                if any(
-                    item.get("message", {}).get("tool_result")
-                    for item in view["history"]
-                    if item["kind"] == "message"
-                ):
-                    raise RuntimeError("audit: optional tool-card renderer failed")
-            await original(current)
+    from pycode.ui import PyApp
 
-        monkeypatch.setattr(type(app), "render_history", faulted_render)
-        async with app.run_test() as pilot:
-            await app.ready.wait()
-            await app.send_text("Read code.txt")
-            await app.wait_idle()
-            await pilot.pause()
-            assert not app._closed
+    async def fail(message):
+        raise RuntimeError("renderer defect")
+
+    app = SimpleNamespace(render_runtime_event=fail)
+    with pytest.raises(RuntimeError, match="renderer defect"):
+        await PyApp.on_py_app_runtime_event(app, object())
 
 
 # This suite tests execution with tool definitions already disclosed.

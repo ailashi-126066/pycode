@@ -2,12 +2,11 @@
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from pycode.memory.domain.memory import format_note
+from pycode.app import AppConfig, compose_application
+from pycode.memory.store import format_note
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.ui.test_tui_http import settled
 
 UPDATED = "2026-01-01T00:00:00+00:00"
 
@@ -31,7 +30,7 @@ async def test_tui_memory_panel_edit_and_delete(tmp_path, monkeypatch):
             await settled(app)
             if app.last_error:
                 raise app.last_error
-            records = (await app.session.memory_list())["records"]
+            records = (await app.session.memory.list())["records"]
             assert [(r["memory_id"], r["scope"], r["description"]) for r in records] == [
                 ("style", "user", "Code style")
             ]

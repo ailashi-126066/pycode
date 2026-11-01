@@ -5,7 +5,8 @@ import asyncio
 import pytest
 from deepagents.backends.protocol import BackendProtocol
 
-from pycode.plans.adapters.storage.plans import PlanBackend
+from pycode.kernel import ToolError
+from pycode.plans.store import FilePlanStore
 from pycode.tools.backend import PycodeBackend
 
 
@@ -79,7 +80,8 @@ async def test_rg_limits_are_explicit_and_missing_rg_is_an_error(tmp_path):
 @pytest.mark.requires_rg
 async def test_uncreated_plan_namespace_is_empty_without_masking_missing_workspace(tmp_path):
     root = tmp_path / "plans"
-    backend = PlanBackend(root, backend_factory=PycodeBackend)
+    plans = FilePlanStore(root, backend_factory=PycodeBackend)
+    backend = plans.backend
     assert not root.exists()
     assert backend.ls("/").entries == [] and backend.ls("/").error is None
     for result in (
@@ -90,10 +92,11 @@ async def test_uncreated_plan_namespace_is_empty_without_masking_missing_workspa
     ):
         assert result.matches == [] and result.error is None and not result.truncated
     assert not root.exists()
-    assert "invalid_plan_path" in backend.read("/other.md").error
+    with pytest.raises(ToolError, match="current Plan"):
+        backend.read("/other.md")
     assert "file_not_found" in PycodeBackend(root).ls("/").error
     assert "file_not_found" in (await PycodeBackend(root).aglob("*.md")).error
-    backend.configure("a" * 32)
+    plans.configure("a" * 32)
     assert backend.write("/" + "a" * 32 + ".md", "needle").error is None
     assert [item["path"] for item in (await backend.aglob("*.md")).matches] == [
         "/" + "a" * 32 + ".md"
@@ -119,15 +122,18 @@ async def test_plan_delegate_scopes_rg_before_opening_other_plan_content(tmp_pat
     inactive = "b" * 32 + ".md"
     (root / active).write_text("active needle\n")
     (root / inactive).write_text("private inactive needle\n")
-    backend = PlanBackend(root, backend_factory=PycodeBackend)
-    backend.configure("a" * 32)
-    command, base = backend.backend.search_command("needle", "/", None)
+    plans = FilePlanStore(root, backend_factory=PycodeBackend)
+    backend = plans.backend
+    plans.configure("a" * 32)
+    command, base = backend.inner.search_command("needle", "/", None)
     assert base == root and command[-1] == active
     assert "." not in command and inactive not in command
     result = await backend.agrep("needle")
     assert [match["path"] for match in result.matches] == ["/" + active]
-    assert "invalid_plan_path" in backend.read("/" + inactive).error
-    assert backend.download_files(["/" + inactive])[0].error == "permission_denied"
-    backend.active_name = None
-    assert backend.backend.search_command("needle", "/", None)[0] is None
+    with pytest.raises(ToolError, match="current Plan"):
+        backend.read("/" + inactive)
+    with pytest.raises(ToolError, match="current Plan"):
+        backend.download_files(["/" + inactive])
+    plans.deactivate()
+    assert backend.inner.search_command("needle", "/", None)[0] is None
     assert (await backend.agrep("needle")).matches == []

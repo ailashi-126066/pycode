@@ -2,8 +2,7 @@ import json
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Message
 from tests.snapshot.test_git_tree import git, repository
 from tests.support.execution import provider

@@ -12,8 +12,10 @@ from pycode.tools.builtin.write import Write
 from pycode.tools.call_state import ToolCallState, abandoned_result, interrupted_result
 from pycode.tools.discovery import ToolDiscovery
 from pycode.tools.executor import (
+    FailureGuard,
     ToolExecutor,
     ToolRegistry,
+    empty_failure_guard,
     failure_update,
     repeated_tool_failure,
 )
@@ -39,6 +41,8 @@ __all__ = [
     "TempOutputStore",
     "ToolCallState",
     "ToolDiscovery",
+    "FailureGuard",
+    "empty_failure_guard",
     "ToolExecutor",
     "ToolRegistry",
     "ToolSettlementMiddleware",

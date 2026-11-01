@@ -3,18 +3,17 @@ from dataclasses import replace
 import pytest
 from textual.widgets import Static
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import StorageError, json_dumps
 from pycode.ui.chat_input import ChatInput
 from pycode.ui.commands import COMMANDS
 from pycode.ui.completion import CompletionPopup
 from pycode.ui.model_picker import ModelPicker
 from pycode.ui.tui import PyApp
-from tests.skills.services.test_skills import write_skill
+from tests.skills.test_skills import write_skill
 from tests.support.execution import provider
 from tests.support.http_provider import protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.ui.test_tui_http import settled
 
 
 async def test_registered_commands_and_live_skills_share_dispatch_and_completion(

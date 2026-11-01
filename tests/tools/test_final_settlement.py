@@ -1,10 +1,12 @@
 """Framework-owned tool execution and pycode's narrow repeated-failure guard."""
 
+from dataclasses import replace
+
 import pytest
 from langchain_core.messages import AIMessage
 
 from pycode.kernel import Message, ToolError, ToolResult
-from tests.agent.adapters.test_agent import assemble
+from tests.agent.test_runtime import assemble
 
 
 def response(identifier, value="same", name="echo"):
@@ -166,53 +168,30 @@ async def test_known_tool_hidden_from_final_request_never_prepares_approves_or_e
         async def authorize(self, current, spec, call):
             raise AssertionError("Undeclared tool must not request approval")
 
-    async def hide(request):
-        return request.override(tools=[item for item in request.tools if item.name != "echo"])
+    def hide(run, specs):
+        return tuple(item for item in specs if item.name != "echo")
 
-    class Extension:
-        prepared = 0
-        validated = 0
+    prepared = []
 
-        def lookup(self, name, *, state):
-            return None
-
-        async def validate_call(self, current, call):
-            self.validated += 1
-
-        async def before_call(self, current, call):
-            self.prepared += 1
-
-        def prepare_result(self, call, result):
-            return result
-
-        async def after_persist(self, current, call, result, entry_id):
-            return None
-
-    extension = Extension()
-    original_factory = runtime.bindings.settlement_middleware_factory
-
-    def factory(current):
-        middleware = original_factory(current)
-        middleware.tool_extensions = (extension,)
-        return middleware
+    async def before(run, spec, call):
+        prepared.append(call)
 
     context.executor.approval = Gate()
-    runtime.bindings = replace(
-        runtime.bindings, model_filters=(hide,), settlement_middleware_factory=factory
-    )
+    context.executor.before_callbacks = (before,)
+    runtime.tool_filters = (hide,)
     result = await runtime.run((Message("u1", "user", "work"),), context)
     assert result.outcome == "completed" and tool.executed == []
     outputs = [message.require_tool_result() for message in journal.messages if message.tool_result]
     assert len(outputs) == 1 and outputs[0].error_code == "tool_not_declared"
     assert outputs[0].details["executed"] is False
-    assert extension.prepared == extension.validated == 0
+    assert prepared == []
 
 
 async def test_schema_error_is_redacted_in_result_history_and_complete_output(tmp_path):
     from dataclasses import replace
 
     from pycode.kernel import SessionHeader, json_dumps
-    from pycode.session.adapters.storage.session import SqliteSessionStore
+    from pycode.session.store import SqliteSessionStore
     from tests.support.requests import TestTiming
 
     secret = "api_key=private-secret-key sk-abcdefghijklmnop12345678 "
@@ -257,3 +236,43 @@ async def test_schema_error_is_redacted_in_result_history_and_complete_output(tm
 
 # This suite tests execution with tool definitions already disclosed.
 pytestmark = pytest.mark.usefixtures("disclosed_tools")
+
+
+async def test_prepared_arguments_reach_the_actual_framework_tool_and_after_hook():
+    runtime, context, _, tool, _, _ = assemble(
+        [
+            AIMessage(
+                id="call",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "prepared",
+                        "name": "echo",
+                        "args": {"raw": "7"},
+                    }
+                ],
+            ),
+            AIMessage(id="done", content="done"),
+        ]
+    )
+    tool.spec = replace(
+        tool.spec,
+        input_schema={
+            "type": "object",
+            "properties": {"value": {"type": "integer"}},
+            "required": ["value"],
+            "additionalProperties": False,
+        },
+        prepare_arguments=lambda arguments: {"value": arguments["raw"]},
+    )
+    context.registry.replace_source("builtin", (tool,))
+    seen = []
+
+    async def after(run, call, result):
+        seen.append(call.arguments)
+
+    context.executor.after_callbacks = (after,)
+    result = await runtime.run((Message("user", "user", "prepare and convert"),), context)
+    assert result.outcome == "completed"
+    assert tool.executed == [7]
+    assert seen == [{"value": 7}]

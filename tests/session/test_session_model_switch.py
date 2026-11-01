@@ -2,8 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.app.api import RunOptions, SessionResources
-from pycode.app.api import compose_application
+from pycode.app.api import RunOptions, SessionResources, compose_application
 from pycode.app.config import AppConfig
 from pycode.context import ContextProjector
 from pycode.kernel import Message

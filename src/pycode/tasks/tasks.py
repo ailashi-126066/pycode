@@ -74,7 +74,6 @@ class TaskBoardService:
         if self.board is None or self.board.status != "active":
             return messages
         text = task_board_text(self.board, full=self.full_view)
-        self.full_view = False
         return (*messages, Message(uuid4().hex, "system", text))
 
     async def before_finish(self, context):
@@ -93,6 +92,8 @@ class TaskBoardService:
         if event.kind == "agent_start":
             self.checked = False
             await self.initialize()
+        elif event.kind == "message_start" and event.data["message"]["role"] == "assistant":
+            self.full_view = False
         elif event.kind == "compaction" and event.data["status"] == "applied":
             self.full_view = True
         elif event.kind == "task":

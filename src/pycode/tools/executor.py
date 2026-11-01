@@ -26,6 +26,7 @@ from pycode.kernel import (
     ToolResult,
     ToolSpec,
     clone_value,
+    freeze_value,
     json_dumps,
     plain_data,
 )
@@ -67,34 +68,38 @@ def tool_failure(error, call, *, executed=False, uncertain=False):
 def repeated_tool_failure(guard: Mapping[str, Any], name: str, arguments_hash: str) -> bool:
     """Reject a fourth execution of the same consecutively failing declaration."""
     return (
-        guard.get("failure_count", 0) >= 3
-        and guard.get("failure_tool") == name
-        and guard.get("failure_arguments") == arguments_hash
+        guard["failure_count"] >= 3
+        and guard["failure_tool"] == name
+        and guard["failure_arguments"] == arguments_hash
     )
 
 
-class FailureGuard(TypedDict, total=False):
+class FailureGuard(TypedDict):
     failure_tool: str
     failure_arguments: str
     failure_code: str
     failure_count: int
 
 
+def empty_failure_guard() -> FailureGuard:
+    return {"failure_tool": "", "failure_arguments": "", "failure_code": "", "failure_count": 0}
+
+
 def failure_update(previous, call, result, arguments_hash) -> FailureGuard:
     count = 0
     if result.is_error:
         same = (
-            previous.get("failure_tool") == call.name
-            and previous.get("failure_arguments") == arguments_hash
-            and previous.get("failure_code") == result.error_code
+            previous["failure_tool"] == call.name
+            and previous["failure_arguments"] == arguments_hash
+            and previous["failure_code"] == result.error_code
         )
-        count = previous.get("failure_count", 0) + 1 if same else 1
+        count = previous["failure_count"] + 1 if same else 1
     repeated = result.error_code == "repeated_tool_failure"
     return {
         "failure_tool": call.name if result.is_error else "",
         "failure_arguments": arguments_hash if result.is_error else "",
-        "failure_code": previous.get("failure_code", "") if repeated else result.error_code or "",
-        "failure_count": previous.get("failure_count", 3) if repeated else count,
+        "failure_code": previous["failure_code"] if repeated else result.error_code or "",
+        "failure_count": previous["failure_count"] if repeated else count,
     }
 
 
@@ -161,8 +166,8 @@ class ToolRegistry:
             )
         self._validator.check_schema(tool.spec.input_schema)
         self._tools[name] = tool
-        # Specs are frozen dataclasses; copies are taken when specs leave the registry.
-        self._specs[name] = tool.spec
+        # Freeze once at registration; native callers share immutable declarations.
+        self._specs[name] = freeze_value(tool.spec)
 
     def get(self, name: str) -> AgentTool:
         tool = self._tools.get(name)
@@ -184,10 +189,10 @@ class ToolRegistry:
 
     def get_spec(self, name: str) -> ToolSpec:
         self.get(name)
-        return clone_value(self._specs[name])
+        return self._specs[name]
 
     def list_specs(self) -> tuple[ToolSpec, ...]:
-        return tuple(clone_value(self._specs[name]) for name in sorted(self._specs))
+        return tuple(self._specs[name] for name in sorted(self._specs))
 
     def model_specs(self):
         return tuple(spec for spec in self.list_specs() if spec.model_visible)
@@ -309,7 +314,7 @@ class ToolExecutor:
                 try:
                     if invoke is None:
                         return await tool.execute(context, arguments)
-                    return await invoke(context, call, spec)
+                    return await invoke(context, prepared, spec)
                 finally:
                     accepting_updates = False
 
@@ -326,7 +331,7 @@ class ToolExecutor:
             mode = "tail" if call.name == "bash" else "head"
             result = await self.outputs.prepare(context, result, mode)
         if executed:
-            result = await self.after_tool_call(call, result)
+            result = await self.after_tool_call(prepared, result)
         return result
 
     # Pi: finalizeExecutedToolCall. Callbacks override fields of an executed call's result

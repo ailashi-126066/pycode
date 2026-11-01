@@ -8,11 +8,12 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 from referencing.exceptions import Unresolvable
 
-from pycode.kernel import ToolError
+from pycode.kernel import ToolError, plain_data
 
 
 class JsonSchemaValidator:
     def check_schema(self, schema: dict[str, Any]) -> None:
+        schema = plain_data(schema)
         try:
             Draft202012Validator.check_schema(schema)
         except SchemaError as error:
@@ -42,7 +43,7 @@ class JsonSchemaValidator:
 
     def validate(self, schema: dict[str, Any], arguments: dict[str, Any]) -> None:
         try:
-            Draft202012Validator(schema).validate(arguments)
+            Draft202012Validator(plain_data(schema)).validate(arguments)
         except ValidationError as error:
             location = ".".join(str(part) for part in error.absolute_path)
             raise ToolError(

@@ -71,3 +71,26 @@ Pi 源码：https://github.com/earendil-works/pi/tree/2c8d1fe 。路径相对 `s
 DeepSeek 真机正向/反向对照经用户豁免，未验证；离线 payload/usage 测试不能替代真机结论。
 当前 LangChain Anthropic 流式适配只从最终 `message_delta` 暴露用量；若服务仅在 `message_start` 提供输入与缓存用量，pycode 保留上游缺字段结果，不补算或另建 SDK 代理。真实 SSE fixture 覆盖此边界。
 本文件是源码映射，最终 Pi 对齐审计须在全量验收后另行完成，不能将这次路径更新当作审计通过。
+
+
+## 2026-11-02 Pi 对齐审查与修复
+
+独立 GPT-6.1 Sol agent 对集成 worktree（审查起点 f1267e5 加当时磁盘改动）和 Pi `2c8d1feb1` 做只读比较，依据旧 `457c8b9:11.1.md` 第 0～20 节及本轮已确认变更。审查本身没有运行真机或完整测试；下列修复由主 agent 实施并做定向回归。静态“符合”不意味着所有场景已穷尽。
+
+| 核查项 | 结论 | 依据与边界 |
+|---|---|---|
+| 消息边界与 thinking 来源判断 | 符合 | 原生记录、投影、自定义 role 转换和框架转换分开；跨模型丢弃不适用 thinking |
+| Anthropic 有序内容块 | 审查发现后修复 | models/messages.py 按 text/thinking/tool_use 原顺序重放；test_interleaved_provider_blocks_keep_their_order 验证原生、LangChain 和实际 wire 格式 |
+| 工具准备参数 | 审查发现后修复 | executor.py 向框架 invoke 和执行后钩子传 prepared，避免审批与执行使用不同参数；真实 graph 测试验证修复参数和字符串数字转换 |
+| 部分流失败后成功重试 | 审查发现后修复 | agent 在模型重试回调中保存已经开始的失败回复，并先发 message_end 再发 retry；失败回复不参与后续模型上下文 |
+| 初始输入结束事件 | 审查发现后修复 | runtime 保存 append 返回的 ID，初始 user message_end 带 entry_id；不重复写入消息 |
+| 审批、意图、持久化及取消 | 符合／允许增加 | 准备串行、工具并发、结果先落盘再结束事件；未执行与执行中取消区分，持久审批是用户保留功能 |
+| 循环、steering、follow-up | 符合（静态核查） | 开始、轮末与长准备后轮询；follow-up 在结束边界处理 |
+| 会话树与恢复 | 允许偏离 | SQLite 和 LangGraph checkpoint；利用已落盘结果防止恢复时重复执行 |
+| Skills 延迟读取和作用范围 | 符合／允许增加 | 普通 read 读取说明；allowed-tools 是保留功能 |
+| 压缩切割、摘要和文件跟踪 | 符合（静态核查） | 保留调用/结果配对、历史原文，摘要不加入 thinking |
+| 动态提示预算 | 符合近似策略 | 无有效 usage 时传入动态 tail；有 usage 时避免重复加入上一轮已计费提示，本轮提示增长不单独精确计算，是现有近似限制 |
+| 普通服务、任务板、记忆、防打转 | 允许偏离 | 用户已取消统一 Feature／Pi 扩展系统要求，保留这些内置业务能力 |
+| DeepSeek thinking 真机 | 未验证，用户豁免 | 离线 payload 与用量测试不等于真机验证 |
+
+参考 Pi：`packages/agent/src/agent-loop.ts` 的 prepared.args 执行与失败消息收尾，`packages/ai/src/api/anthropic-messages.ts` 的逐块消息转换。此次报告发现项均已落实为针对行为的回归测试；不把框架名称或文件组织差异自动认定为偏差。

@@ -5,12 +5,11 @@ import sys
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 from tests.support.recovery_tools import WritingEcho
-from tests.ui.adapters.test_tui_http import settled
+from tests.ui.test_tui_http import settled
 
 
 async def test_process_crash_has_unknown_fact_without_replaying_effect_or_old_approval(

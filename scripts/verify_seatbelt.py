@@ -12,8 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from pycode.kernel import DomainError
-from pycode.sandbox.adapters.seatbelt import SeatbeltSandbox
-from pycode.sandbox.domain.sandbox import SandboxSettings
+from pycode.sandbox import Sandbox, SandboxSettings
 
 
 def check(passed, name):
@@ -23,9 +22,8 @@ def check(passed, name):
 
 
 async def execute(sandbox, workspace, command, *, network=False, mode="on"):
-    argv = await sandbox.launch(
-        ("/bin/bash", "-c", command), str(workspace), SandboxSettings(mode, network)
-    )
+    configured = Sandbox(SandboxSettings(mode, network))
+    argv = await configured.launch(("/bin/bash", "-c", command), str(workspace))
     process = await asyncio.create_subprocess_exec(
         *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
@@ -47,9 +45,9 @@ async def verify(root):
     workspace = root / "tests/.runtime-tests" / ("seatbelt-" + uuid4().hex)
     workspace.mkdir(parents=True)
     outside = workspace.parent / (workspace.name + "-outside")
-    sandbox = SeatbeltSandbox()
-    manual = await sandbox.status(SandboxSettings("on"))
-    automatic = await sandbox.status(SandboxSettings("on-auto"))
+    sandbox = Sandbox(SandboxSettings("on"))
+    manual = await sandbox.status()
+    automatic = await Sandbox(SandboxSettings("on-auto")).status()
     check(manual.enabled and not manual.auto_approve, "status_on")
     check(automatic.enabled and automatic.auto_approve, "status_on_auto")
     allowed = await execute(

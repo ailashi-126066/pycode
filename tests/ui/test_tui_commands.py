@@ -2,16 +2,14 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import StorageError
 from pycode.ui.tui import content_text
-from tests.context.adapters.test_summary_http import seed
-from tests.session.adapters.test_revert_http import command_reply
+from tests.context.test_summary_http import seed
 from tests.snapshot.test_git_tree import git, repository
 from tests.support.execution import provider
-from tests.support.http_provider import chat_completion, protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.support.http_provider import chat_completion, command_reply, protocol_server
+from tests.ui.test_tui_http import settled
 
 
 @pytest.mark.parametrize("mode", ["dialogue", "code", "both"])

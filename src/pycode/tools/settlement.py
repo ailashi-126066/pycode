@@ -5,9 +5,8 @@ import asyncio
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
-from typing import Annotated, Any, cast
+from typing import Any, cast
 
-from langchain.agents import AgentState
 from langchain.agents.middleware import (
     AgentMiddleware,
     ToolRetryMiddleware,
@@ -33,19 +32,6 @@ from pycode.kernel import (
 from pycode.tools.call_state import abandoned_result, interrupted_result
 from pycode.tools.executor import failure_update, repeated_tool_failure
 from pycode.tools.framework_tool import make_framework_tool
-
-
-def latest_failure_field(previous, current):
-    return current
-
-
-class ToolSettlementState(AgentState):
-    """Only fields reduced by tool settlement; independent of agent graph state."""
-
-    failure_tool: Annotated[str, latest_failure_field]
-    failure_arguments: Annotated[str, latest_failure_field]
-    failure_code: Annotated[str, latest_failure_field]
-    failure_count: Annotated[int, latest_failure_field]
 
 
 def batch_execution_mode(tools: tuple[ToolSpec, ...]) -> ExecutionMode:
@@ -91,9 +77,7 @@ def persisted_result(context, tool_context) -> ToolResult | None:
     return None
 
 
-class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
-    state_schema = ToolSettlementState
-
+class ToolSettlementMiddleware(AgentMiddleware):
     # request.runtime.context is the agent's RunContext; tools cannot import agent.
     def __init__(self, *, publish: Callable[[Message], Awaitable[str]], converter):
         self.publish = publish
@@ -195,7 +179,6 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             update={
                 **framework_updates,
                 "messages": [message],
-                **context.failure_guard,
             }
         )
 
@@ -296,9 +279,9 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
     async def repeated_failure(self, context, request, call):
         digest = data_hash(call.arguments)
         if (
-            context.failure_guard.get("failure_count", 0) > 0
-            and context.failure_guard.get("failure_tool") == call.name
-            and context.failure_guard.get("failure_arguments") == digest
+            context.failure_guard["failure_count"] > 0
+            and context.failure_guard["failure_tool"] == call.name
+            and context.failure_guard["failure_arguments"] == digest
         ):
             async with context.duplicate_calls:
                 preceding = set()
@@ -310,7 +293,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 await context.duplicate_calls.wait_for(
                     lambda: preceding <= context.dispatched_calls
                 )
-        guard = context.failure_guard or request.state
+        guard = context.failure_guard
         if repeated_tool_failure(guard, call.name, digest):
             return ToolResult(
                 call.id,

@@ -1,12 +1,10 @@
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from tests.hooks.adapters.test_hooks import hook_file
-from tests.session.adapters.test_revert_http import command_reply
+from pycode.app import AppConfig, compose_application
+from tests.hooks.test_hooks import hook_file
 from tests.support.execution import provider
-from tests.support.http_provider import chat_completion, protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.support.http_provider import chat_completion, command_reply, protocol_server
+from tests.ui.test_tui_http import settled
 
 
 async def test_tui_hook_rejects_tool_and_app_lifecycle_uses_same_event_source(
@@ -40,10 +38,13 @@ async def test_tui_hook_rejects_tool_and_app_lifecycle_uses_same_event_source(
         requests,
     ):
         app = compose_application(config, (provider(url),)).tui()
-        async with app.run_test(size=(120, 50)):
+        async with app.run_test(size=(120, 50)) as pilot:
             await app.ready.wait()
             assert (tmp_path / "boot.txt").exists()
             await app.send_text("command")
+            await settled(app)
+            assert app.last_error is None and app.query("#perm-inline")
+            await pilot.press("enter")
             await settled(app)
             assert app.last_error is None and not app.query("#perm-inline")
             assert not (tmp_path / "parent.txt").exists() and len(requests) == 2

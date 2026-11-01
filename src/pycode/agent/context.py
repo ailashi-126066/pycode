@@ -125,6 +125,7 @@ class RunContext:
     eviction: ToolEvictionService
     durable_inputs: "DurableInputs"
     initial_inputs: tuple[Message, ...] = ()
+    initial_entry_ids: tuple[str, ...] = ()
     one_at_a_time: bool = False
     completed: list[Message] = field(default_factory=list)
     agent_id: str = "lead"

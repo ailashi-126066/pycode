@@ -82,7 +82,13 @@ async def test_unfinished_stream_retries_before_executing_partial_calls(tmp_path
                 entry.message.role
                 for entry in (await journal.snapshot()).entries
                 if entry.message is not None
-            ] == ["user", "assistant"]
+            ] == ["user", "assistant", "assistant"]
+            failed = next(
+                entry.message
+                for entry in (await journal.snapshot()).entries
+                if entry.message is not None and entry.message.stop_reason == "error"
+            )
+            assert failed.tool_calls == ()
             assert len(received) == 2
             records = await container.request_store.list_requests()
             assert records[0].error_code == "provider_connection"

@@ -28,9 +28,14 @@ async def permission_answer(question):
 
 
 class InterruptToolGate:
+    def __init__(self, *, on_request=None):
+        self.on_request = on_request
+
     async def authorize(self, context, spec, call) -> None:
         if spec.category == "read":
             return
+        if self.on_request is not None:
+            await self.on_request(call)
         question = {
             "kind": "permission",
             "operation_id": context.operation_id,
@@ -39,7 +44,7 @@ class InterruptToolGate:
             "workspace": context.workspace,
             "call": plain_data(call),
             "spec_hash": data_hash(plain_data(spec)),
-            "approval_details": spec.approval_details,
+            "approval_details": plain_data(spec.approval_details),
         }
         answer = await permission_answer(question)
         if answer.get("decision") == "deny":

@@ -150,7 +150,9 @@ CLI 为 `pycode revert <target> --mode dialogue|code|both`；TUI 选目标和模
 - **中断**：流在中途断掉、拿不到最后的 usage 时，请求记录 `usage=None`、状态 `interrupted`。用量统计会少算这部分，复杂度审计 #5 已接受。
 - **保留 DeepSeek `reasoning_content` 回传**：`langchain_deepseek` 1.1.1 会把响应里的 `reasoning_content` 放进 `AIMessage.additional_kwargs`（`chat_models.py:406-455`），但它的 `_get_request_payload`（`:350-383`）不会把它写回请求。所以在 `models/factory.py` 定义 `ChatDeepSeek` 子类，只覆盖 `_get_request_payload`：按顺序把输入里每条 `AIMessage.additional_kwargs["reasoning_content"]` 写到 payload 对应的 assistant 消息上，约 15 行。`to_framework` 保证把保存的 thinking 放回 `additional_kwargs["reasoning_content"]`。
 
-### 7.2 DeepSeek 真机验证（r32-c 组完成 models 实现后做，需要 `DEEPSEEK_API_KEY`）
+### 7.2 DeepSeek 验证（本轮用户已豁免真机）
+
+本轮真机正向、反向及其他 provider 真机均标为 **未验证**。用户已明确豁免，不因缺密钥停止，不发起真实 API 请求；以下真机命令保留为未来人工验收方法。离线测试仍需通过。
 
 1. **离线单测**（不需要密钥）：构造"user → assistant(带 reasoning_content 和 tool_call) → tool"三条消息，调用子类 `_get_request_payload`，断言 payload 的 assistant 消息带 `reasoning_content`，其余字段和父类输出一致。
 2. **真机正向**：`.venv/bin/python scripts/verify_live_provider.py --provider deepseek --model deepseek-reasoner --base-url https://api.deepseek.com --thinking enabled --output .acceptance/deepseek-thinking.json`。这个探针会先调用一次工具，再发第二次请求，第二次请求的历史里就有带 reasoning 的 tool-call 轮次。通过条件：`status == "passed"`；至少 2 条请求记录都是 `completed`；每条 `usage.input_tokens > 0` 且 `output_tokens > 0`；`reasoning_tokens` 不为空。
@@ -158,7 +160,7 @@ CLI 为 `pycode revert <target> --mode dialogue|code|both`；TUI 选目标和模
    - 第二次请求被 DeepSeek 以 400 拒绝：说明回传是必须的，而且第 2 步证明回传有效。
    - 没有被拒绝：说明 DeepSeek 目前不强制回传。报告给用户，由用户决定这 15 行留还是删（默认保留，照第 33.2 节）。
 4. 有 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 时各跑一次第 2 步（不带 thinking），确认 usage 字段齐全；没有密钥时用离线固定的 `AIMessage` 样本测 `normalize_usage`，并在报告里写明"未真机验证"。
-5. 没有 DeepSeek 密钥时，脚本输出 `status: unverified`，r32-c 组不能宣布完成，用 warning 向用户要密钥或豁免。
+5. 没有 DeepSeek 密钥时，脚本输出 `status: unverified`。本轮豁免已取得，报告未验证即可，不再次索取密钥。
 
 ## 8. 已确定的 D3 与 B2
 
@@ -296,7 +298,7 @@ B2：memory.background 只保留一层 except Exception + logger.debug，不发�
 
 中间仅跑受影响测试，记录实际失败/未收集项目；不使用验证 shim 伪造通过。完成代码和最多两轮审查修复后，运行 tests + evals/tests、ruff check、ruff format --check、pyright、架构检查及 interview 文档三条命令。禁用 cacheprovider，因此失败按 node ID 重跑而非 --lf。报告基线对比，不用接口数判定架构是否成功。
 
-DeepSeek 验收按第 7 节，缺少密钥询问用户，不能宣布已验证。之后 Pi 对齐只读审计，区分允许偏离和偏差。全部满足后 rebase 到 main，再 ff-only 合并，不 push；保留未提交文件，确认成果可达后才能删除 worktree/分支。
+DeepSeek 验收按第 7 节，本轮已获用户真机豁免，报告未验证，不能把离线结果宣布为真机验证。之后 Pi 对齐只读审计，区分允许偏离和偏差。全部满足后 rebase 到 main，再 ff-only 合并，不 push；保留未提交文件，确认成果可达后才能删除 worktree/分支。
 
 ## 12. 最新确认决定
 

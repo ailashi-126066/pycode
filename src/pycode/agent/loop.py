@@ -114,9 +114,13 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         await self.bindings.run_hook(context.scope, "run_start")
         await context.events.emit("agent_start", {})
         await context.events.emit("turn_start", {"turn": 1})
-        for message in context.initial_inputs:
+        for message, entry_id in zip(
+            context.initial_inputs, context.initial_entry_ids, strict=True
+        ):
             await context.events.emit("message_start", {"message": plain_data(message)})
-            await context.events.emit("message_end", {"message": plain_data(message)})
+            await context.events.emit(
+                "message_end", {"message": plain_data(message), "entry_id": entry_id}
+            )
         # Pi polls steering at loop start: the user may have typed while waiting.
         context.steering = await poll_steering(context)
 
@@ -139,7 +143,13 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             summary = None
             if current.summary is not None:
                 current.summary.set_tools(current.model_tools or current.registry.model_specs())
-                summary = await current.summary.prepare()
+                projection = await self.current_projection(current)
+                transformed = transform_context(
+                    current, self.context_transforms, projection.messages
+                )
+                summary = await current.summary.prepare(
+                    tail=transformed[len(projection.messages) :]
+                )
                 if summary.applied_job_id is not None:
                     await self.bindings.run_hook(current.scope, "compact")
             await current.eviction.apply(
@@ -190,24 +200,9 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         )
         request = await prepare_model_boundary(request, self.bindings, self.tool_filters)
         await self.current_projection(context)
-        model_step = self.bindings.model_request_step(
-            context.requests, handler, logical_id=boundary
-        )
         started = time.monotonic()
-        try:
-            try:
-                response = await model_step.ainvoke(request)
-            except ModelError as error:
-                if error.code != "context_overflow" or context.summary is None:
-                    raise
-                report = await context.summary.prepare(force=True)
-                if report.applied_job_id is None:
-                    raise
-                await self.bindings.run_hook(context.scope, "compact")
-                request = request.override(messages=await self.model_messages(context))
-                response = await model_step.ainvoke(request)
-        except (ModelError, asyncio.CancelledError) as error:
-            # Pi keeps a failed reply (stopReason error|aborted) and transform_messages skips it.
+
+        async def record_failure(error):
             partial = context.streamed_text
             await save_message(
                 context,
@@ -225,6 +220,28 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                     },
                 ),
             )
+
+        async def record_partial_retry(error):
+            if context.streamed_text is not None:
+                await record_failure(error)
+
+        model_step = self.bindings.model_request_step(
+            context.requests, handler, logical_id=boundary, on_retry=record_partial_retry
+        )
+        try:
+            try:
+                response = await model_step.ainvoke(request)
+            except ModelError as error:
+                if error.code != "context_overflow" or context.summary is None:
+                    raise
+                report = await context.summary.prepare(force=True)
+                if report.applied_job_id is None:
+                    raise
+                await self.bindings.run_hook(context.scope, "compact")
+                request = request.override(messages=await self.model_messages(context))
+                response = await model_step.ainvoke(request)
+        except (ModelError, asyncio.CancelledError) as error:
+            await record_failure(error)
             raise
         model_response = (
             response.model_response if isinstance(response, ExtendedModelResponse) else response

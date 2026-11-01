@@ -3,13 +3,11 @@ import asyncio
 import pytest
 from textual.widgets import Static
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.ui.chat_input import ChatInput
 from pycode.ui.tui import content_text
-from tests.session.adapters.test_revert_http import command_reply
 from tests.support.execution import provider
-from tests.support.http_provider import chat_completion, protocol_server
+from tests.support.http_provider import chat_completion, command_reply, protocol_server
 
 
 async def settled(app):

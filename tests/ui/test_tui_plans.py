@@ -3,13 +3,12 @@
 import pytest
 from textual.widgets import Static
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from tests.plans.adapters.test_plans import fix_plan_path, write_plan_reply
-from tests.skills.adapters.test_skills_http import skill_reply
+from pycode.app import AppConfig, compose_application
+from tests.plans.test_plans import fix_plan_path, write_plan_reply
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.ui.test_tui_http import settled
 
 
 async def test_tui_plan_inline_review_drives_same_live_agent(tmp_path, monkeypatch):
@@ -29,7 +28,7 @@ async def test_tui_plan_inline_review_drives_same_live_agent(tmp_path, monkeypat
         ).tui()
         async with app.run_test(size=(120, 50)) as pilot:
             await app.ready.wait()
-            plan = await app.session.enter_plan()
+            plan = await app.session.plans.enter()
             fix_plan_path(write, plan.plan_id)
             await app.send_text("create plan")
             await settled(app)

@@ -1,12 +1,11 @@
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from tests.skills.adapters.test_skills_http import skill_reply
-from tests.skills.services.test_skills import write_skill
+from pycode.app import AppConfig, compose_application
+from tests.skills.test_skills import write_skill
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.ui.test_tui_http import settled
 
 
 async def test_tui_skill_arguments_reload_and_new_session_do_not_leak_activation(

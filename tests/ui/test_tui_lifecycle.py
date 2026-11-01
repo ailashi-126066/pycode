@@ -5,14 +5,12 @@ from dataclasses import replace
 import pytest
 from textual.widgets import Static
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Event
 from pycode.ui.tui import content_text
-from tests.session.adapters.test_revert_http import command_reply
 from tests.support.execution import provider
-from tests.support.http_provider import chat_completion, protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.support.http_provider import chat_completion, command_reply, protocol_server
+from tests.ui.test_tui_http import settled
 
 
 async def test_actual_tui_cancelled_sdk_request_is_collected_and_new_input_uses_new_task(
@@ -45,7 +43,7 @@ async def test_actual_tui_cancelled_sdk_request_is_collected_and_new_input_uses_
                 await app.send_text("Continue")
                 await settled(app)
                 assert app.state["pending_run_id"] is None and len(requests) == 2
-                assert (await app.session.usage())["run_id"] != run_id
+                assert (await app.session.view.usage())["run_id"] != run_id
             finally:
                 release.set()
 

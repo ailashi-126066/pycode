@@ -1,11 +1,10 @@
 """/tasks, /tasks clear and /agents in the actual TUI."""
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from tests.skills.adapters.test_skills_http import skill_reply
+from pycode.app import AppConfig, compose_application
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.ui.test_tui_http import settled
 
 STEPS = [
     {"id": "s1", "title": "locate", "depends_on": [], "acceptance": ["found the bug"]},

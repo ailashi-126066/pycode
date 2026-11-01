@@ -5,7 +5,7 @@ from deepagents.backends import CompositeBackend, StateBackend
 
 from pycode.kernel import MAX_LINES, ToolContext, ToolError
 from pycode.sandbox import Bash, Sandbox, SandboxSettings, find_bash
-from pycode.skills.framework import SkillBackend
+from pycode.skills.skills import SkillBackend
 from pycode.tools.backend import PycodeBackend
 from pycode.tools.builtin.edit import Edit, prepare_edit_arguments
 from pycode.tools.builtin.find import Find
@@ -27,7 +27,7 @@ def mounts(tmp_path):
         default=StateBackend(),
         routes={
             "/workspace/": PycodeBackend(workspace),
-            prefix: SkillBackend(PycodeBackend(tmp_path / "skills", read_only=True), prefix=prefix),
+            prefix: SkillBackend(tmp_path / "skills", prefix=prefix),
         },
     )
     return workspace, backend

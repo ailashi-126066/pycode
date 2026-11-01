@@ -164,7 +164,9 @@ async def test_provider_network_finish_reason_retries_without_executing_its_call
     )
     await runtime.run((Message("u1", "user", "Test"),), context)
     assert tool.executed == []
-    assert [message.role for message in journal.messages] == ["user", "assistant"]
+    assert [message.role for message in journal.messages] == ["user", "assistant", "assistant"]
+    assert journal.messages[1].stop_reason == "error"
+    assert journal.messages[1].tool_calls == ()
     assert (await store.list_requests())[0].error_code == "provider_stream_error"
 
 
@@ -216,3 +218,27 @@ async def test_cancelling_backoff_leaves_no_phantom_next_attempt():
 
 # This suite tests execution with tool definitions already disclosed.
 pytestmark = pytest.mark.usefixtures("disclosed_tools")
+
+
+async def test_partial_failed_attempt_is_persisted_and_ended_before_retry():
+    runtime, context, model, _, journal, recorder, _, _ = assemble_attempts(
+        [status_error(503), AIMessage(id="success", content="Success")]
+    )
+    model.partial_text = "partial "
+    await runtime.run((Message("u", "user", "retry"),), context)
+    failed = [message for message in journal.messages if message.stop_reason == "error"]
+    assert len(failed) == 1 and failed[0].text == "partial "
+    ends = [
+        event
+        for event in recorder.events
+        if event.kind == "message_end" and event.data["message"]["role"] == "assistant"
+    ]
+    starts = [
+        event
+        for event in recorder.events
+        if event.kind == "message_start" and event.data["message"]["role"] == "assistant"
+    ]
+    assert len(starts) == len(ends) == 2
+    retry = next(i for i, event in enumerate(recorder.events) if event.kind == "retry")
+    assert recorder.events.index(ends[0]) < retry < recorder.events.index(starts[1])
+    assert ends[0].data["entry_id"] in (await journal.snapshot()).index

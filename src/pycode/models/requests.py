@@ -283,7 +283,7 @@ class ModelMessages:
     messages: list[BaseMessage]
 
 
-def model_request_step(requests, handler, *, logical_id):
+def model_request_step(requests, handler, *, logical_id, on_retry=None):
     """Expose the existing retry/accounting boundary as one LCEL step."""
 
     attempt_offset = 0
@@ -292,7 +292,11 @@ def model_request_step(requests, handler, *, logical_id):
         nonlocal attempt_offset
         try:
             return await requests.invoke(
-                request, handler, logical_id=logical_id, attempt_offset=attempt_offset
+                request,
+                handler,
+                logical_id=logical_id,
+                attempt_offset=attempt_offset,
+                on_retry=on_retry,
             )
         finally:
             attempt_offset = requests.active_attempt + 1
@@ -334,17 +338,33 @@ class ModelRequestRunner:
         return self._selection
 
     async def invoke(
-        self, request, handler, *, logical_id: str | None = None, attempt_offset: int = 0
+        self,
+        request,
+        handler,
+        *,
+        logical_id: str | None = None,
+        attempt_offset: int = 0,
+        on_retry=None,
     ):
         # active_request_id names one request at a time; native components may
         # issue concurrent queries within the same job.
         async with self._invocation_lock:
             return await self._invoke(
-                request, handler, logical_id=logical_id, attempt_offset=attempt_offset
+                request,
+                handler,
+                logical_id=logical_id,
+                attempt_offset=attempt_offset,
+                on_retry=on_retry,
             )
 
     async def _invoke(
-        self, request, handler, *, logical_id: str | None = None, attempt_offset: int = 0
+        self,
+        request,
+        handler,
+        *,
+        logical_id: str | None = None,
+        attempt_offset: int = 0,
+        on_retry=None,
     ):
         total = self._policy.max_retries + 1
         for index in range(total):
@@ -355,6 +375,8 @@ class ModelRequestRunner:
             except ModelError as error:
                 if not error.retryable or index >= total - 1:
                     raise
+                if on_retry is not None:
+                    await on_retry(error)
                 # Accounting owns the header-aware delay so Retry-After is honored.
                 delay = self._policy.delay(index + 1, error.retry_after)
                 await self._events.emit(

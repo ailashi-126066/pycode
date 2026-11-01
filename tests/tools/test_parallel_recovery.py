@@ -6,13 +6,13 @@ from dataclasses import replace
 import pytest
 from langchain_core.messages import AIMessage
 
-from pycode.context.services.context_projector import ContextProjector
+from pycode.context.projector import ContextProjector
 from pycode.kernel import Message, SessionHeader, StorageError, ToolError, ToolResult, ToolSpec
-from pycode.session.adapters.storage.session import SqliteSessionStore
+from pycode.session.store import SqliteSessionStore
 from pycode.tools.executor import ToolExecutor, ToolRegistry
 from pycode.tools.permissions import InterruptToolGate
 from pycode.tools.schema import JsonSchemaValidator
-from tests.agent.adapters.test_agent import assemble
+from tests.agent.test_runtime import assemble
 from tests.support.requests import TestTiming
 from tests.support.runtime import build_agent_runtime
 from tests.tools.test_tool_executor import run_scope

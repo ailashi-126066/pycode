@@ -1,11 +1,9 @@
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from tests.session.adapters.test_revert_http import command_reply
+from pycode.app import AppConfig, compose_application
 from tests.support.execution import provider
-from tests.support.http_provider import chat_completion, protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.support.http_provider import chat_completion, command_reply, protocol_server
+from tests.ui.test_tui_http import settled
 
 
 async def test_standard_80_by_24_terminal_keeps_prompt_and_focused_approval_visible(

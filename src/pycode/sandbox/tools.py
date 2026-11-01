@@ -1,5 +1,5 @@
 # Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/tools/bash.ts
-# MewCode local mewcode/tools/bash.py; SHA-256:
+# 参照 MewCode local mewcode/tools/bash.py; SHA-256:
 # 24e05e37c804c4fc9bec2a50e95090b33fd4f1f89d4d7c7baeddeae79d9b84b3
 # Source: MewCode local mewcode/processes.py; SHA-256:
 # a8049900efb1977eb4866bd871d3bcd101abaffe35d70452c75da69da45096b4

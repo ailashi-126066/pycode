@@ -1,12 +1,11 @@
 import pytest
 from textual.widgets import Static
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.ui.usage import UsageScreen
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
-from tests.ui.adapters.test_tui_http import settled
+from tests.ui.test_tui_http import settled
 
 
 async def test_tui_usage_is_readable_has_unknown_cache_values_and_closes_with_escape(

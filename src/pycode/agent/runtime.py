@@ -203,11 +203,13 @@ class AgentRuntime:
         context.completed = []
         context.failure_guard = empty_failure_guard()
         context.run_state = RunState()
+        initial_entry_ids = []
         for message in inputs:
-            await context.journal.append_message(message)
+            initial_entry_ids.append(await context.journal.append_message(message))
             context.completed.append(message)
             if self.assign_title is not None:
                 await self.assign_title(message)
+        context.initial_entry_ids = tuple(initial_entry_ids)
         graph = self.build(context)
         messages = self.bindings.to_framework_messages((*history, *inputs), context.selection)
         return await self.invoke(

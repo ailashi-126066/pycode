@@ -183,17 +183,26 @@ def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
                 reasoning_blocks.append({"type": "text", "text": message.text})
             if reasoning_blocks:
                 content = reasoning_blocks
-        if selection.implementation == "anthropic" and message.thinking:
+        if selection.implementation == "anthropic" and not isinstance(message.content, str):
             blocks = []
-            for block in message.thinking:
-                if block.redacted_data is not None:
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    blocks.append({"type": "text", "text": block.text})
+                elif isinstance(block, ToolCall):
+                    blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": clone_value(block.arguments),
+                        }
+                    )
+                elif block.redacted_data is not None:
                     blocks.append({"type": "redacted_thinking", "data": block.redacted_data})
                 elif block.signature:
                     blocks.append(
                         {"type": "thinking", "thinking": block.text, "signature": block.signature}
                     )
-            if message.text:
-                blocks.append({"type": "text", "text": message.text})
             content = blocks
         calls: list[FrameworkToolCall] = [
             {

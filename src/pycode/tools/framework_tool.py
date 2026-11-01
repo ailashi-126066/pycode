@@ -3,7 +3,7 @@
 
 from langchain_core.tools import StructuredTool
 
-from pycode.kernel import ToolContext
+from pycode.kernel import ToolContext, plain_data
 
 
 def make_framework_tool(spec, context, tool_context=None, domain_tool=None):
@@ -23,7 +23,7 @@ def make_framework_tool(spec, context, tool_context=None, domain_tool=None):
     return StructuredTool(
         name=spec.name,
         description=spec.description,
-        args_schema=spec.input_schema,
+        args_schema=plain_data(spec.input_schema),
         coroutine=execute,
         response_format="content_and_artifact",
     )

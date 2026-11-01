@@ -8,8 +8,9 @@ from langchain_core.messages import AIMessage
 from langgraph.errors import GraphInterrupt
 
 from pycode.kernel import Message, SnapshotError, StorageError, ToolCall, ToolError, ToolResult
+from pycode.snapshot import SnapshotService
 from pycode.tools.executor import execute_tool_errors
-from tests.agent.adapters.test_agent import assemble, tool_response
+from tests.agent.test_runtime import assemble, tool_response
 from tests.tools.test_tool_executor import EchoTool, make_executor
 
 
@@ -160,7 +161,9 @@ async def test_critical_snapshot_before_execution_does_not_create_a_recoverable_
     tool.spec = replace(tool.spec, category="write")
     executor.registry.replace_source("builtin", (tool,))
     executor.approval = Gate()
-    executor.snapshots = Snapshots()
+    service = SnapshotService(None, Snapshots())
+    executor.before_callbacks = (service.before_tool_call,)
+    executor.after_callbacks = (service.after_tool_call,)
     with pytest.raises(SnapshotError) as error:
         await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_use")
     assert error.value.code == "snapshot_failed" and tool.executed == []
@@ -219,7 +222,9 @@ async def test_executed_write_error_retains_before_after_snapshot_binding():
 
     executor.registry.replace_source("builtin", (PartialWrite(),))
     executor.approval = Gate()
-    executor.snapshots = Snapshots()
+    service = SnapshotService(None, Snapshots())
+    executor.before_callbacks = (service.before_tool_call,)
+    executor.after_callbacks = (service.after_tool_call,)
     result = await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_use")
     assert result.error_code == "partial_write" and result.details["side_effects_uncertain"]
     assert result.details["file_snapshot"] == {

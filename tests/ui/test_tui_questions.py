@@ -1,12 +1,11 @@
 import pytest
 from textual.widgets import Button, Checkbox, Input, Select, TabbedContent
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
-from tests.tools.adapters.test_questions import question_response
-from tests.ui.adapters.test_tui_http import settled
+from tests.tools.test_questions import question_response
+from tests.ui.test_tui_http import settled
 
 
 async def test_actual_tui_named_question_tabs_other_checkbox_review_and_submit(
@@ -145,7 +144,7 @@ async def test_tui_answers_a_subagent_progress_guard_question_in_that_subagent(
                 child["pending"] = []
 
             monkeypatch.setattr(session, "inspect", waiting_child)
-            monkeypatch.setattr(session, "answer_agent", answer_agent)
+            monkeypatch.setattr(session.subagents, "answer", answer_agent)
             await app.refresh_state()
             await pilot.pause()
             app.query_one("#answer-0", Select).value = "continue"
