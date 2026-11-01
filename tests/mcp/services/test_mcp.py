@@ -8,7 +8,7 @@ from pycode.tools.adapters.tool_errors import execute_tool_errors
 from pycode.tools.services.permissions import ReadOnlyToolGate
 from pycode.tools.services.tool_executor import ToolExecutor
 from pycode.tools.services.tool_registry import ToolRegistry
-from tests.models.services.test_model_control import store_for
+from tests.models.test_control import store_for
 
 
 class Connections:
@@ -25,7 +25,6 @@ class Connections:
                     "properties": {"count": {"type": "integer"}},
                     "required": ["count"],
                 },
-                "schema_hash": "schema",
                 "config_hash": "config",
                 "annotations": {"readOnlyHint": True},
                 "trusted": trusted,

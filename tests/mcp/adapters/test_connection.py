@@ -52,7 +52,7 @@ async def test_request_cancel_is_collected_and_connection_remains_usable(tmp_pat
         await connection.aclose()
 
 
-async def test_manager_discovers_two_servers_concurrently_and_preserves_schema_hashes(tmp_path):
+async def test_manager_discovers_two_servers_concurrently(tmp_path):
     first = tmp_path / "a"
     second = tmp_path / "b"
     first.mkdir()
@@ -67,7 +67,7 @@ async def test_manager_discovers_two_servers_concurrently_and_preserves_schema_h
         catalog = await manager.catalog()
         assert {server["name"] for server in catalog["servers"]} == {"srv", "other"}
         tool = next(tool for tool in catalog["tools"] if tool["name"] == "mcp__srv__echo")
-        assert tool["schema_hash"] and tool["trusted"]
+        assert tool["trusted"]
         assert (await manager.call(tool, {"value": "wire"})).text == "echo:wire"
     finally:
         await manager.aclose()
@@ -157,7 +157,7 @@ async def test_one_discovery_snapshot_and_explicit_refresh(tmp_path, monkeypatch
         await connections.catalog()
         assert len(calls) == 2
         echo = next(tool for tool in catalog["tools"] if tool["original_name"] == "echo")
-        await connections.validate_call(echo)
-        assert len(calls) == 2  # Execution-time validation reads the connection cache.
+        await connections.call(echo, {"value": "cached"})
+        assert len(calls) == 2  # A call does not list tools again.
     finally:
         await connections.aclose()

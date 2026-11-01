@@ -5,7 +5,7 @@ from dataclasses import replace
 
 from pycode.kernel import Message, ModelCapabilities, ModelSelection
 from pycode.mcp.connection import MCPAdapterConnections
-from pycode.models.adapters.messages import to_framework
+from pycode.models import to_framework
 from pycode.tools.adapters.schema import JsonSchemaValidator
 from tests.mcp.adapters.test_connection import configured
 

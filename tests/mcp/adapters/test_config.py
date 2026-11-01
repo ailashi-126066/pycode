@@ -25,7 +25,6 @@ def test_source_loading_threshold_vectors_and_native_metadata(tmp_path):
         "input_schema": VECTORS["schema"]["inputSchema"],
         "trusted": True,
         "annotations": {"readOnlyHint": True},
-        "schema_hash": "hash",
         "config_hash": "config",
     }
     assert mcp_spec(declaration).category == "read"

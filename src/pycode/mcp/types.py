@@ -91,7 +91,7 @@ def result_from_mcp(content, status, artifact, *, name, call_id="", declaration=
             media.append(block)
     details = {"mcp_content_blocks": media}
     if declaration is not None:
-        for key in ("server", "original_name", "schema_hash"):
+        for key in ("server", "original_name"):
             details[key] = declaration[key]
     return ToolResult(
         call_id,

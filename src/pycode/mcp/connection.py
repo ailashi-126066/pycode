@@ -3,7 +3,7 @@
 # Source: MewCode local mcp/manager.py and tool_wrapper.py; fixed SHA in docs/source-map.md.
 # SHA-256 manager: c43972ec32c050d47ab665e17274795d20fd382af4f439ac8db352e0aa61cd0b
 # SHA-256 wrapper: aeb2cfda21b0b9c03a490762ac64ec3208ed1cea4fafb637220e820aec55840a
-# Adaptation: concurrent owned connections, native catalogs, schema hashes and no blind call retry.
+# Adaptation: concurrent owned connections, native catalogs and no blind call retry.
 
 import asyncio
 import contextvars
@@ -195,6 +195,7 @@ class MCPAdapterConnections:
             self._startup = asyncio.create_task(
                 self.discover(), name="pycode-mcp-startup", context=contextvars.Context()
             )
+        return self._startup
 
     async def client(self, name):
         if self._closed or name not in self._configs:
@@ -236,7 +237,6 @@ class MCPAdapterConnections:
                     "original_name": original,
                     "description": tool.get("description") or original,
                     "input_schema": schema,
-                    "schema_hash": data_hash(schema),
                     "config_hash": config_hash,
                     "annotations": annotations,
                     "trusted": config.trusted,
@@ -270,10 +270,7 @@ class MCPAdapterConnections:
         return self._catalog
 
     async def catalog(self):
-        self.start()
-        owned = self._startup
-        if owned is None:
-            raise StorageError("mcp_not_started", "MCP startup did not begin")
+        owned = self.start()
         result = await asyncio.shield(owned)
         if self._startup is owned:
             self._startup = None
@@ -285,47 +282,18 @@ class MCPAdapterConnections:
             update={"name": declaration["name"]}
         )
 
-    async def validate_call(self, declaration):
-        client = await self.client(declaration["server"])
-        # Validate against the catalog captured at connect time; a reconnect
-        # re-discovers, so its cache is always fresh. Tool-set changes only take
-        # effect at turn boundaries, matching the documented reload semantics.
-        current = await client.list_tools()
-        remote = next(
-            (tool for tool in current if tool["name"] == declaration["original_name"]), None
-        )
-        if remote is None or data_hash(remote["inputSchema"]) != declaration["schema_hash"]:
-            raise ToolError(
-                "mcp_schema_changed",
-                "MCP schema changed or tool disappeared; reload after settling execution",
-            )
-        expected = declaration.get("annotations", {})
-        observed = remote.get("annotations", {})
-        if any(
-            expected.get(key) != observed.get(key)
-            for key in (
-                "readOnlyHint",
-                "destructiveHint",
-                "idempotentHint",
-                "openWorldHint",
-            )
-        ):
-            raise ToolError(
-                "mcp_policy_changed", "MCP tool policy annotations changed before execution"
-            )
-        return client
-
     @asynccontextmanager
     async def tool_call(self, declaration):
         if declaration is None:
             raise ToolError("mcp_tool_unavailable", "MCP tool is outside the current catalog")
-        client = await self.validate_call(declaration)
+        client = await self.client(declaration["server"])
         async with client.tool_call():
             yield
 
     async def call(self, declaration, arguments, *, call_id="mcp-call"):
         """The explicit adapter entry uses the same native tool and policy boundary."""
-        client = await self.validate_call(declaration)
+        # A changed remote schema surfaces as the server's own argument error.
+        client = await self.client(declaration["server"])
         result = await client.invoke(declaration["original_name"], arguments, call_id=call_id)
         return result_from_mcp(
             result.content,
