@@ -524,6 +524,6 @@ async def build_run(config, core, features, run_id, inputs) -> AgentRuntime:
 6. **#1 `/revert`**：照第 6 节做。先拍快照，检查冲突，写回文件，再记一条带 `file_snapshot` 的记录，对这条记录再 `/revert` 就能撤销。删除 preview/apply/recover、补偿事务和 restore record。写到一半出错时也写记录，并报 `revert_partial`。
 7. **#5 usage_metadata**：照第 7 节做。删除 10 个 SDK 代理类，只读 `usage_metadata`/`response_metadata`，用 `ChatDeepSeek` 子类保留约 15 行 `reasoning_content` 回传。按第 7.2 节验证：离线单测、真机正向、`--no-reasoning-passback` 真机反向对照。没有 `DEEPSEEK_API_KEY` 时 r32-c 停下来问用户。
 8. **D3**：恢复时直接用当前配置，删除 `catalog_hash`、`provider_hash`（第 8 节）。
-9. **B2**：删掉 `except Exception` 和 `return_exceptions=True`。整理失败的异常在下一次 `agent_start`、下一次启动整理或关闭会话时抛出，run 失败（第 8 节）。
+9. **B2**（用户 2026-11-01 改定，取代第 8 节的推荐方案）：后台记忆整理失败就算失败，不提示用户，也不让 run 失败。只在 `background()` 里保留一层 `except Exception`，用 `logger.debug` 记一行，方便以后排查；不发事件，也不抛出。删掉 `collect()` 里 `return_exceptions=True` 的第二层吞异常。
 10. **第 41 节修复的时机**：放在组内每个包的第一个提交里，先修后搬。B1、C18、E1 和 E3、E4、C7、C10 放在集成步骤。
 11. **完成顺序**：第 32 节、第 33.2 节 6 项、第 41 节全部范围都在全量验证之前做完；全量验证只在全部完成后跑一次，之后做只读的 Pi 对齐审计。
