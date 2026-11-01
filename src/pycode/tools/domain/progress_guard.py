@@ -5,7 +5,7 @@ pycode's own feature (Pi has none). 11.1 section 40: a fingerprint is the action
 name, arguments hash) plus the result (error, error code, exit code and a hash of the
 output with digit runs replaced by #), so polling that sees new output is not a repeat.
 A read-only call only counts while the same fingerprint repeats back to back. A step
-start, an adopted compaction or the user's "continue" clears the repeat counts.
+start, an adopted compaction or the user's "continue" clears the repeat and tree counts.
 Identical failures stay with repeated_tool_failure (section 11), so they are not counted.
 """
 
@@ -47,6 +47,8 @@ def fingerprint(name: str, arguments_hash: str, result: ToolResult) -> Fingerpri
 
 def reset_repeats(guard: ProgressGuard) -> None:
     guard.actions.clear()
+    # The current tree counts as just arrived at, the same as at run start.
+    guard.trees = Counter() if guard.tree_id is None else Counter([guard.tree_id])
     guard.last_read, guard.read_streak = None, 0
     guard.evidence = None
 

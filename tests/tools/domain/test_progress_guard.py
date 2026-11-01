@@ -71,3 +71,14 @@ def test_changing_a_file_back_to_old_content_is_an_oscillation():
     assert guard.evidence is None
     call(guard, "edit", "h2", file_snapshot={"before": "b", "after": "a"})
     assert "back to tree a" in guard.evidence
+
+
+def test_a_reset_also_clears_the_tree_counts():
+    guard = guard_at("a")
+    for _ in range(2):
+        call(guard, "edit", "h1", file_snapshot={"before": "a", "after": "b"})
+        call(guard, "edit", "h2", file_snapshot={"before": "b", "after": "a"})
+    reset_repeats(guard)
+    call(guard, "edit", "h1", file_snapshot={"before": "a", "after": "b"})
+    call(guard, "edit", "h2", file_snapshot={"before": "b", "after": "a"})
+    assert guard.evidence is None and guard.tree_id == "a"
