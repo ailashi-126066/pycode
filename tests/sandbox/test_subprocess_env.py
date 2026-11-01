@@ -1,6 +1,6 @@
 import pytest
 
-from pycode.sandbox.domain.subprocess_env import subprocess_environment, validate_passthrough
+from pycode.sandbox import subprocess_environment, validate_passthrough
 
 
 def test_allowlisted_names_and_locale_prefix_are_kept():

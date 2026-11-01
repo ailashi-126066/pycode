@@ -7,17 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
 from pycode.kernel import MAX_BYTES, EventStream, Message, SessionHeader, ToolCall, ToolContext
-from pycode.sandbox.adapters.tools.bash import Bash, find_bash
-from pycode.session.adapters.storage.session import SqliteSessionStore
+from pycode.sandbox import Bash, Sandbox, SandboxFeature, SandboxSettings, find_bash
+from pycode.session import SqliteSessionStore
 from pycode.tools.executor import ToolExecutor, ToolRegistry
 from pycode.tools.output import TempOutputStore
 from pycode.tools.schema import JsonSchemaValidator
-from tests.agent.adapters.test_agent import Recorder
 from tests.support.requests import TestTiming
 from tests.tools.test_tool_executor import run_scope
+
+
+class Recorder:
+    async def on_event(self, event):
+        pass
 
 
 class ApprovedGate:
@@ -33,7 +35,10 @@ async def assemble(tmp_path, *, passthrough=()):
     await journal.append_message(Message("u1", "user", "command task"))
     outputs = TempOutputStore("s1")
     validator = JsonSchemaValidator()
-    registry = ToolRegistry(validator, (Bash(find_bash(), outputs, passthrough=passthrough),))
+    registry = ToolRegistry(
+        validator,
+        (Bash(find_bash(), outputs, Sandbox(SandboxSettings()), passthrough=passthrough),),
+    )
     executor = ToolExecutor(
         registry,
         validator,
@@ -119,15 +124,15 @@ async def test_evaluation_path_prefix_survives_final_child_environment_filter(
     _, context, journal, outputs = await assemble(tmp_path)
     context = replace(context, call_id="path-prefix", tool_name="bash")
     prefix = tmp_path / "evaluation-python-bin"
-    config = AppConfig(tmp_path, tmp_path / "state", bash_path_prefix=(str(prefix),))
-    bash = compose_application(config)._modules.sandbox.bash(outputs)
+    feature = SandboxFeature(SandboxSettings(), path_prefix=(str(prefix),))
+    (bash,) = feature.tools(run_scope(EventStream("s1", "r1", ())))
     captured = {}
 
     async def capture_process(argv, workspace, writer, result, **options):
         captured.update(options["environment"])
         return await writer.finish(result)
 
-    monkeypatch.setattr("pycode.sandbox.adapters.tools.bash.run_process", capture_process)
+    monkeypatch.setattr("pycode.sandbox.tools.run_process", capture_process)
     try:
         await bash.execute(context, {"command": "true"})
         assert captured["PATH"].split(os.pathsep)[0] == str(prefix)
@@ -248,3 +253,22 @@ async def test_descendant_output_after_parent_exit_is_not_cut_off_by_fixed_grace
 
 # This suite tests execution with tool definitions already disclosed.
 pytestmark = pytest.mark.usefixtures("disclosed_tools")
+
+
+async def test_run_command_adds_env_to_the_allowlist_and_reports_hook_failures(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("FAKE_API_KEY", "fake-secret-value")
+    feature = SandboxFeature(SandboxSettings())
+    session = run_scope(EventStream("s1", "r1", ())).session
+    await feature.open(session)
+    shell = find_bash()
+    result = await feature.run_command(
+        (shell, "-c", 'echo "$HOOK_VALUE:${FAKE_API_KEY:-none}"'),
+        str(tmp_path),
+        {"HOOK_VALUE": "hi"},
+        5,
+    )
+    assert (result.text.strip(), result.is_error) == ("hi:none", False)
+    failed = await feature.run_command((shell, "-c", "exit 4"), str(tmp_path), None, 5)
+    assert (failed.error_code, failed.exit_code) == ("hook_command_failed", 4)

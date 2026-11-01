@@ -10,8 +10,7 @@ from pathlib import Path
 import pytest
 
 from pycode.kernel import ToolError
-from pycode.sandbox.adapters.seatbelt import SeatbeltSandbox, UnavailableSandbox, build_profile
-from pycode.sandbox.domain.sandbox import SandboxSettings
+from pycode.sandbox import Sandbox, SandboxSettings, build_profile
 
 
 def test_profile_preserves_source_read_network_and_quoted_path_rules(tmp_path):
@@ -43,14 +42,13 @@ def test_dotenv_example_exception_escapes_workspace_regex_metacharacters(tmp_pat
 async def test_physical_seatbelt_allows_standard_pytest_logging_without_outside_file_writes(
     tmp_path,
 ):
-    sandbox = SeatbeltSandbox()
-    assert (await sandbox.status(SandboxSettings("on"))).available
+    sandbox = Sandbox(SandboxSettings("on"))
+    assert (await sandbox.status()).available
     test = tmp_path / "test_probe.py"
     test.write_text("def test_standard_logging():\n    assert 2 + 2 == 4\n")
     argv = await sandbox.launch(
         (sys.executable, "-m", "pytest", "-q", str(test), "--rootdir", str(tmp_path)),
         str(tmp_path),
-        SandboxSettings("on"),
     )
     process = await asyncio.create_subprocess_exec(
         *argv,
@@ -64,24 +62,27 @@ async def test_physical_seatbelt_allows_standard_pytest_logging_without_outside_
     assert b"1 passed" in stdout
 
 
+@pytest.mark.skipif(sys.platform == "darwin", reason="Unsupported hosts have no OS sandbox")
 async def test_unavailable_backend_preserves_ordinary_launch_and_never_claims_auto_approval():
-    backend = UnavailableSandbox()
     for mode in ("off", "on", "on-auto"):
-        settings = SandboxSettings(mode)
-        status = await backend.status(settings)
+        backend = Sandbox(SandboxSettings(mode))
+        status = await backend.status()
         assert not status.available and not status.enabled and not status.auto_approve
-        assert await backend.launch(("bash", "-c", "echo test"), "/project", settings) == (
+        assert await backend.launch(("bash", "-c", "echo test"), "/project") == (
             "bash",
             "-c",
             "echo test",
         )
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="Seatbelt requires macOS")
 async def test_missing_seatbelt_does_not_execute_unsandboxed_when_explicitly_enabled(tmp_path):
-    backend = SeatbeltSandbox(str(tmp_path / "missing"))
-    assert not (await backend.status(SandboxSettings("on-auto"))).auto_approve
+    missing = str(tmp_path / "missing")
+    assert not (await Sandbox(SandboxSettings("on-auto"), executable=missing).status()).auto_approve
     with pytest.raises(ToolError) as error:
-        await backend.launch(("bash", "-c", "touch file"), str(tmp_path), SandboxSettings("on"))
+        await Sandbox(SandboxSettings("on"), executable=missing).launch(
+            ("bash", "-c", "touch file"), str(tmp_path)
+        )
     assert error.value.code == "sandbox_unavailable"
 
 

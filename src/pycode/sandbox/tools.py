@@ -1,4 +1,5 @@
-# Source: MewCode local mewcode/tools/bash.py; SHA-256:
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/tools/bash.ts
+# MewCode local mewcode/tools/bash.py; SHA-256:
 # 24e05e37c804c4fc9bec2a50e95090b33fd4f1f89d4d7c7baeddeae79d9b84b3
 # Source: MewCode local mewcode/processes.py; SHA-256:
 # a8049900efb1977eb4866bd871d3bcd101abaffe35d70452c75da69da45096b4
@@ -8,16 +9,14 @@
 import os
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pycode.kernel import ToolContext, ToolError, ToolResult, ToolSpec
-from pycode.sandbox.adapters.tools.process_runner import run_process
-from pycode.sandbox.domain.sandbox import SandboxSettings
-from pycode.sandbox.domain.subprocess_env import (
-    subprocess_environment,
-    validate_passthrough,
-)
-from pycode.sandbox.ports.output import OutputSink
-from pycode.sandbox.ports.sandbox import SandboxBackend
+from pycode.sandbox.process import run_process, subprocess_environment, validate_passthrough
+from pycode.tools import TempOutputStore
+
+if TYPE_CHECKING:
+    from pycode.sandbox.sandbox import Sandbox
 
 
 def find_bash() -> str:
@@ -33,8 +32,7 @@ def find_bash() -> str:
     return executable
 
 
-# Pi: bash.ts (https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/tools/bash.ts).
-# Parallel by default like Pi; the output store keeps the tail and the complete output.
+# Pi: bash.ts. Parallel by default like Pi; the output store keeps the tail and the complete output.
 class Bash:
     spec = ToolSpec(
         name="bash",
@@ -75,9 +73,8 @@ class Bash:
     def __init__(
         self,
         executable: str,
-        outputs: OutputSink,
-        sandbox: SandboxBackend | None = None,
-        settings: SandboxSettings | None = None,
+        outputs: TempOutputStore,
+        sandbox: "Sandbox",
         environment=None,
         *,
         passthrough=(),
@@ -85,15 +82,14 @@ class Bash:
         self._executable = executable
         self._outputs = outputs
         self._sandbox = sandbox
-        self._settings = settings or SandboxSettings()
         # Source environment, filtered at execution time; never an already trusted environment.
         self._environment = environment
         self._passthrough = validate_passthrough(passthrough)
 
     async def execute(self, context: ToolContext, arguments: dict) -> ToolResult:
-        argv = (self._executable, "-c", arguments["command"])
-        if self._sandbox is not None:
-            argv = await self._sandbox.launch(argv, context.workspace, self._settings)
+        argv = await self._sandbox.launch(
+            (self._executable, "-c", arguments["command"]), context.workspace
+        )
         writer = await self._outputs.begin(context, "tail")
         return await run_process(
             argv,

@@ -1,17 +1,41 @@
-# Source: MewCode local sandbox/seatbelt.py.
+# Pi 没有，pycode 新增；参照 MewCode local sandbox/seatbelt.py
 # SHA-256: b16d640a21d057388a858dd047302916167e49e08bafbc23c4b2f058750267af
 # Adaptation: explicit argv, owned async probe, protected state and no launch fallback.
-"""Seatbelt is enabled only after an actual executable probe succeeds."""
+"""SandboxFeature: the bash tool, command gates and sandboxed commands for hooks.
+
+Seatbelt is enabled only after an actual executable probe succeeds.
+"""
 
 import asyncio
+import os
 import site
 import sys
 import tempfile
+import uuid
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from pycode.kernel import ToolError, json_dumps
-from pycode.sandbox.adapters.tools.process_runner import stop_process
-from pycode.sandbox.domain.sandbox import SandboxStatus
+from pycode.kernel import (
+    Feature,
+    RunScope,
+    SessionScope,
+    ToolContext,
+    ToolError,
+    ToolResult,
+    json_dumps,
+)
+from pycode.sandbox.policy import auto_approvable, denied_command
+from pycode.sandbox.process import (
+    run_process,
+    stop_process,
+    subprocess_environment,
+    validate_passthrough,
+)
+from pycode.sandbox.tools import Bash, find_bash
+from pycode.sandbox.types import SandboxSettings, SandboxStatus
+from pycode.tools import TempOutputStore
+
+UNAVAILABLE = "OS 沙箱不可用；使用权限审批"
 
 # System locations bash, git, rg and Python need to start and run. Seatbelt matches
 # resolved paths, so /etc, /tmp and /var appear under /private.
@@ -159,28 +183,40 @@ def build_profile(workspace, network_enabled, home=None, *, skill_read_roots=(),
     return "\n".join(rules)
 
 
-class UnavailableSandbox:
-    async def status(self, settings):
-        return SandboxStatus(False, False, False, "OS 沙箱不可用；使用权限审批")
+class Sandbox:
+    """Seatbelt on macOS; elsewhere unavailable, and commands run behind ordinary approval.
 
-    async def launch(self, argv, workspace, settings):
-        return tuple(argv)
+    required: worker processes never fall back to executing outside an OS sandbox.
+    """
 
-
-class SeatbeltSandbox:
     def __init__(
-        self, executable="/usr/bin/sandbox-exec", *, skill_read_roots=(), write_roots=None
+        self,
+        settings: SandboxSettings,
+        *,
+        required: bool = False,
+        executable: str = "/usr/bin/sandbox-exec",
+        skill_read_roots: tuple[Path, ...] = (),
     ):
+        self.settings = settings
+        self.required = required
         self._executable = executable
-        self._skill_read_roots = tuple(skill_read_roots)
+        self._skill_read_roots = skill_read_roots
 
-    def for_skill(self, directory):
-        return SeatbeltSandbox(
-            self._executable,
+    def for_skill(self, directory: Path) -> "Sandbox":
+        if self.required and sys.platform != "darwin":
+            raise ToolError(
+                "worker_sandbox_unavailable", "Skill execution requires a strict sandbox backend"
+            )
+        return Sandbox(
+            self.settings,
+            required=self.required,
+            executable=self._executable,
             skill_read_roots=(*self._skill_read_roots, Path(directory).resolve()),
         )
 
-    async def usable(self):
+    async def usable(self) -> bool:
+        if sys.platform != "darwin":
+            return False
         process = None
         spawning = asyncio.create_task(
             asyncio.create_subprocess_exec(
@@ -210,55 +246,122 @@ class SeatbeltSandbox:
                 await stop_process(process)
             return False
 
-    async def status(self, settings):
-        available = await self.usable()
-        enabled = available and settings.mode != "off"
+    async def status(self) -> SandboxStatus:
+        mode = self.settings.mode
+        if not await self.usable():
+            return SandboxStatus(False, False, False, UNAVAILABLE)
+        enabled = mode != "off"
         return SandboxStatus(
-            available,
-            enabled,
-            enabled and settings.mode == "on-auto",
-            "Seatbelt " + (settings.mode if enabled else "off")
-            if available
-            else "OS 沙箱不可用；使用权限审批",
+            True, enabled, mode == "on-auto", "Seatbelt " + (mode if enabled else "off")
         )
 
-    async def launch(self, argv, workspace, settings):
-        if settings.mode == "off":
+    async def launch(self, argv: tuple[str, ...], workspace: str) -> tuple[str, ...]:
+        if self.required:
+            if not (await self.status()).enabled:
+                raise ToolError(
+                    "worker_sandbox_unavailable", "Worker commands require an available OS sandbox"
+                )
+        elif self.settings.mode == "off" or sys.platform != "darwin":
             return tuple(argv)
-        if not await self.usable():
+        elif not await self.usable():
             raise ToolError(
                 "sandbox_unavailable", "Seatbelt became unavailable; command was not run"
             )
         profile = await asyncio.to_thread(
             build_profile,
             workspace,
-            settings.network_enabled,
+            self.settings.network_enabled,
             skill_read_roots=self._skill_read_roots,
-            write_roots=settings.write_roots,
+            write_roots=self.settings.write_roots,
         )
         return (self._executable, "-p", profile, *argv)
 
 
-class RequiredSandbox:
-    """Worker processes never fall back to executing outside an OS sandbox."""
+class CommandGate:
+    """Source deny rules first; on-auto approves only allow-listed read-only commands."""
 
-    def __init__(self, backend):
-        self.backend = backend
+    def __init__(self, sandbox: Sandbox):
+        self.sandbox = sandbox
 
-    def for_skill(self, directory):
-        if not isinstance(self.backend, SeatbeltSandbox):
-            raise ToolError(
-                "worker_sandbox_unavailable", "Skill execution requires a strict sandbox backend"
-            )
-        return RequiredSandbox(self.backend.for_skill(directory))
+    async def authorize(self, run, spec, call):
+        if spec.name != "bash" or spec.source != "builtin":
+            return None
+        command = call.arguments.get("command", "")
+        reason = denied_command(command)
+        if reason is not None:
+            raise ToolError("command_denied", reason)
+        if (
+            self.sandbox.settings.mode == "on-auto"
+            and auto_approvable(command)
+            and (await self.sandbox.status()).auto_approve
+        ):
+            return "allow"
+        return None
 
-    async def status(self, settings):
-        return await self.backend.status(settings)
 
-    async def launch(self, argv, workspace, settings):
-        status = await self.backend.status(settings)
-        if not status.available or not status.enabled:
-            raise ToolError(
-                "worker_sandbox_unavailable", "Worker commands require an available OS sandbox"
-            )
-        return await self.backend.launch(argv, workspace, settings)
+class SandboxFeature(Feature):
+    name = "sandbox"
+
+    def __init__(
+        self,
+        settings: SandboxSettings,
+        *,
+        required: bool = False,
+        passthrough: tuple[str, ...] = (),
+        path_prefix: tuple[str, ...] = (),
+        read_roots: Callable[[RunScope], tuple[Path, ...]] = lambda run: (),
+    ):
+        self.sandbox = Sandbox(settings, required=required)
+        self.passthrough = validate_passthrough(passthrough)
+        self.path_prefix = path_prefix
+        # Extra read-only roots for bash (Python Skill script directories).
+        self.read_roots = read_roots
+        self.session_id = ""
+
+    async def open(self, session: SessionScope) -> None:
+        self.session_id = session.session_id
+
+    async def status(self) -> SandboxStatus:
+        return await self.sandbox.status()
+
+    def tools(self, run: RunScope) -> tuple[Bash, ...]:
+        environment = None
+        if self.path_prefix:
+            environment = dict(os.environ)
+            environment["PATH"] = os.pathsep.join((*self.path_prefix, environment.get("PATH", "")))
+        sandbox = self.sandbox
+        for root in self.read_roots(run):
+            sandbox = sandbox.for_skill(root)
+        bash = Bash(
+            find_bash(),
+            TempOutputStore(run.session.session_id),
+            sandbox,
+            environment=environment,
+            passthrough=self.passthrough,
+        )
+        return (bash,)
+
+    def gates(self, run: RunScope) -> tuple[CommandGate, ...]:
+        return (CommandGate(self.sandbox),)
+
+    async def run_command(
+        self, argv: tuple[str, ...], cwd: str, env: Mapping[str, str] | None, seconds: float
+    ) -> ToolResult:
+        """kernel CommandRunner for hooks; env adds variables to the allowlisted environment.
+
+        Hook commands keep the session's sandbox mode but not worker-required isolation.
+        """
+        sandbox = Sandbox(self.sandbox.settings)
+        call_id = "hook-" + uuid.uuid4().hex
+        context = ToolContext(self.session_id, "", call_id, cwd, call_id)
+        writer = await TempOutputStore(self.session_id).begin(context, "head")
+        environment = subprocess_environment(os.environ, passthrough=self.passthrough)
+        return await run_process(
+            await sandbox.launch(argv, cwd),
+            cwd,
+            writer,
+            ToolResult(call_id, "hook", ""),
+            limit_seconds=seconds,
+            prefix="hook_command",
+            environment={**environment, **(env or {})},
+        )

@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 """Command isolation settings are independent of ordinary permission approval."""
 
 from dataclasses import dataclass

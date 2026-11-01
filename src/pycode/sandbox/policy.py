@@ -1,5 +1,5 @@
-# Source: MewCode local permissions/dangerous.py; SHA-256:
-# 6de120e749f1aaa3ea12fe657891c0b2bf944d26e5de33bdefecbd0bf6443d95
+# Pi 没有，pycode 新增；参照 MewCode local permissions/dangerous.py
+# SHA-256: 6de120e749f1aaa3ea12fe657891c0b2bf944d26e5de33bdefecbd0bf6443d95
 # Adaptation: pure source deny patterns; no claimed general shell sandbox.
 """Source command deny rules remain ahead of sandbox automatic approval.
 

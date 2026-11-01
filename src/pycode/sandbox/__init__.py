@@ -1,26 +1,29 @@
-"""Public native contracts, policies and services for sandbox."""
+# Pi 没有，pycode 新增
+"""Optional module: the bash tool, command gates and OS command isolation."""
 
-from pycode.sandbox.domain.command_policy import auto_approvable, denied_command
-from pycode.sandbox.domain.sandbox import SandboxSettings
-from pycode.sandbox.domain.subprocess_env import subprocess_environment
-from pycode.sandbox.ports.output import OutputSink, StreamWriter
-from pycode.sandbox.ports.process import ProcessRunner
-from pycode.sandbox.ports.sandbox import SandboxBackend
-
-__all__ = [
-    "passthrough_name",
-    "validate_passthrough",
-    "OutputSink",
-    "ProcessRunner",
-    "SandboxBackend",
-    "SandboxSettings",
-    "StreamWriter",
-    "auto_approvable",
-    "denied_command",
-    "subprocess_environment",
-]
-
-from pycode.sandbox.domain.subprocess_env import (
+from pycode.sandbox.policy import auto_approvable, denied_command
+from pycode.sandbox.process import (
     passthrough_name,
+    run_process,
+    subprocess_environment,
     validate_passthrough,
 )
+from pycode.sandbox.sandbox import Sandbox, SandboxFeature, build_profile
+from pycode.sandbox.tools import Bash, find_bash
+from pycode.sandbox.types import SandboxSettings, SandboxStatus
+
+__all__ = [
+    "Bash",
+    "Sandbox",
+    "SandboxFeature",
+    "SandboxSettings",
+    "SandboxStatus",
+    "auto_approvable",
+    "build_profile",
+    "denied_command",
+    "find_bash",
+    "passthrough_name",
+    "run_process",
+    "subprocess_environment",
+    "validate_passthrough",
+]

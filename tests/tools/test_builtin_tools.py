@@ -4,7 +4,7 @@ import pytest
 from deepagents.backends import CompositeBackend, StateBackend
 
 from pycode.kernel import MAX_LINES, ToolContext, ToolError
-from pycode.sandbox.adapters.tools.bash import Bash, find_bash
+from pycode.sandbox import Bash, Sandbox, SandboxSettings, find_bash
 from pycode.skills.framework import SkillBackend
 from pycode.tools.backend import PycodeBackend
 from pycode.tools.builtin.edit import Edit, prepare_edit_arguments
@@ -167,7 +167,7 @@ async def test_find_and_ls_limit_results(tmp_path):
 
 async def test_bash_keeps_the_tail_and_marks_nonzero_exit_as_error(tmp_path):
     outputs = TempOutputStore("s")
-    bash = Bash(find_bash(), outputs)
+    bash = Bash(find_bash(), outputs, Sandbox(SandboxSettings()))
     result = await bash.execute(
         context("bash", tmp_path), {"command": "for i in $(seq 1 3000); do echo line $i; done"}
     )

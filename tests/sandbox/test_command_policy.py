@@ -1,6 +1,6 @@
 import pytest
 
-from pycode.sandbox.domain.command_policy import auto_approvable, denied_command
+from pycode.sandbox import auto_approvable, denied_command
 
 
 @pytest.mark.parametrize(
