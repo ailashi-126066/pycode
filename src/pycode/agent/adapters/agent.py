@@ -153,7 +153,7 @@ class AgentRuntime:
         middleware.extend(
             [HistoryMiddleware(self.bindings), self.bindings.settlement_middleware_factory(context)]
         )
-        self.graph = create_deep_agent(
+        self.graph = graph = create_deep_agent(
             model=self.model,
             tools=tools,
             backend=self.backend,
@@ -164,6 +164,7 @@ class AgentRuntime:
             checkpointer=self.checkpointer,
             name="pycode",
         )
+        return graph
 
     def config(self, context) -> RunnableConfig:
         return {
@@ -181,9 +182,10 @@ class AgentRuntime:
             context.completed.append(message)
             if self.title_assignment is not None:
                 await self.title_assignment.assign(message)
-        self.build(context)
+        graph = self.build(context)
         messages = self.bindings.to_framework_messages((*history, *inputs), context.selection)
         return await self.invoke(
+            graph,
             {
                 "messages": messages,
                 "session_id": context.session_id,
@@ -196,19 +198,17 @@ class AgentRuntime:
         )
 
     async def continue_task(self, context):
-        await self.restore_task(context)
+        graph = await self.restore_task(context)
         if context.run_state.status == "awaiting_input":
             # Without an answer the rerun tools node asks the open question again.
             context.run_state.apply("resume")
-        return await self.invoke(None, context)
+        return await self.invoke(graph, None, context)
 
     async def restore_task(self, context):
-        self.build(context)
-        if self.graph is None or context.history_store is None:
-            raise StorageError(
-                "runtime_unavailable", "Restoring a task needs the graph and history"
-            )
-        checkpoint = await self.graph.aget_state(self.config(context))
+        graph = self.build(context)
+        if context.history_store is None:
+            raise StorageError("runtime_unavailable", "Restoring a task needs the history")
+        checkpoint = await graph.aget_state(self.config(context))
         state = checkpoint.values
         snapshot = await context.history_store.snapshot()
         path = SessionTree(snapshot.index).path(snapshot.leaf_id)
@@ -262,21 +262,23 @@ class AgentRuntime:
         if assistant is not None:
             for message in context.completed:
                 result = message.tool_result
-                if result is not None and result.details.get("source_assistant_id") == assistant.id:
+                if result is not None and result.details["source_assistant_id"] == assistant.id:
                     context.settled_calls.add(result.call_id)
                     context.dispatched_calls.add(result.call_id)
         # Persist the reconstructed guard at the next tool boundary. Locks, waiting calls
         # and in-flight result buffers start empty in the replacement runtime.
+        return graph
 
     def discard(self) -> None:
         self.graph = None
 
     async def resume(self, context, answers=None):
-        if self.graph is None:
+        graph = self.graph
+        if graph is None:
             raise StorageError(
                 "run_expired", "This process has no active run; open history and start a new task"
             )
-        checkpoint = await self.graph.aget_state(self.config(context))
+        checkpoint = await graph.aget_state(self.config(context))
         if not checkpoint.interrupts:
             raise StorageError("no_pending_run", "No live question is awaiting an answer")
         # Parallel calls prepare one at a time, so a run waits on exactly one interrupt.
@@ -295,12 +297,9 @@ class AgentRuntime:
         context.dispatched_calls.difference_update(context.interrupted_calls)
         context.interrupted_calls.clear()
         context.run_state.apply("resume")
-        return await self.invoke(value, context)
+        return await self.invoke(graph, value, context)
 
-    async def invoke(self, value, context):
-        graph = self.graph
-        if graph is None:
-            raise StorageError("run_expired", "This runtime has no live execution graph")
+    async def invoke(self, graph, value, context):
         try:
             state = await graph.ainvoke(
                 value, config=self.config(context), context=context, durability="sync"
