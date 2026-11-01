@@ -9,6 +9,7 @@ from pathlib import Path
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel.domain.messages import Message
+from pycode.models.adapters.storage.requests import SQLiteRequestStore
 from tests.support.execution import provider
 
 
@@ -19,12 +20,18 @@ class Crash:
     async def consume(self, event):
         if event.kind == "compaction" and event.data.get("status") == self._boundary:
             os._exit(74)
-        if (
-            self._boundary == "request_started"
-            and event.kind == "model_request_start"
-            and event.data.get("purpose") == "summary"
-        ):
+
+
+def crash_after_summary_request_start():
+    """No event marks a request start (11.1 section 3.1), so the request record is the boundary."""
+    start = SQLiteRequestStore.start
+
+    async def started(self, record):
+        await start(self, record)
+        if record.purpose == "summary":
             os._exit(74)
+
+    SQLiteRequestStore.start = started
 
 
 async def main():
@@ -36,6 +43,8 @@ async def main():
     ToolDiscovery.disclose = disclosed
 
     workspace, url, boundary = sys.argv[1:]
+    if boundary == "request_started":
+        crash_after_summary_request_start()
     root = Path(workspace)
     config = AppConfig(root, root / "data", summary_keep_recent_tokens=20, memory_mode="off")
     selected = replace(provider(url), context_window=20000, max_output_tokens=1000)

@@ -8,6 +8,7 @@ from pathlib import Path
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel.domain.messages import Message
+from pycode.models.adapters.storage.requests import SQLiteRequestStore
 from pycode.models.domain.models import ProviderConfig
 from pycode.tools.adapters.output_store import TempOutputStore
 from tests.support.recovery_tools import WritingEcho
@@ -35,11 +36,6 @@ class CrashConsumer:
             )
             or (self._boundary == "model_stream" and event.kind == "message_update")
             or (
-                self._boundary == "model_request_settled"
-                and event.kind == "model_request_end"
-                and event.data.get("status") == "completed"
-            )
-            or (
                 self._boundary == "queued_delivery"
                 and event.kind == "notification"
                 and event.data.get("kind") == "input_delivered"
@@ -52,6 +48,19 @@ class CrashConsumer:
         )
         if fatal:
             os._exit(73)
+
+
+def crash_after_completed_request():
+    """No event marks a settled request (11.1 section 3.1), so the request record is the
+    boundary: it is completed before the assistant reply is saved."""
+    settle = SQLiteRequestStore.settle
+
+    async def settled(self, record):
+        await settle(self, record)
+        if record.status == "completed":
+            os._exit(73)
+
+    SQLiteRequestStore.settle = settled
 
 
 class CrashTool(WritingEcho):
@@ -84,6 +93,8 @@ async def main():
     ToolDiscovery.disclose = disclosed
 
     workspace, url, boundary = sys.argv[1:]
+    if boundary == "model_request_settled":
+        crash_after_completed_request()
     workspace = Path(workspace)
     configured = ProviderConfig(
         "test",

@@ -16,9 +16,7 @@ from pycode.models.domain.models import ProviderConfig
 
 class CrashAfterFact:
     async def consume(self, event):
-        if event.kind == "tool_execution_end" and event.data.get("name") in {
-            "mcp__srv__mutate",
-        }:
+        if event.kind == "tool_execution_end" and event.data["tool_name"] == "mcp__srv__mutate":
             os._exit(85)
 
 
