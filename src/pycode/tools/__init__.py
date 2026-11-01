@@ -20,7 +20,6 @@ from pycode.tools.executor import (
 from pycode.tools.framework_tool import make_framework_tool
 from pycode.tools.output import TempOutputStore
 from pycode.tools.permissions import InterruptToolGate, ReadOnlyToolGate, validate_operation_answer
-from pycode.tools.progress_guard import ProgressGuard, enter_tree, reset_repeats
 from pycode.tools.schema import JsonSchemaValidator
 from pycode.tools.settlement import ToolSettlementMiddleware
 
@@ -33,7 +32,6 @@ __all__ = [
     "InterruptToolGate",
     "JsonSchemaValidator",
     "Ls",
-    "ProgressGuard",
     "PycodeBackend",
     "Read",
     "ReadOnlyToolGate",
@@ -46,12 +44,10 @@ __all__ = [
     "ToolSettlementMiddleware",
     "Write",
     "abandoned_result",
-    "enter_tree",
     "failure_update",
     "interrupted_result",
     "make_framework_tool",
     "repeated_tool_failure",
-    "reset_repeats",
     "validate_operation_answer",
     "validate_question_answer",
 ]

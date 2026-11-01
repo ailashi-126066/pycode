@@ -33,7 +33,6 @@ from pycode.kernel import (
 from pycode.tools.call_state import abandoned_result, interrupted_result
 from pycode.tools.executor import failure_update, repeated_tool_failure
 from pycode.tools.framework_tool import make_framework_tool
-from pycode.tools.progress_guard import observe_call, reset_repeats
 
 
 def latest_failure_field(previous, current):
@@ -465,26 +464,9 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             await self.settle(context, saved_call, saved_result)
 
     async def settle(self, context, call: ToolCall, result: ToolResult):
-        """The only exit: persist, update guards, then emit tool_execution_end and Hooks."""
+        """The only exit: persist, update the failure guard, then emit tool_execution_end."""
         digest = data_hash(call.arguments)
         context.failure_guard = failure_update(context.failure_guard, call, result, digest)
-        observe_call(
-            context.progress_guard,
-            context.loop_repeat_threshold,
-            call.name,
-            digest,
-            result,
-            # A successful call always has a registered spec; failures may name unknown tools.
-            read_only=not result.is_error
-            and context.registry.get_spec(call.name).category == "read",
-        )
-        # 11.1 section 39 #3: a new step may rerun the previous step's check.
-        if (
-            not result.is_error
-            and call.name == "TaskUpdate"
-            and call.arguments["status"] == "in_progress"
-        ):
-            reset_repeats(context.progress_guard)
         # finalize_result always binds the operation id.
         operation_id = cast(str, result.operation_id)
         # Pi: createToolResultMessage + emitToolResultMessage.

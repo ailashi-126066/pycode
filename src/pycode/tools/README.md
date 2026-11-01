@@ -16,8 +16,15 @@ file tools. It knows optional modules only through `pycode.kernel.Feature`.
 | `builtin/` | Pi's `read/write/edit/grep/find/ls`; `paths.py` maps paths onto mounts |
 
 ```python
-executor = ToolExecutor(registry, validator, InterruptToolGate(), run, features, outputs,
-                        gates=(config.tool_gate,) if config.tool_gate else ())
+executor = ToolExecutor(
+    registry,
+    validator,
+    InterruptToolGate(),
+    run,
+    features,
+    outputs,
+    gates=(config.tool_gate,) if config.tool_gate else (),
+)
 ```
 
 Authorization (design 2.3): the user's gate, then every feature's `gates(run)` in list order. Any
