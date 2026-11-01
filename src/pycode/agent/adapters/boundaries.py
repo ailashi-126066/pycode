@@ -1,11 +1,12 @@
 """Agent model filtering, event publication and durable input boundaries."""
 
+from uuid import uuid4
+
 from langchain_core.callbacks import AsyncCallbackHandler
-from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableLambda
 
 from pycode.context import board_from_data, task_board_text
-from pycode.kernel import EntryDraft, plain_data
+from pycode.kernel import EntryDraft, Message, plain_data
 
 
 async def prepare_model_boundary(request, bindings):
@@ -19,18 +20,16 @@ async def prepare_model_boundary(request, bindings):
     return await chain.ainvoke(request)
 
 
-def attach_task_board(request, projection):
+def task_board_messages(context, projection) -> tuple[Message, ...]:
     """Only an active board is injected: its view each request, the full view once after
-    a compaction. Without a board nothing is added."""
-    if projection is None:
-        return request
+    a compaction. Without a board nothing is added. It follows the message projection
+    (11.1 section 8.1 ③), so a new revision leaves the cached history prefix intact."""
     board = projection.checkpoint["task_board"]
     if board is None or board["status"] != "active":
-        return request
-    context = request.runtime.context
+        return ()
     text = task_board_text(board_from_data(board), full=context.board_full_view)
     context.board_full_view = False
-    return request.override(messages=[SystemMessage(content=text), *request.messages])
+    return (Message(uuid4().hex, "system", text),)
 
 
 async def filter_model_tools(request):

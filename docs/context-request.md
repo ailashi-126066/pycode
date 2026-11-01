@@ -41,7 +41,7 @@ SessionEntry → ① session_codec.decode_entries → AgentMessage
 任务板保存在 TaskWrite/TaskUpdate 工具结果的 `details.task_board`（或用户、系统写的
 `custom{kind: task_board}`），`TaskProjection` 取当前分支最后一个快照放进 `checkpoint["task_board"]`。
 
-- 只有 `active` 的任务板才注入：每轮一份精简视图（`work_graph.view`），放在请求消息最前；
+- 只有 `active` 的任务板才注入：每轮一份精简视图（`work_graph.view`），追加在消息投影之后（③ 的位置），任务板修订不会让前面历史的提示缓存失效；
 - 压缩被采用后的下一次请求注入一次完整视图（`work_graph.full_view`：验收、证据、关键路径、决定）；
 - 模型要结束而任务板仍 active 时，`aafter_agent` 写一条提醒并再请求一次，每个 run 最多一次；
 - 没有任务板时零注入。

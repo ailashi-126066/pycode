@@ -17,10 +17,10 @@ from langchain_core.messages import AIMessage, BaseMessage, RemoveMessage
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from pycode.agent.adapters.boundaries import (
-    attach_task_board,
     deliver_input,
     prepare_model_boundary,
     save_message,
+    task_board_messages,
 )
 from pycode.agent.adapters.state import PycodeState
 from pycode.agent.domain.turn_policy import next_turn
@@ -239,12 +239,12 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         boundary = f"{context.run_id}:model-{state['turn']}"
         await self.bindings.run_hook(context, "pre_send")
         reminder = loop_reminder(context)
-        projection = None
         if context.history_store is not None:
             projection = await self.current_projection(context)
+            board = task_board_messages(context, projection)
             request = request.override(
                 messages=self.bindings.to_framework_messages(
-                    (*projection.messages, *reminder), context.selection
+                    (*projection.messages, *board, *reminder), context.selection
                 )
             )
         tools = list(request.tools)
@@ -263,8 +263,8 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         ):
             request = await prepare_model_boundary(request, self.bindings)
         if context.history_store is not None:
-            projection = await self.current_projection(context)
-        request = attach_task_board(request, projection)
+            # Calibration may append tool_set_change; record the leaf this request follows.
+            await self.current_projection(context)
         model_step = self.bindings.model_request_step(
             context.requests, handler, logical_id=boundary
         )
@@ -280,12 +280,12 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                     raise
                 context.board_full_view = True
                 projection = await self.current_projection(context)
+                board = task_board_messages(context, projection)
                 request = request.override(
                     messages=self.bindings.to_framework_messages(
-                        (*projection.messages, *reminder), context.selection
+                        (*projection.messages, *board, *reminder), context.selection
                     )
                 )
-                request = attach_task_board(request, projection)
                 response = await model_step.ainvoke(request)
         except (ModelError, asyncio.CancelledError) as error:
             # Pi keeps a failed reply (stopReason error|aborted) and transform_messages skips it.

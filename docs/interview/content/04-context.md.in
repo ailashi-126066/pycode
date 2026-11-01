@@ -6,7 +6,7 @@
 
 有 active 任务板时请求里还有任务板视图；工具目录列出全部允许工具的名称与一句话用途；常用工具直接提供完整定义，其余经 ToolSearch 加载。项目说明、Skill、MCP 结果和文件按既有资料或工具消息提供，最新用户输入不重复发送。
 
-TaskProjection 沿当前分支取最后一份任务板快照（TaskWrite/TaskUpdate 结果的 details.task_board，或 custom{kind: task_board}），放进 checkpoint["task_board"]。只有 active 的任务板才由 History 的 attach_task_board 注入：每轮一份精简视图，压缩被采用后的下一次请求注入一次完整视图；没有任务板时零注入。注入内容标明是数据，单独计量，不混入固定系统配置。完整字段见 [上下文组成](../context-request.md)。
+TaskProjection 沿当前分支取最后一份任务板快照（TaskWrite/TaskUpdate 结果的 details.task_board，或 custom{kind: task_board}），放进 checkpoint["task_board"]。只有 active 的任务板才由 History 的 task_board_messages 追加在消息投影之后：每轮一份精简视图，压缩被采用后的下一次请求注入一次完整视图；没有任务板时零注入。注入内容标明是数据，单独计量，不混入固定系统配置。完整字段见 [上下文组成](../context-request.md)。
 
 ## 第一步：从当前历史，整理出这次要发送的消息
 

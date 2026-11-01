@@ -2,9 +2,7 @@
 
 from types import SimpleNamespace
 
-from langchain_core.messages import SystemMessage
-
-from pycode.agent.adapters.boundaries import attach_task_board
+from pycode.agent.adapters.boundaries import task_board_messages
 from pycode.agent.adapters.history import BOARD_EXIT_REMINDER
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
@@ -67,7 +65,8 @@ async def test_dependencies_evidence_injection_and_one_end_check(tmp_path, monke
             assert {"TaskWrite", "TaskUpdate"} <= tools
             # No board yet: nothing is injected.
             assert HEADER not in str(requests[0]["body"]["messages"])
-            assert HEADER in str(requests[1]["body"]["messages"])
+            # The view follows the history (11.1 section 8.1 ③), so the cached prefix holds.
+            assert HEADER in str(requests[1]["body"]["messages"][-1])
             assert "s2 [waiting] fix" in str(requests[1]["body"]["messages"])
             saved = await results(session)
             assert saved["tw"].details["task_board"]["revision"] == 1
@@ -128,17 +127,9 @@ def test_full_view_is_injected_once_after_compaction():
     board = Board("b1", "fix login", ("tests pass",), (Step("s1", "locate", ()),), revision=1)
     context = SimpleNamespace(board_full_view=True)
     projection = SimpleNamespace(checkpoint={"task_board": plain_data(board)})
-
-    class Request:
-        runtime = SimpleNamespace(context=context)
-        messages = ()
-
-        def override(self, messages):
-            return SimpleNamespace(messages=messages)
-
-    first = attach_task_board(Request(), projection).messages[0]
-    second = attach_task_board(Request(), projection).messages[0]
-    assert isinstance(first, SystemMessage)
+    (first,) = task_board_messages(context, projection)
+    (second,) = task_board_messages(context, projection)
+    assert first.role == "system"
     assert "Critical path: s1" in first.content and "Done when:" in first.content
     assert "Critical path" not in second.content and HEADER in second.content
 
