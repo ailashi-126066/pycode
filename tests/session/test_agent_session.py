@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from pycode.context.services.context_projector import ContextProjector
+from pycode.context import ContextProjector
 from pycode.kernel import EntryDraft, Message, RunResult, StorageError
 from pycode.session import AgentSession, DurableInputs
 from tests.models.test_control import controller, store_for

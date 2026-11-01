@@ -6,7 +6,7 @@
 
 ## 第一步：应用把需要的方法交给Agent，再开始图
 
-会话已经写入运行开始记录（`run_start`），上一章应用的运行工厂也准备好了模型、工具和当前历史。它调用`AgentModule.runtime(model, bindings=...)`取得AgentRuntime。这里`RuntimeBindings`不是另一套服务容器，可以把它读成一张明确的方法清单：消息怎样转成SDK格式、模型怎样计量、工具结果怎样保存、可选功能怎样参加模型前准备。
+会话已经写入运行开始记录（`run_start`），上一章应用的运行工厂也准备好了模型、工具和当前历史。它调用`AgentRuntime(model, bindings=...)`取得AgentRuntime。这里`RuntimeBindings`不是另一套服务容器，可以把它读成一张明确的方法清单：消息怎样转成SDK格式、模型怎样计量、工具结果怎样保存、可选功能怎样参加模型前准备。
 
 这些方法不是Agent自己去其他模块找的。应用把Models的转换和请求方法、Tools的结算工厂，以及可能存在的Skill/MCP扩展放进Bindings。以后框架调用到相应位置，Agent才委托它们。这样禁用一个可选功能时，Agent无需在内部判断“这个名称是不是MCP”。
 
@@ -61,7 +61,7 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 用户在当前TUI批准这次命令，面板交回问题对应的答案。`AgentRuntime.resume`先确认图还在，并读取图保存的当前运行位置，取得此刻真正等待用户回答的问题。框架把保存的位置叫`checkpoint`，把暂停问题叫`interrupt`。单问题也要对应它的ID，多问题按ID分别回答；普通操作的答案检查通过后，才用`Command(resume=...)`继续这张图。
 
-恢复不会重新new一张图，再猜刚才走到了哪。工具已经保存的结果可以被当前结算逻辑识别；图已关闭或进程已重启时则明确报run_expired。磁盘里还留有run_wait，只能解释历史上曾经等待什么，不提供继续执行旧命令的权利。
+恢复不会重新new一张图，再猜刚才走到了哪。工具已经保存的结果可以被当前结算逻辑识别；进程重启后由 launcher 重建资源并从持久化 checkpoint 恢复；显式 resume 才继续执行，未知效果不会盲目重放。
 
 {{chain:05-agent:resume}}
 
@@ -71,13 +71,13 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 ## 走完五步，再回查组装和框架职责
 
-这次任务始终只有当前run的一张Deep Agents图。`AgentModule`提供runtime、Bindings、publisher和独立测试使用的 InMemorySaver；正式会话使用 Store 持有的 AsyncSqliteSaver；应用提供已经选好的模型、后端、工具方法和可选扩展。Launcher保留等待中的runtime，运行不再需要时由它和RuntimeContainer负责关闭；Agent不会自己创建一套模型客户端。
+这次任务始终只有当前run的一张Deep Agents图。`AgentRuntime`提供runtime、Bindings、publisher和独立测试使用的 InMemorySaver；正式会话使用 Store 持有的 AsyncSqliteSaver；应用提供已经选好的模型、后端、工具方法和可选扩展。Launcher保留等待中的runtime，运行不再需要时由它和RuntimeContainer负责关闭；Agent不会自己创建一套模型客户端。
 
 框架负责在模型和工具节点间转交执行、按约定调用中间件、保存图的运行位置，以及暂停等待用户回答。项目在相应回调中补的是：问模型前怎样整理输入，完整assistant何时落盘，实际工具是否获准，多个结果怎样保存，以及取消时要等待哪些已开始的任务。因此，读到下面这些名字时，应该能把它们放回刚才经过的步骤，而不是把它们当成互不相关的功能清单。
 
 | 刚才的步骤 | 主要代码 | 此时交给下一步什么 |
 |---|---|---|
-| 交方法、建图 | AgentModule / AgentRuntime.build | 当前图和以后会调用的方法 |
+| 交方法、建图 | AgentRuntime / AgentRuntime.build | 当前图和以后会调用的方法 |
 | 模型前维护 | History.abefore_model | 当前轮的消息列表与输入位置 |
 | 模型请求前后 | prepare_model_boundary / awrap_model_call | 最终工具名单、完整assistant、call_order |
 | 工具结算 | Tools settlement / publisher | 已保存的结果、完整输出位置，以及消息已收到的确认 |
@@ -85,9 +85,9 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 `RuntimeBindings`保存的是这些显式方法；`RunContext`保存这一次运行正在用的消息、请求方法、执行器和结果顺序。它们不应该装上每个可选模块的内部服务，让Agent到处按名称查找。需要具体Skill/MCP行为时，应用已经把相应方法交到了应当调用的位置。
 
-{{inline:src/pycode/agent/adapters/bindings.py:RuntimeBindings}}
+{{inline:src/pycode/agent/runtime.py:RuntimeBindings}}
 
-{{inline:src/pycode/agent/services/context.py:RunContext}}
+{{inline:src/pycode/agent/context.py:RunContext}}
 
 ## 读懂检查：能否自己顺着修复过程讲一遍
 

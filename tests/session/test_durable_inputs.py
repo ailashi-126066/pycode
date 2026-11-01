@@ -1,6 +1,6 @@
 import pytest
 
-from pycode.context.services.context_projector import ContextProjector
+from pycode.context import ContextProjector
 from pycode.kernel import EntryDraft, Message, SessionHeader, StorageError
 from pycode.session.inputs import DurableInputs
 from pycode.session.store import SqliteSessionStore

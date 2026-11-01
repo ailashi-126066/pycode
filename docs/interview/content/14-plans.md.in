@@ -14,11 +14,11 @@ Plan 不执行方案里的自然语言，也不是另一个模型循环。模型
 
 ## 第一步：先留出一份方案文件，项目代码暂时只读
 
-TUI 把 `/plan` 交给 `AgentSession.enter_plan`。服务先确认没有另一轮任务或审批等待，再由 `PlanService.enter` 从当前会话身份生成方案 ID和固定路径。带着任务正文调用时，之后才启动普通模型运行；不带正文时只保存进入规划这件事，不能虚构模型已经读完项目。
+TUI 把 `/plan` 交给 `session.plans.enter`。服务先确认没有另一轮任务或审批等待，再由 `PlanService.enter` 从当前会话身份生成方案 ID和固定路径。带着任务正文调用时，之后才启动普通模型运行；不带正文时只保存进入规划这件事，不能虚构模型已经读完项目。
 
-规划期模型可以读 parser.py、找测试位置，也可以用普通 `write` 或 `edit` 把思路写到当前 `/plans/ID.md`。为什么写方案不算突破只读？因为 `PlanToolGate` 只给这个精确路径一个例外。模型试图直接改 parser.py 或运行外部命令仍会被拒绝；批准不是写在提示词里的一句劝告。
+规划期模型可以读 parser.py、找测试位置，也可以用普通 `write` 或 `edit` 把思路写到当前 `/plans/ID.md`。为什么写方案不算突破只读？因为 `PlanService.authorize` 只给这个精确路径一个例外。模型试图直接改 parser.py 或运行外部命令仍会被拒绝；批准不是写在提示词里的一句劝告。
 
-文件后端还有第二道限制。`PlanBackend` 只认当前方案文件，搜索前也把扫描范围缩到这个文件，而不是扫完整个内部计划目录再隐藏结果。因此方案工具能给用户展示完整 Markdown，又不会顺便暴露或修改别的会话方案。保存 `plan_state` 时先写日志，再更新内存和活动文件名，后面每一层才有一致依据。
+文件后端还有第二道限制。`ScopedBackend` 只认当前方案文件，搜索前也把扫描范围缩到这个文件，而不是扫完整个内部计划目录再隐藏结果。因此方案工具能给用户展示完整 Markdown，又不会顺便暴露或修改别的会话方案。保存 `plan_state` 时先写日志，再更新内存和活动文件名，后面每一层才有一致依据。
 
 {{chain:14-plans:enter}}
 
@@ -34,7 +34,7 @@ TUI 把 `/plan` 交给 `AgentSession.enter_plan`。服务先确认没有另一�
 
 ## 第三步：批准以后，每次工具还要问“是不是刚才那份方案”
 
-模型现在准备修改 parser.py。工具到达 `PlanToolGate` 时，`PlanService.guard` 检查批准是否属于当前运行，并核对方案文件是否仍与已批内容一致。批准后方案本身变成只读；若换了运行或正文改变，就退回规划，不能一边改授权内容一边按旧授权执行。
+模型现在准备修改 parser.py。工具到达 `PlanService.authorize` 时，`PlanService.guard` 检查批准是否属于当前运行，并核对方案文件是否仍与已批内容一致。批准后方案本身变成只读；若换了运行或正文改变，就退回规划，不能一边改授权内容一边按旧授权执行。
 
 用户选 `review` 时，这层检查通过只表示方案仍有效，普通动作仍交原来的权限检查逐次询问。选 `auto` 时，Plan 门可直接放行普通 read、write、command，跳过它的普通父级审批；危险 Bash 命令的拒绝规则仍先处理。这里需要明确“自动”免掉的是哪一层，不能笼统说所有原审批仍被调用，也不能说全部工具获准。
 
@@ -54,7 +54,7 @@ TUI 把 `/plan` 交给 `AgentSession.enter_plan`。服务先确认没有另一�
 
 ## 框架在刚才的故事里做了什么
 
-Plan 服务没有继承 `AgentMiddleware`。框架负责的第一件事是文件工具：`FilesystemMiddleware` 使用组合后端，`/plans/` 路由指向 `PlanBackend`，后者组合实际文件后端并限制精确文件。模型仍调用熟悉的读写工具，只是这个路由的真实文件范围更窄。
+Plan 服务没有继承 `AgentMiddleware`。框架负责的第一件事是文件工具：`FilesystemMiddleware` 使用组合后端，`/plans/` 路由指向 `ScopedBackend`，后者组合实际文件后端并限制精确文件。模型仍调用熟悉的读写工具，只是这个路由的真实文件范围更窄。
 
 第二件事是等待用户：`InterruptPlanPrompt` 的 `@task` 调用 `interrupt`，`AgentRuntime.resume` 用 `Command(resume=...)` 把答案交回原图。正文快照、内容复查、当前运行绑定和批准失效是项目服务自己的职责。磁盘里的 `plan_review` 能解释历史，不能让另一个进程回答已经消失的框架等待。
 
@@ -64,37 +64,30 @@ Plan 服务没有继承 `AgentMiddleware`。框架负责的第一件事是文件
 
 | 想知道什么 | 到哪里找 | 能确认什么 |
 |---|---|---|
-| 用户实际看过哪份方案 | `FilePlanStore`读取的Markdown，`PlanBackend`提供文件工具访问 | 完整正文，不只有一个“已批准”标记 |
+| 用户实际看过哪份方案 | `FilePlanStore`读取的Markdown，`ScopedBackend`提供文件工具访问 | 完整正文，不只有一个“已批准”标记 |
 | 目前在规划、自动执行还是完成 | `PlanService`和日志里的`plan_state` | 当前阶段、批准内容的校验值、批准属于哪轮运行 |
-| 这次具体动作允许吗 | `PlanToolGate`及外层强制检查 | 规划中的写入例外，以及批准后仍须另行确认的动作 |
-| 当前能否回答方案问题 | `InterruptPlanPrompt`与LangGraph活图 | 仅在当前进程仍保留等待时可以回答 |
+| 这次具体动作允许吗 | `PlanService.authorize`及外层强制检查 | 规划中的写入例外，以及批准后仍须另行确认的动作 |
+| 当前能否回答方案问题 | `InterruptPlanPrompt`与LangGraph活图 | 当前图或持久化 checkpoint 保存的等待可经显式 resume 回答 |
 | 模型该看到哪条方案提醒 | `PlanProjection`生成的文字 | 当前路径和阶段；提醒本身不授予工具权限 |
 
 `auto`不表示所有事情免审批。合并子 agent 分支的 git merge 仍逐次询问。
 
-## 查找：从哪里创建，交给谁使用，谁负责关闭
+## 查找：从哪里创建，交给谁使用
 
-| 创建入口 | 调用前要提供什么 | 得到什么，交给谁 | 谁负责关闭 |
-|---|---|---|---|
-| `PlansModule(directory,backend_factory)` | 项目计划目录、创建文件后端的方法 | 按会话创建方案服务和文件访问能力的方法 | 模块本身不持有后台连接 |
-| `PlansModule.session` | 会话ID、历史和可选问答接口 | `PlanSession`中的服务、文件与工具，交会话和单轮执行使用 | 只借用会话历史，不独立关闭它 |
-| `PlansModule.files` | 会话ID和受限文件后端 | `FilePlanStore`、`/plans/`后端，供服务读正文、模型访问当前文件 | 每次文件操作由`owned_io`等待结束 |
-| `PlansModule.exit_tool` | 当前`PlanService` | `ExitPlanMode`，交模型工具声明和执行器 | 借用当前服务，不重复关闭 |
-| `PlansModule.projection` | 不需要外部连接 | `PlanProjection`，交上下文组合器生成提醒 | 无连接或后台任务要关闭 |
-| `composition.session/runtime` | 服务、文件后端和审阅工具 | 接到`AgentSession`、本轮上下文和工具检查中的计划能力 | 会话与本轮容器分别关闭自己创建的资源 |
+应用先创建 FilePlanStore，再创建 PlanService(history, files, prompt, parse_board=...) 并 initialize。ExitPlanMode 是交给工具执行器的普通工具，PlanProjection 是交给 ContextProjector 的实际贡献者。应用把 authorize、after_tool_call、on_event 显式接入工具和事件顺序；服务借用会话历史，不另行关闭 Store。
 
 ## 查找：一个类具体做哪段工作
 
 | 代码位置 | 负责的动作 |
 |---|---|
-| `PlansModule` | 创建正文存储、计划服务、用户问答接口和审阅工具 |
-| `AgentSession.enter_plan` | 确认没有活运行再进入规划；有任务正文才启动模型 |
+| `PlanService` | 维护当前方案状态并连接正文与审阅问答 |
+| `session.plans.enter` | 确认没有活运行再进入规划；有任务正文才启动模型 |
 | `PlanService` | 保存阶段、待审正文、反馈、已批内容及对应运行，结束时撤下批准 |
 | `FilePlanStore` | 生成本会话方案路径，读取真实正文与内容校验值 |
-| `PlanBackend` | 只允许当前活动方案文件，搜索也限制在实际扫描前 |
+| `ScopedBackend` | 只允许当前活动方案文件，搜索也限制在实际扫描前 |
 | `ExitPlanMode` | 模型请求审阅的普通工具，把操作交给`PlanService.review` |
-| `InterruptPlanPrompt` | 经框架task和interrupt等待本进程用户答案，再检查问题身份 |
-| `PlanToolGate` | 先问计划服务本次能否做，再决定是否继续普通权限检查 |
+| `InterruptPlanPrompt` | 经框架 task 和 interrupt 等待用户答案，再检查问题身份 |
+| `PlanService.authorize` | 先问计划服务本次能否做，再决定是否继续普通权限检查 |
 | `PlanProjection` | 只生成或移除模型的方案提醒，不读写正文、不运行方案 |
 
 ## 查找：各状态和记录保存什么
@@ -112,7 +105,7 @@ Plan 服务没有继承 `AgentMiddleware`。框架负责的第一件事是文件
 | `plan_state` | 当前路径、会话ID和阶段 | 从当前分支重新建立服务状态，但重启不续旧批准 |
 | `checkpoint.plan` | 压缩上下文里保存的方案提醒 | 完成后清除，不能继续提示旧方案仍在执行 |
 
-{{inline:src/pycode/plans/domain/plans.py:PlanState}}
+{{inline:src/pycode/plans/types.py:PlanState}}
 
 
 ## 遇到异常时，程序怎么处理

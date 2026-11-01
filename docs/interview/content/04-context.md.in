@@ -12,7 +12,7 @@ TaskProjection 沿当前分支取最后一份任务板快照（TaskWrite/TaskUpd
 
 程序已经有了上一章说的`SessionSnapshot`。但这个快照包含的是原始记录：用户可能切过分支，某段旧工具输出可能已经有了缩短显示的编辑，之前也可能追加过一次摘要。所以不能直接把全部历史记录转换成SDK消息。
 
-调用方把快照交给`ContextProjector.project`。它先取出用户当前选择的历史路线，再检查能否复用上次整理好的消息。不能复用时，就重新判断哪些旧消息已经由摘要代替、哪些工具输出只需发送简短说明。整理结果是一份用于发送的副本，不会覆盖原始测试结果，用户以后仍可查看完整历史。
+调用方把快照交给`ContextProjector.transform_context`。它先取出用户当前选择的历史路线，再检查能否复用上次整理好的消息。不能复用时，就重新判断哪些旧消息已经由摘要代替、哪些工具输出只需发送简短说明。整理结果是一份用于发送的副本，不会覆盖原始测试结果，用户以后仍可查看完整历史。
 
 例如，程序决定把较早的对话改成摘要，但最后几条测试消息还要完整保留。它把这次决定作为一条压缩记录追加到日志末尾，并记下第一条仍需保留的消息。`retained_context_entries`据此取出摘要、最后仍需保留的消息，以及压缩以后新追加的记录。那几条保留消息本来就写在压缩记录之前；只读它之后的日志，会错误丢掉当前测试结果。代码把压缩记录叫`compaction`，把保留起点记为`first_kept_entry_id`。
 
@@ -66,24 +66,24 @@ TaskProjection 沿当前分支取最后一份任务板快照（TaskWrite/TaskUpd
 
 ## 回看：Context怎样被接进运行，框架又在哪一段使用
 
-应用创建`ContextModule`时，先把Models的请求步骤和结束原因转换方法交进去。它创建整理历史的方法时，接收上一节解释过的有序重建方法；创建摘要服务时，接收历史、对象目录、模型生成方法以及压缩成功后的通知。会话与当前运行借用这些方法，保存后台任务的`SummaryService`负责在关闭时等待任务结束。
+应用直接创建 ContextProjector 并传入实际投影贡献者。SummaryService 另外接收历史、投影器、预算、对象存储和模型生成器；它持有后台任务并在关闭时等待。生成与采用是 prepare 锁内的普通顺序调用，不再注入 prepare_summary adapter。
 
-官方框架主要用在摘要的两处：`prepare_summary`用`RunnableBranch`和`RunnableLambda`把“是否生成、是否采用、只返回报告”串起来；`SummaryWorkflow`用提示模板、统一模型请求步骤和输出解析完成一次摘要调用。核对摘要是否仍适用于当前分支、保留最近消息、保存摘要文件和最终追加压缩记录，都由项目代码明确完成，不是默认SummarizationMiddleware自动替我们做。
+框架步骤用于 SummaryWorkflow 的提示模板、模型请求和输出解析。历史边界核对、摘要采用与日志追加由服务完成，不由默认 SummarizationMiddleware 替代。
 
 | 走完流程后回查 | 手中输入 | 返回或后续动作 |
 |---|---|---|
-| ContextProjector.project | 当前历史、各功能补充输入的方法 | 本次发送的消息，以及它们对应的历史记录 |
+| ContextProjector.transform_context | 当前历史、各功能补充输入的方法 | 本次发送的消息，以及它们对应的历史记录 |
 | ContextMeter.report | 同一历史、整理后的消息和工具设置 | 输入占用多大、依据实际计数还是估算 |
 | SummaryService.prepare / adopt | 当前历史、当时选定的旧消息 | 先生成摘要；重新核对后采用或说明拒绝原因 |
 | ToolEvictionService.apply | 容量限制、摘要正在读取的消息ID | 记录哪些旧输出不再完整发送，重新整理输入 |
 
 后面这些定义现在可以当查阅材料：`InputBudget`保存输入/输出余量，`SummarySource`保存后台模型当时概括的具体范围，`ProjectionContribution`保存一次功能重建方法允许返回什么。先知道它们在流程里解决什么，再展开字段才有意义。
 
-{{inline:src/pycode/context/domain/context_budget.py:InputBudget}}
+{{inline:src/pycode/context/budget.py:InputBudget}}
 
-{{inline:src/pycode/context/domain/summaries.py:SummarySource}}
+{{inline:src/pycode/context/types.py:SummarySource}}
 
-{{inline:src/pycode/context/domain/projection.py:ProjectionContribution}}
+{{inline:src/pycode/kernel/history.py:ProjectionContribution}}
 
 ## 读懂检查：模型下一次读测试结果之前
 

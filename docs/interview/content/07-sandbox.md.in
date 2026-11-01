@@ -6,7 +6,7 @@
 
 ## 第一步：先查这台机器到底能提供什么限制
 
-打开界面或运行doctor时，`Application.sandbox_status`会通过 `SandboxModule.backend` 选择当前平台实现。在macOS上选择 `SeatbeltSandbox`，其他平台返回明确的不可用状态。这里还没有执行测试，也没有调用模型。
+打开界面或运行doctor时，`Application.sandbox_status`会通过 `SandboxService.backend` 选择当前平台实现。在macOS上选择 `SeatbeltSandbox`，其他平台返回明确的不可用状态。这里还没有执行测试，也没有调用模型。
 
 Seatbelt不能只靠“文件存在”判断可用，所以 `status` 会进入 `usable`，实际运行一次 `sandbox-exec ... /usr/bin/true`。它等退出码，限制两秒；取消或超时也要清理这个短进程。这样界面显示的available来自真实探测，而不是从配置里猜出来。
 
@@ -56,7 +56,7 @@ Bash的timeout输入范围是0.1～600秒，默认120秒。随后它创建输出
 
 对Deep Agents来说，Bash只是一个带输入参数说明（schema）和异步执行函数的工具。框架负责把模型调用送进这个函数，工具执行器负责审批；框架不会自动知道应该用哪个Bash、哪些环境变量是秘密、如何杀掉孙进程。
 
-这些机器相关动作留在Sandbox模块。`SandboxModule.bash`构造当前设置下的Bash，`backend`选择隔离实现，`process_runner`交给Bash、Skills和Hooks共同使用。输出writer由工具模块提供，所以机器执行和结果保存能够接起来，但没有相互复制实现。
+这些机器相关动作留在Sandbox模块。`SandboxService.bash`构造当前设置下的Bash，`backend`选择隔离实现，`process_runner`交给Bash、Skills和Hooks共同使用。输出writer由工具模块提供，所以机器执行和结果保存能够接起来，但没有相互复制实现。
 
 构造模块时没有运行测试。`composition.runtime`登记好这些函数，等框架真正调Bash才执行。替换沙箱实现也必须报告真实状态，不能对外返回enabled却在内部直接裸跑。
 
@@ -68,7 +68,7 @@ Bash的timeout输入范围是0.1～600秒，默认120秒。随后它创建输出
 | 谁结束整个进程树 | `stop_process` | 等待退出后才返回 |
 | 子Agent能否退化执行 | `RequiredSandbox.launch` | 满足限制才启动，否则明确错误 |
 
-{{inline:src/pycode/sandbox/domain/sandbox.py:SandboxSettings}}
+{{inline:src/pycode/sandbox/types.py:SandboxSettings}}
 
 ## 回到这次测试，出错时该怎么理解
 

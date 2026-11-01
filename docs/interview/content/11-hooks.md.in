@@ -4,7 +4,7 @@ Hook 在已有 Agent 或工具执行边界触发，不创建另一个 Agent，�
 
 ## 配置和组装
 
-HooksModule 校验规则，应用提供历史、输出和沙箱能力。条件和模板只处理约定字段。配置中不再接受 agent、background 或 async；这些不是静默忽略的兼容选项。
+Hooks 校验规则，应用提供历史、输出和沙箱能力。条件和模板只处理约定字段。配置中不再接受 agent、background 或 async；这些不是静默忽略的兼容选项。
 
 {{chain:11-hooks:assemble}}
 

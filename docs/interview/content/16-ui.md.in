@@ -14,7 +14,7 @@
 
 ## 第一步：窗口打开之后，才打开用户选中的会话
 
-CLI 从统一 `Application.tui` 取得界面对象。应用组装把配置、所选模块和会话打开能力交给 `UIModule.tui`，后者创建 `PyApp`。此时只是创建 Textual App，还没有因为画窗口就请求模型或创建一套独立数据库；界面拿到的是 `InteractiveSessions`，也就是打开和列出会话的接口。
+CLI 调用 Application.tui，直接创建 PyApp(ConfiguredInteractiveSessions(...))。ConfiguredInteractiveSessions 持有 Application 和工具，提供打开、列出、复制会话以及沙箱状态等实际操作。窗口创建时不打开模型连接。
 
 Textual 挂载页面后才调用 `PyApp.on_mount`。它连接输入补全组件、读取沙箱状态，并通过 `switch_session` 打开初始会话。`ConfiguredInteractiveSessions.open` 解析会话名称或 ID，将 PyApp 作为事件消费者交给正常应用会话入口。前面章节的恢复、Plan 初始化、模型资源和关闭过程都因此被复用。
 
@@ -68,29 +68,22 @@ Textual 挂载页面后才调用 `PyApp.on_mount`。它连接输入补全组件�
 |---|---|---|
 | 正在增长的文字和思考内容 | 当前运行事件 | 不能靠这些片段恢复正式回复；退出后不重播 |
 | 完整消息和工具卡片 | `session.inspect`读出的原历史 | 已保存的消息可从会话 Store重新展示 |
-| 等用户回答的审批 | 主运行或指定子成员的当前问题 | 只在本进程原图还在时可以回答 |
+| 等用户回答的审批 | 主运行或指定子成员的当前问题 | 显式 resume 从当前图或持久化 checkpoint 回答 |
 | 上下文token用量 | `SessionView`与`ContextMeter` | 可能使用服务返回用量加后续估算；缺数据就说明不可用 |
-| 展开的测试输出 | 会话里保存的工具结果；超限时 details.full_output_path | 临时目录被清理后，超出预览的部分会丢失 |
+| 展开的测试输出 | 会话里保存的工具结果；超限时 details.full_output_path | 完整输出由会话对象存储保存，维护清理遵循对象引用 |
 | 输入命令补全 | `CommandRegistry`和当前分支技能目录 | 只是输入帮助，查到名称不等于已批准执行 |
 
 漏掉一次界面刷新不等于丢了结果，可以重新读取已保存历史。反过来，流式画面曾显示的内容也不能代替完整消息。
 
 ## 查找：从哪里创建，交给谁使用，谁负责关闭
 
-| 创建入口 | 调用前要提供什么 | 得到什么，交给谁 | 谁负责关闭 |
-|---|---|---|---|
-| `UIModule(output)` | 终端输出流 | 当前选中的显示实现 | 输出流由调用方管理，模块不擅自关闭 |
-| `UIModule.console` | text、json或stream-json格式 | `ConsoleOutput`，交事件发布器发送进度 | 不创建或关闭会话 |
-| `UIModule.tui` | 打开会话的接口、初始会话ID | `PyApp`，交CLI调用run启动Textual | `PyApp.shutdown`关闭它打开的会话 |
-| `Application.tui` | 当前配置、模型配置和所选模块 | 通过`composition.build_tui`创建的UI对象 | 调用方启动，UI退出流程关闭自己的任务和会话 |
-| `composition.build_tui` | 所选UI模块、应用会话操作方法 | 先创建`ConfiguredInteractiveSessions`，再交所选UI工厂 | 构造时不打开模型连接 |
-| `ConfiguredInteractiveSessions.open` | 正常会话打开函数、窗口接收事件的方法、工具 | 把`PyApp`接到事件流的`AgentSession` | UI切换和退出时关闭 |
+Application.console 直接创建 ConsoleOutput，Application.tui 直接创建 PyApp。Textual 挂载后由 ConfiguredInteractiveSessions.open 调用 Application.open_session，把窗口接入事件流。切换与退出由 PyApp.shutdown 等待运行和子审批任务，再关闭它打开的会话。模型、工具和历史始终沿正常应用组装路径创建。
 
 ## 查找：一个类具体做哪段工作
 
 | 代码位置 | 负责的动作 |
 |---|---|
-| `Application.tui`、`UIModule` | 选UI与输出方式，把会话操作接口交给窗口 |
+| `Application.tui`、`ConsoleOutput / PyApp` | 选UI与输出方式，把会话操作接口交给窗口 |
 | `ConfiguredInteractiveSessions` | 将窗口的打开请求交给正常应用会话创建过程 |
 | `PyApp` | 管窗口打开退出、主任务、事件渲染和命令分发 |
 | `ChatInput`、`CompletionPopup` | 处理输入、命令补全、键盘和鼠标动作 |
@@ -111,11 +104,11 @@ Textual 挂载页面后才调用 `PyApp.on_mount`。它连接输入补全组件�
 | `_team_tasks` | 独立的子审批答复任务 | 不占主助手操作锁，退出时仍全部取消并等待 |
 | `_live_text/_live_thinking` | 尚未成为完整消息的显示片段 | 不写成正式历史，消息结束后清掉临时区域 |
 | `_entry_views/_message_views` | `SessionView`缓存的只读展示数据 | 已完成记录不变时可复用，不回写会话 Store |
-| `_pending_plan` | 用户正在看的回退预览 | 确认后才调用revert，不是Plan批准状态 |
+| `session.snapshots` | 当前会话文件快照服务 | 回退在 execution 锁内检查冲突后执行 |
 | `pending/pending_run_id` | 当前等待问题与所属运行 | 日志可解释等待；关进程后不能回答旧图审批 |
 | `subagents.approvals` | 指定子 agent 在等待的问题 | 答案携具体agent_id，不能误投给主运行或别的子助手 |
 
-{{inline:src/pycode/ui/ports/ui.py:InteractiveSession}}
+{{inline:src/pycode/session/agent_session.py:AgentSession}}
 
 
 ## 遇到异常时，程序怎么处理
@@ -130,7 +123,7 @@ active_session／view_state 抛 session_unavailable，而不是在 None 上继�
 
 **关闭后还能点旧批准吗？**
 
-旧控件不能替新进程回答已经消失的等待；重新打开会话会整理保存的记录，并让旧等待过期。
+旧控件不能替新进程回答已经消失的等待；重新打开会话读取持久化等待，显式 resume 时仍核对原问题身份。
 
 **流式文字中途断了，历史是什么？**
 
@@ -142,7 +135,7 @@ _render_failed阻止后续渲染并提示重新打开；不会把异常当作模
 
 **展开输出会重新跑命令吗？**
 
-不会。读的是会话里保存的结果，超限部分读临时文件，都不重新运行命令。
+不会。读的是会话里保存的结果，超限部分读保存的输出对象，都不重新运行命令。
 
 **退出时还有任务没结束？**
 

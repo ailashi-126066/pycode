@@ -74,6 +74,8 @@ class AgentSession:
         self.snapshots = snapshots
 
     async def submit_input(self, message: Message, kind: InputKind) -> bool:
+        if self._closing:
+            raise StorageError("session_closed", "This session is closing or closed")
         snapshot = await self.history.snapshot()
         start = self.pending_run(snapshot)
         if start is None:

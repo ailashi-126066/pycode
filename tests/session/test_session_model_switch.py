@@ -3,11 +3,11 @@ from dataclasses import replace
 import pytest
 
 from pycode.app.api import RunOptions, SessionResources
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from pycode.context.services.context_projector import ContextProjector
+from pycode.app.api import compose_application
+from pycode.app.config import AppConfig
+from pycode.context import ContextProjector
 from pycode.kernel import Message
-from pycode.models.domain.models import ProviderConfig
+from pycode.models import ProviderConfig
 from tests.support.http_provider import chat_completion, protocol_server
 
 
@@ -35,7 +35,7 @@ async def test_selected_provider_and_branch_context_drive_real_framework_after_r
             provider = await control.restore()
             history = ContextProjector().transform_context(await store.snapshot()).messages
             container = await compose_application(config).runtime(
-                SessionResources(session_id="s1", journal=store, tools=(), consumers=()),
+                SessionResources(session_id="s1", history_store=store, tools=(), consumers=()),
                 RunOptions(provider=provider, run_id=input_id),
             )
             try:
@@ -61,7 +61,12 @@ async def test_selected_provider_and_branch_context_drive_real_framework_after_r
         contexts = received[-1]["body"]["messages"]
         assert any(message.get("content") == "first turn" for message in contexts)
         assert not any(message.get("content") == "second provider" for message in contexts)
-        assert final.entries[-1].message.model_selection.provider == "first"
+        last_reply = next(
+            entry.message
+            for entry in reversed(final.entries)
+            if entry.message is not None and entry.message.role == "assistant"
+        )
+        assert last_reply.model_selection.provider == "first"
         await store.aclose()
 
 

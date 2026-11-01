@@ -8,7 +8,7 @@
 
 如果对方接着问“为什么不让终端直接创建模型”，可以从刚才的路线回答：终端和TUI都要使用同一套历史、工具检查与关闭规则。通过Application取得能力，就不用各自重新拼一遍。
 
-你可以回到[组装入口](01-application.md)核对这一段，找到main、command、open_session和run之间传的东西，而不是只记住ApplicationModules这个名字。
+你可以回到[组装入口](01-application.md)核对这一段，找到main、command、open_session和run之间传的东西，而不是只记住应用显式组装这个名字。
 
 ## 再讲中间：模型怎样拿到文件内容
 

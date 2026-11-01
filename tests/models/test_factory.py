@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import replace
 
 import pytest
@@ -98,3 +99,35 @@ async def test_deepseek_payload_returns_each_assistant_reasoning():
     assert payload == parent
     model.root_client.close()
     await model.root_async_client.close()
+
+
+@pytest.mark.parametrize("kind", ["openai", "deepseek", "anthropic"])
+async def test_owned_transports_are_isolated_between_models(kind):
+    import httpx
+    import httpx2
+
+    transport = httpx2 if kind == "anthropic" else httpx
+    first_sync, second_sync = transport.Client(), transport.Client()
+    first_async, second_async = transport.AsyncClient(), transport.AsyncClient()
+    try:
+        first = create_model(
+            configuration(kind), KEYS, http_client=first_sync, http_async_client=first_async
+        )
+        second = create_model(
+            configuration(kind), KEYS, http_client=second_sync, http_async_client=second_async
+        )
+        if kind == "anthropic":
+            sync, asynchronous = first._client, first._async_client
+            other = second._async_client
+        else:
+            sync, asynchronous = first.root_client, first.root_async_client
+            other = second.root_async_client
+        assert sync._client is first_sync and asynchronous._client is first_async
+        await first_async.aclose()
+        await asyncio.to_thread(first_sync.close)
+        assert not other.is_closed() and not second_sync.is_closed
+    finally:
+        await asyncio.to_thread(first_sync.close)
+        await asyncio.to_thread(second_sync.close)
+        await first_async.aclose()
+        await second_async.aclose()

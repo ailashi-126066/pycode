@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 from langgraph.store.base import PutOp
 
-from pycode.context.services.context_projector import ContextProjector
+from pycode.context import ContextProjector
 from pycode.kernel import EntryDraft, Message, ModelSelection, SessionHeader, StorageError
 from pycode.session.store import SqliteSessionStore
 from tests.support.requests import TestTiming

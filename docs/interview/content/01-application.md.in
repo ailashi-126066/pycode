@@ -18,7 +18,7 @@ pycode --workspace /project --providers providers.json -p "给 parser.py 增加�
 
 检查后得到的 `AppConfig` 可以理解为“这次工作的设置单”。后面的模块读这张设置单，不必再各自解析一遍终端参数。比如沙箱开关和允许传给命令的环境变量，都在这里先检查，再交给实际执行的模块。
 
-{{inline:src/pycode/app/configuration/settings.py:AppConfig}}
+{{inline:src/pycode/app/config.py:AppConfig}}
 
 到这里，程序已经知道去哪儿工作，但仍然缺少模型的连接设置。`providers.json` 保存模型名称、服务地址和密钥对应的环境变量名。`command` 读这个文件，得到后续创建模型客户端要用的信息。真正的密钥不需要写进对话记录。
 
@@ -38,7 +38,7 @@ pycode --workspace /project --providers providers.json -p "给 parser.py 增加�
 
 用户这次修复可能不止发一句话：模型可能先读文件，再询问一次批准，之后运行测试，用户还可能继续补充要求。这些内容需要归到同一段对话里。因此 `command` 接着调用 `Application.open_session`，取得一个 `AgentSession`。
 
-打开会话时，程序会先打开保存历史的文件，检查上次有没有留下未确认的工具结果，再准备计划、记忆、Skills、MCP 等当前启用的能力。它还会创建负责开始、暂停和结束本轮工作的对象 `ConfiguredRuntimeLauncher`，后文简称 launcher。
+打开会话时，程序会先打开保存历史的文件，检查上次有没有留下未确认的工具结果，再准备计划、记忆、Skills、MCP 等当前启用的能力。它还会创建负责开始、暂停和结束本轮工作的对象 `SessionLauncher`，后文简称 launcher。
 
 launcher 此时拿到了一些“需要时再调用的方法”。例如，真正开始一轮工作时，它会调用 `build_configured_run`。组装代码先把这个方法交给 launcher，而不是让 launcher 自己去寻找所有功能模块。后面换用别的模块实现时，这条调用路径仍然能保留。
 
@@ -64,7 +64,7 @@ launcher 拿到这个返回值后，接着调用 `container.runtime.run(...)`。
 
 一次工作通常会包含几次模型请求和几次工具调用。`build_runtime` 返回的 `RuntimeContainer` 把这次工作使用的对象放在一起，使 launcher 能在结束时找到它们并关闭连接、等待后台工作停止。
 
-如果组装到一半就失败，还没有拿到完整的 `RuntimeContainer`，怎么办？创建每项资源后，`RunAssembly` 就会记下相应的关闭方法。后面某一步失败时，它依次执行这些方法，避免模型连接或后台任务遗留。这个对象负责的是“尚未组装成功时的清理”，而不是用户任务的执行。
+如果组装到一半就失败，还没有拿到完整的 `RuntimeContainer`，怎么办？创建每项资源后，`AsyncExitStack` 就会记下相应的关闭方法。后面某一步失败时，它依次执行这些方法，避免模型连接或后台任务遗留。这个对象负责的是“尚未组装成功时的清理”，而不是用户任务的执行。
 
 正常完成后，一轮工作里临时创建的模型等对象可以关闭。有些对象还要给后续对话继续使用，例如摘要和 Hook 的后台任务，它们由 launcher 继续管理，到整个会话关闭时再收好。因此代码里要区分“一轮结束”和“用户退出会话”，不能把两者当成同一时刻。
 
@@ -78,22 +78,22 @@ launcher 拿到这个返回值后，接着调用 `container.runtime.run(...)`。
 
 | 模块 | 在修复 parser.py 的过程中做什么 | 接给谁使用 |
 |---|---|---|
-| `SandboxModule` | 按设置启动命令，限制读写和网络，并处理超时与取消 | Bash、Python Skill、Hook等需要开进程的地方 |
-| `SnapshotModule` | 保存编辑前后的文件版本，供后面查看差异和回退 | 工具执行、回退和防打转守卫 |
-| `ModelsModule` | 创建模型客户端，发送请求，记录每次实际请求的用量 | Agent、摘要、记忆等需要模型的地方 |
-| `ToolsModule` | 把可用工具接入同一套检查、执行和结果保存流程 | Agent实际调用的工具 |
-| `HooksModule` | 在配置指定的时刻执行检查或通知动作 | 启动、工具执行前后和退出过程 |
-| `PlansModule` | 管理“先看方案、确认后再改”的计划文件和状态 | 会话、工具检查与界面 |
-| `SessionsModule` | 保存和打开对话，提供历史查看、分支和本地存储管理 | CLI、TUI与其他应用操作 |
-| `ContextModule` | 从历史中整理模型这次要读的内容，内容太多时安排压缩 | 每次模型请求之前 |
-| `MemoryModule` | 查找和管理保存的笔记，按设置整理值得下次保留的信息 | 会话与模型上下文 |
-| `AgentModule` | 让同一个执行图协调模型和工具，直到完成或等待输入 | launcher启动的本轮工作 |
-| `SubagentsModule` | 创建子agent管理器和Agent/SendMessage/StopAgent工具 | 主Agent的子agent工具 |
-| `UIModule` | 提供终端输出和TUI，让用户看到结果与审批 | 应用的交互入口 |
-| `SkillsModule` | 找到并读取任务需要的Skill指令，接上它允许使用的资源 | 模型上下文和工具执行 |
-| `MCPModule` | 连接已配置的外部服务，把其工具接入统一调用流程 | 模型工具与问题回答流程 |
+| `Sandbox` | 按设置启动命令，限制读写和网络，并处理超时与取消 | Bash、Python Skill、Hook等需要开进程的地方 |
+| `SnapshotService` | 保存编辑前后的文件版本，供后面查看差异和回退 | 工具执行、回退和防打转守卫 |
+| `ModelFactory` | 创建模型客户端，发送请求，记录每次实际请求的用量 | Agent、摘要、记忆等需要模型的地方 |
+| `ToolExecutor` | 把可用工具接入同一套检查、执行和结果保存流程 | Agent实际调用的工具 |
+| `Hooks` | 在配置指定的时刻执行检查或通知动作 | 启动、工具执行前后和退出过程 |
+| `PlanService` | 管理“先看方案、确认后再改”的计划文件和状态 | 会话、工具检查与界面 |
+| `SessionService` | 保存和打开对话，提供历史查看、分支和本地存储管理 | CLI、TUI与其他应用操作 |
+| `ContextProjector` | 从历史中整理模型这次要读的内容，内容太多时安排压缩 | 每次模型请求之前 |
+| `MemoryService` | 查找和管理保存的笔记，按设置整理值得下次保留的信息 | 会话与模型上下文 |
+| `AgentRuntime` | 让同一个执行图协调模型和工具，直到完成或等待输入 | launcher启动的本轮工作 |
+| `SubagentManager` | 创建子agent管理器和Agent/SendMessage/StopAgent工具 | 主Agent的子agent工具 |
+| `ConsoleOutput / PyApp` | 提供终端输出和TUI，让用户看到结果与审批 | 应用的交互入口 |
+| `SkillService` | 找到并读取任务需要的Skill指令，接上它允许使用的资源 | 模型上下文和工具执行 |
+| `MCPConnection` | 连接已配置的外部服务，把其工具接入统一调用流程 | 模型工具与问题回答流程 |
 
-AGENTS.md 说明的读取还跨了两处：`ContextModule.instructions` 先选出允许读取的路径，`AgentRuntime.build` 再把这些路径交给框架的 `MemoryMiddleware`。它名字里也有 Memory，但不等于上表中负责笔记的 `MemoryModule`；[记忆章](13-memory.md)会把两条路线分别讲清。
+AGENTS.md 的路径由应用明确选择，AgentRuntime.build 将它们交给框架 MemoryMiddleware；它负责指令注入，MemoryService 负责长期笔记，两者职责不同。
 
 这些对象由 `default_modules` 明确创建。`kernel` 保存大家共同使用的消息结构等基础内容，`app` 负责把功能接起来；这两个目录承担不同职责，没有被凑成额外两个可执行插件。
 
@@ -111,7 +111,7 @@ AGENTS.md 说明的读取还跨了两处：`ContextModule.instructions` 先选�
 
 有了前面的接线方式，关闭 Skills 或 MCP 就有了明确含义：在所选模块集合里把对应项设为 `None`，后续不打开这个运行功能，也不建立它的连接。历史里已有的Skill或MCP记录仍然可以显示，因为“运行功能”与“阅读过去的记录”是两回事。
 
-如果主Agent又创建一个子工作区，路径和权限需要变化，但用户先前选的实现不能丢。`ApplicationModules.scoped` 因此调用各个已选模块自己的调整方法，只改这一子工作区需要的设置。比如模型请求数据库可以换到相应位置，而原来的凭据来源仍应保留。
+如果主 Agent 创建子工作区，composition.child_config 根据子目录、读写与交互限制派生配置；应用再用相同显式组装流程创建子会话。没有模块列表及模块级 scoped 分发。
 
 {{chain:01-application:scoped}}
 
@@ -119,7 +119,7 @@ AGENTS.md 说明的读取还跨了两处：`ContextModule.instructions` 先选�
 
 ## 再看一次配置：模型地址与真正密钥为何分开
 
-第一步只读Provider配置时，得到的是模型服务地址、模型名以及 `api_key_env`，后者是环境变量的名字。等到实际需要访问所选服务时，`ModelsModule.credentials` 才取得真正的值。
+第一步只读Provider配置时，得到的是模型服务地址、模型名以及 `api_key_env`，后者是环境变量的名字。等到实际需要访问所选服务时，`credential_environment` 才取得真正的值。
 
 `credential_environment` 先看当前进程环境；缺少某个被明确引用的值时，才从允许的工作区 `.env` 中补齐。子工作区通过 `credential_workspace` 保留原先获准的凭据来源，避免换个工作目录就拿不到原模型。
 

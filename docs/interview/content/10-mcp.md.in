@@ -4,7 +4,7 @@ MCP 负责远端工具发现和执行，工具搜索由公共 Tools 组件负责
 
 ## 连接与发现
 
-配置通过 MCPModule.open_session 校验后建立会话连接。FastMCP 处理 stdio/HTTP、协议和分页，LangChain 的原生工具转换将同一次发现快照变成可调用工具。目录和执行对象共享这一批定义，初次连接不再重复刷新列表。
+配置通过 MCPConnection.open_session 校验后建立会话连接。FastMCP 处理 stdio/HTTP、协议和分页，LangChain 的原生工具转换将同一次发现快照变成可调用工具。目录和执行对象共享这一批定义，初次连接不再重复刷新列表。
 
 {{chain:10-mcp:catalog}}
 

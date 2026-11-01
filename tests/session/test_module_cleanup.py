@@ -5,7 +5,7 @@ from contextlib import AsyncExitStack
 
 import pytest
 
-from pycode.kernel import StorageError
+from pycode.kernel import Message, StorageError
 from pycode.session.agent_session import AgentSession
 from pycode.session.view import SessionView
 
@@ -122,3 +122,39 @@ async def test_active_session_close_keeps_resources_owned_until_run_is_collected
         assert calls == []
     await session.aclose()
     assert calls == ["launcher", "history"]
+
+
+async def test_closing_session_rejects_input_before_touching_store():
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_close():
+        entered.set()
+        await release.wait()
+
+    closing = AsyncExitStack()
+    closing.push_async_callback(slow_close)
+    session = AgentSession(
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        closing=closing,
+        skills=None,
+        plans=None,
+        memory=None,
+        tasks=None,
+        snapshots=None,
+    )
+    task = asyncio.create_task(session.aclose())
+    await entered.wait()
+    try:
+        with pytest.raises(StorageError) as error:
+            await session.submit_input(Message("u", "user", "late"), "steer")
+        assert error.value.code == "session_closed"
+    finally:
+        release.set()
+        await task

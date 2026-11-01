@@ -9,8 +9,8 @@
     ],
     "guide": "准备阶段把manifest中的一题读成EvaluationTask，是为了让解题限制和独立判题使用相同文件名单、命令和预算。runner和solver之后都读它，不能一边允许改某些文件、另一边又按另一套清单检查。这个结构保存规则本身，不包含模型已经完成题目的结论。"
   },
-  "src/pycode/session/adapters/storage/layout.py::StorageLayout": {
-    "file": "src/pycode/session/adapters/storage/layout.py",
+  "src/pycode/session/store.py::StorageLayout": {
+    "file": "src/pycode/session/store.py",
     "name": "StorageLayout",
     "purpose": "从完整工作区路径确定数据存放位置",
     "notes": [

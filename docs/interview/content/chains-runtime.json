@@ -7,7 +7,7 @@
     "why": "否则模型可能把用户已放弃的修复和测试结果继续当成当前任务。",
     "nodes": [
       {
-        "file": "src/pycode/kernel/domain/history_tree.py",
+        "file": "src/pycode/kernel/history.py",
         "name": "SessionTree.__init__",
         "purpose": "建立按追加顺序校验的历史索引",
         "notes": [
@@ -16,7 +16,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/kernel/domain/values.py",
+            "file": "src/pycode/kernel/values.py",
             "name": "freeze_value",
             "purpose": "冻结dataclass、映射和序列的内部值",
             "notes": [
@@ -29,7 +29,7 @@
         "guide": "用户的修复请求已经保存，但后续发送不能只按日志末尾取消息。这里接收会话记录或存储检查过的索引，检查新记录的身份和父子顺序，并冻结内部可变内容。它把可查询的树留给调用方，随后再由路径查询决定这次真正使用哪条历史。"
       },
       {
-        "file": "src/pycode/kernel/domain/history_tree.py",
+        "file": "src/pycode/kernel/history.py",
         "name": "SessionTree.path",
         "purpose": "根据当前选中位置取出整条历史",
         "notes": [
@@ -53,7 +53,7 @@
     "why": "界面不能先显示测试成功，再靠一次可能失败的保存补出证据。",
     "nodes": [
       {
-        "file": "src/pycode/kernel/services/events.py",
+        "file": "src/pycode/kernel/events.py",
         "name": "EventStream.emit",
         "purpose": "串行分配事件并按顺序投递给消费者",
         "notes": [
@@ -63,7 +63,7 @@
         "guide": "测试结果保存后，调用方还要让界面及时知道发生了什么，才把事件种类、内容和操作身份交给这里。方法先取得序号，再按顺序把独立副本送给消费者。它返回事件而不保存工具消息；普通显示异常停用该消费者，管道关闭则要求上层结束执行。"
       },
       {
-        "file": "src/pycode/kernel/adapters/event_journal.py",
+        "file": "src/pycode/kernel/events.py",
         "name": "MemoryEventJournal.append_event",
         "purpose": "在内存中按会话和运行分别编号",
         "notes": [
@@ -72,7 +72,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/kernel/domain/values.py",
+            "file": "src/pycode/kernel/values.py",
             "name": "clone_value",
             "purpose": "把已保存的值复制出来，供外部安全修改",
             "notes": [
@@ -99,7 +99,7 @@
     "why": "停止一个异步调用并不证明线程没写文件；单文件完整发布也不证明多文件已经一起回滚。",
     "nodes": [
       {
-        "file": "src/pycode/kernel/adapters/file_lease.py",
+        "file": "src/pycode/kernel/io.py",
         "name": "FileLease.acquire",
         "purpose": "立即尝试取得文件写锁，失败就报告",
         "notes": [
@@ -108,7 +108,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/kernel/adapters/file_lease.py",
+            "file": "src/pycode/kernel/io.py",
             "name": "FileLease.close",
             "purpose": "释放平台锁并关闭句柄",
             "notes": [
@@ -121,7 +121,7 @@
         "guide": "准备更新会话或记忆文件时，调用方先需要确认没有其他进程同时写同一份数据。这里根据租约路径打开文件，尝试平台的非阻塞写锁；冲突就明确报错。成功后句柄留给取得它的操作，后者才能继续检查版本和写入，结束时还必须释放这把锁。"
       },
       {
-        "file": "src/pycode/kernel/adapters/path_io.py",
+        "file": "src/pycode/kernel/io.py",
         "name": "owned_io",
         "purpose": "等待已经开始的文件操作完成，再响应取消",
         "notes": [
@@ -132,7 +132,7 @@
         "guide": "保存记录或修改文件的方法准备好后，调用方把具体函数和参数交到这里，避免阻塞事件循环。方法在线程中执行并等待结果，外部取消到来时仍等自己开始的线程结束，再向上抛取消。返回后上层才能说明磁盘操作有了结果，而不能把停止误说成从未写入。"
       },
       {
-        "file": "src/pycode/kernel/adapters/path_io.py",
+        "file": "src/pycode/kernel/io.py",
         "name": "atomic_write",
         "purpose": "临时文件写完并fsync后替换目标",
         "notes": [
@@ -156,73 +156,38 @@
     "why": "仅仅选择了一个模型名字，还不能证明客户端、账本和关闭责任都已准备好。",
     "nodes": [
       {
-        "file": "src/pycode/models/module.py",
-        "name": "ModelsModule.owner",
-        "purpose": "为这轮准备模型、账本和最后的关闭方法",
+        "file": "src/pycode/app/composition.py",
+        "name": "open_model",
+        "purpose": "创建模型及本次用量记录",
         "notes": [
-          "factory = ModelFactory(self.credentials((provider,)), observation)：凭据仅在当次Provider真正使用时解析。",
-          "events if events is not None else EventStream(...)：借用外部sink时，不创建也不关闭另一个journal。 except BaseException: await _finish_owned_close(...)：包括取消在内的构造失败都等待回收。"
+          "显式提供自有 HTTP transport，关闭一个 owner 不影响另一个模型。",
+          "用量来自 LangChain 消息 metadata，不再包装 SDK 观测请求。"
         ],
         "helpers": [
           {
-            "file": "src/pycode/models/module.py",
-            "name": "ModelsModule.credentials",
-            "purpose": "真正使用模型时，再读取当次Provider所需密钥",
+            "file": "src/pycode/app/config.py",
+            "name": "credential_environment",
+            "purpose": "解析配置引用的凭据",
             "notes": [
-              "self.environment(providers)：先组装一个空Provider应用，之后显式runtime(provider)也能解析正确密钥。",
-              "dict(source)：不会把可变共享环境直接交给SDK。"
+              "只传运行所需凭据给模型构造。",
+              "凭据值不写进会话历史或模型说明。"
             ],
-            "guide": "准备模型目录或客户端时，父函数才需要当次模型引用的真实环境值，因此调用这里。若应用给的是延迟方法，就把本次模型集合传过去；若给的是映射，就读取该映射。它返回独立字典供SDK构造使用，不把秘密加入消息、缓存或请求账本。"
+            "guide": "组装模型之前，从允许的环境来源取得配置引用的密钥。"
           }
         ],
-        "guide": "应用已经选好模型，但尚无可发送请求的SDK对象和账本。这里接收模型配置、会话运行身份及用途，解析凭据后把客户端、记录方法和事件连接起来。成功返回的一组对象由调用方最后关闭；中途失败则在返回错误前等待已创建资源释放。"
+        "guide": "app 在资源栈中创建模型、事件与请求账本，运行完成由资源所有者关闭。"
       },
       {
-        "file": "src/pycode/models/adapters/factory.py",
-        "name": "ModelFactory.create",
-        "purpose": "选择官方SDK并关闭其内置重试",
+        "file": "src/pycode/models/factory.py",
+        "name": "create_model",
+        "purpose": "选择官方模型实现",
         "notes": [
-          "\"max_retries\": 0：避免SDK重试和应用逐attempt重试叠加成不可计数请求。",
-          "self._owned_clients.append(root) 位于异步client构造之前：后者失败时前者已经可被回收。 common[\"extra_body\"] = {\"thinking\": dict(config.thinking) or {\"type\": \"disabled\"}}：DeepSeek思考模式显式发送，不能靠省略猜测。"
+          "OpenAI API 模式来自配置；DeepSeek 回传 reasoning_content。",
+          "Anthropic 的小子类只解决 transport 所有权，不重新统计 SDK 用量。"
         ],
-        "helpers": [
-          {
-            "file": "src/pycode/models/adapters/observation.py",
-            "name": "ProviderObservation.request_options",
-            "purpose": "为DeepSeek恢复已记录assistant推理内容",
-            "notes": [
-              "messages = clone_value(options[\"messages\"])：只修改发送副本。",
-              "message[\"reasoning_content\"] = reasoning：保留工具调用后续对话所需原生字段，不自写HTTP/SSE解析器。"
-            ],
-            "edge": "延迟SDK包装回调：create注入观察器，真正发送时才执行",
-            "guide": "SDK包装器真正准备发送时，才把请求参数交到这里。对于需要延续推理内容的模型，它复制消息并补回已记录的助手推理字段，再把参数交还原SDK发送。这里不另发网络请求，也不改磁盘历史；它解决的是工具调用后的下一次请求仍能保持协议完整。"
-          }
-        ],
+        "helpers": [],
         "edge": "直接调用：owner取得模型",
-        "guide": "已经取得模型配置和凭据以后，父函数还需要一个真正能调用的官方SDK模型。这里按实现选择对应集成，设置推理参数并关闭SDK自己的隐藏重试。创建过的客户端会立即登记，成功后返回模型；失败时父函数才能依据登记清单完整关闭它们。"
-      },
-      {
-        "file": "src/pycode/models/module.py",
-        "name": "_finish_owned_close",
-        "purpose": "即使收到取消，也等待资源关闭完成",
-        "notes": [
-          "closing = asyncio.create_task(_close_resources(...))：创建的是有明确等待责任的关闭任务。",
-          "except asyncio.CancelledError: await closing：关闭遇取消时先等待已拥有任务，再传播取消。 本节点是失败回滚或owner.aclose路径，不是每次create成功后的下一步。"
-        ],
-        "helpers": [
-          {
-            "file": "src/pycode/models/module.py",
-            "name": "_close_resources",
-            "purpose": "关闭SDK、请求数据库和自己创建的事件记录",
-            "notes": [
-              "层层finally：先前资源关闭失败不能阻止后续资源释放。",
-              "if events is not None：仅关闭owner自建journal，借用sink不在参数中。"
-            ],
-            "guide": "模型关闭方法需要确保前一项失败也不漏掉后面资源，所以把已取得的对象交到这里。它按客户端、请求数据库、自建事件记录的次序调用关闭，并用逐层结束处理继续后项。借用事件方法不在待关闭对象中，调用方仍保留自己的关闭责任。"
-          }
-        ],
-        "edge": "失败或关闭分支：创建异常/owner结束时进入",
-        "guide": "一轮模型不再使用，或创建中途失败以后，调用者需要等所有关闭动作真正完成。这里为关闭过程建立一个始终被等待的任务，外部取消也先等待它结束再传播。它不修改请求结果，返回只表示这组客户端、账本和自有事件记录的释放已有明确结果。"
+        "guide": "根据 provider 配置构造官方 LangChain 模型，并注入明确拥有的 transport。"
       }
     ],
     "result": [
@@ -238,7 +203,7 @@
     "why": "否则一次失败重试可能只留下最后的成功，无法说明程序实际发了几次请求和用了多少token。",
     "nodes": [
       {
-        "file": "src/pycode/models/adapters/model_requests.py",
+        "file": "src/pycode/models/requests.py",
         "name": "model_request_step",
         "purpose": "先把请求方法包装成框架以后能调用的步骤",
         "notes": [
@@ -247,7 +212,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/models/adapters/model_requests.py",
+            "file": "src/pycode/models/requests.py",
             "name": "model_request_step.invoke",
             "purpose": "框架运行这个步骤时，才交给Runner发送",
             "notes": [
@@ -260,7 +225,7 @@
         "guide": "Agent或摘要流程已经准备好请求，但希望把请求记录和重试接入同一串步骤，所以传入请求方法、框架处理函数与逻辑身份。这里只创建一个以后运行的步骤并返回，不在构造时发网络请求。等调用它的异步执行入口，内部闭包才把请求交给记录方法。"
       },
       {
-        "file": "src/pycode/models/adapters/model_requests.py",
+        "file": "src/pycode/models/requests.py",
         "name": "ModelRequestRunner.invoke",
         "purpose": "串行使用同一Runner与SDK观察器",
         "notes": [
@@ -271,7 +236,7 @@
         "guide": "请求步骤已经交来消息和处理方法，这里先取得本组模型的调用锁。同一SDK观察器不能让两个内部请求同时覆盖当前请求身份和用量，拿锁后才进入实际请求流程。完成或失败结果向外返回后锁才释放，因此后续重试和计费都归属于正确的调用。"
       },
       {
-        "file": "src/pycode/models/adapters/model_requests.py",
+        "file": "src/pycode/models/requests.py",
         "name": "ModelRequestRunner._invoke",
         "purpose": "接着已有尝试编号，交给官方重试中间件",
         "notes": [
@@ -280,17 +245,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/models/adapters/model_requests.py",
-            "name": "ModelRequestRunner._invoke.metered_attempt",
-            "purpose": "每次真正重试都取得新的尝试编号",
-            "notes": [
-              "attempts.value += 1：attempt计数属于本轮调用，不在SDK内部暗增。",
-              "error.retryable and index < self._policy.max_retries：不可重试400、认证或实现错误不等待。"
-            ],
-            "guide": "官方重试组件决定发起一次尝试时，会回调这个闭包，而不是直接绕过账本调用SDK。闭包增加本轮计数，交给实际尝试方法；遇到允许重试的错误，先发布重试说明并等待明确退避。随后重新抛错，由官方组件决定是否继续，避免两套重试各自运行。"
-          },
-          {
-            "file": "src/pycode/models/domain/requests.py",
+            "file": "src/pycode/models/types.py",
             "name": "RetryPolicy.delay",
             "purpose": "合并指数退避和服务端Retry-After",
             "notes": [
@@ -304,7 +259,7 @@
         "guide": "已经取得调用锁以后，需要决定这轮实际尝试从哪个序号开始，并把重试交给官方中间件。这里先查同一逻辑请求已有记录，再创建计数闭包与重试组件。组件每次回调都会进入单独尝试方法；最终结果原样返回，不用最后成功覆盖之前失败。"
       },
       {
-        "file": "src/pycode/models/adapters/model_requests.py",
+        "file": "src/pycode/models/requests.py",
         "name": "ModelRequestRunner.invoke_attempt",
         "purpose": "先记录开始，再调用SDK，最后保存结果",
         "notes": [
@@ -313,7 +268,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/models/adapters/failures.py",
+            "file": "src/pycode/models/requests.py",
             "name": "ProviderFailureClassifier.classify",
             "purpose": "将公开SDK错误分类为稳定失败",
             "notes": [
@@ -323,7 +278,7 @@
             "guide": "SDK抛出异常后，记录方法需要知道它是否属于暂时服务故障，才调用这里。它识别公开异常的状态、连接和超时信息，返回稳定错误码与是否允许重试。未知程序异常返回无法分类，由上层继续抛出，不能因为用户在等修复就一律换模型再猜一次。"
           },
           {
-            "file": "src/pycode/models/adapters/model_requests.py",
+            "file": "src/pycode/models/requests.py",
             "name": "ModelRequestRunner.settle_failure",
             "purpose": "失败与取消也写实际用量及最终状态",
             "notes": [
@@ -350,7 +305,7 @@
     "why": "关闭工具选择不应顺便关闭名单检查，目录中有实现也不能说明模型本次已看见它。",
     "nodes": [
       {
-        "file": "src/pycode/tools/adapters/discovery.py",
+        "file": "src/pycode/tools/discovery.py",
         "name": "ToolDiscovery.disclose",
         "purpose": "提供分类简表和已加载定义",
         "guide": "收到已通过权限和 Skill 范围过滤的候选工具后，生成名称及一句话用途。只有成功保存的 ToolSearch 结果能使对应完整定义进入后续模型请求；本地和 MCP 工具使用同一入口。",
@@ -360,7 +315,7 @@
         ]
       },
       {
-        "file": "src/pycode/tools/adapters/discovery.py",
+        "file": "src/pycode/tools/discovery.py",
         "name": "ToolDiscovery.execute",
         "purpose": "检索目录并返回完整定义",
         "guide": "主模型按名称或关键词调用 ToolSearch。这里匹配当前允许的候选目录，返回有限数量的完整定义；不执行目标工具。结果保存后，下一轮 disclose 才提供可调用定义。",
@@ -370,7 +325,7 @@
         ]
       },
       {
-        "file": "src/pycode/models/adapters/calibration.py",
+        "file": "src/pycode/agent/calibration.py",
         "name": "calibrate_model_request",
         "purpose": "记录实际发送的定义及上下文体积",
         "guide": "工具加载完成后，校准步骤记录最终模型工具名单及系统提示。执行层据此拒绝模型猜出的未加载工具，预算则包含分类目录和完整定义。",
@@ -393,7 +348,7 @@
     "why": "直接发送日志末尾会丢保留tail，或者把另一条修复路线和重复指令混入当前输入。",
     "nodes": [
       {
-        "file": "src/pycode/context/services/context_projector.py",
+        "file": "src/pycode/context/projector.py",
         "name": "ContextProjector.transform_context",
         "purpose": "照 Pi transformContext：把会话记录投影成发给模型的消息",
         "notes": [
@@ -402,7 +357,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/context/services/context_projector.py",
+            "file": "src/pycode/context/projector.py",
             "name": "ContextProjector.incremental",
             "purpose": "各功能都明确允许时，才复用旧结果并只处理新增消息",
             "notes": [
@@ -412,7 +367,7 @@
             "guide": "整理历史时发现已有缓存，父函数先来询问是否只处理新增尾部。这里检查全部重建方法是否明确允许复用，再确认只是安全的普通追加；满足时保留旧消息引用并补入新内容。返回空值表示必须全量重建，不是历史为空，特殊编辑和未知扩展不能冒险复用。"
           },
           {
-            "file": "src/pycode/context/domain/tool_pairing.py",
+            "file": "src/pycode/context/compaction.py",
             "name": "repair_tool_pairing",
             "purpose": "发送副本中补齐未知结果并保持调用配对",
             "notes": [
@@ -425,7 +380,7 @@
         "guide": "模型即将再读修复过程，调用方把当前快照交到这里取得发送消息。方法先判断可否复用，再按选中分支处理保留和编辑，并调用各功能自己的历史重建方法。返回包含消息、来源与补充数据的结果；原始读取和测试输出仍在磁盘上，没有被这里覆盖。"
       },
       {
-        "file": "src/pycode/context/services/context_projector.py",
+        "file": "src/pycode/context/projector.py",
         "name": "ContextProjector.projected_entries",
         "purpose": "确定仍需完整保留的消息，以及哪些正文不再发送",
         "notes": [
@@ -434,7 +389,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/context/domain/retention.py",
+            "file": "src/pycode/context/compaction.py",
             "name": "retained_context_entries",
             "purpose": "保留最近摘要、压缩前仍需保留的消息以及压缩后追加",
             "notes": [
@@ -448,15 +403,15 @@
         "guide": "当前分支路径已经确定，父函数还要解释摘要保留范围与最新的发送编辑，才进入这里。它先选应保留记录，再把针对旧输出的替换应用到副本，并恢复工具说明快照。返回消息分组和补充数据供父函数继续合并各功能提醒，旧记录保持不变。"
       },
       {
-        "file": "src/pycode/context/ports/projection.py",
-        "name": "ProjectionContributor.contribute",
-        "purpose": "各功能根据只读历史补充自己那部分输入",
+        "file": "src/pycode/tasks/tasks.py",
+        "name": "task_contribution",
+        "purpose": "把任务板状态投影给模型",
         "notes": [
-          "checkpoint: Mapping[str, Any] 与 tuple参数：消费只读共享事实。",
-          "实际运行由project的contributor.contribute(...)分派；memory/plans/system/MCP/Skills默认实现与顺序在ApplicationModules中选择。"
+          "贡献函数接收当前分支和 checkpoint。",
+          "只有真实贡献者参与调用，不继承统一 Feature 基类。"
         ],
         "edge": "端口分派说明：project调用所选实现，本节点展示契约",
-        "guide": "基本历史整理完成后，父函数会调用应用选好的功能重建方法，让它补充记忆、计划或指令。这里展示的是这类方法的参数与返回约定，而非可直接执行的实现。输入是只读快照和当前消息，返回自己那部分新增内容，父函数还会检查字段归属后才合并。"
+        "guide": "ContextProjector 调用实际注册的投影函数，任务板由自己的贡献函数重建。"
       }
     ],
     "result": [
@@ -472,7 +427,7 @@
     "why": "测试日志可能很长，按消息条数猜容量会出错，估算也不能冒充Provider真实账单。",
     "nodes": [
       {
-        "file": "src/pycode/context/domain/context_budget.py",
+        "file": "src/pycode/context/budget.py",
         "name": "InputBudget.create",
         "purpose": "从窗口和输出预算构造安全输入额度",
         "notes": [
@@ -481,7 +436,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/context/domain/context_budget.py",
+            "file": "src/pycode/context/budget.py",
             "name": "InputBudget.input_limit",
             "purpose": "计算真正可用输入额度",
             "notes": [
@@ -491,7 +446,7 @@
             "guide": "预算对象已经建立，容量检查需要知道最多还能发送多少输入，因此读取这个属性。它从总窗口中扣去输出预留和安全余量，返回一个明确数值给摘要和发送准备。这里不计算实际消息大小，也不能拿这个上限当成模型已经使用或已经计费的token数。"
           },
           {
-            "file": "src/pycode/context/domain/context_budget.py",
+            "file": "src/pycode/context/budget.py",
             "name": "InputBudget.cache_trigger",
             "purpose": "计算提前准备摘要的阈值",
             "notes": [
@@ -504,7 +459,7 @@
         "guide": "发送前已经知道模型总窗口和希望留下的输出额度，但仍缺一个安全输入上限。调用方把这两个数传到这里，方法增加按窗口计算的余量并构造预算对象。返回对象交给容量计算和摘要准备，非法配置立即拒绝，不等远程服务报输入过长才处理。"
       },
       {
-        "file": "src/pycode/context/domain/context_meter.py",
+        "file": "src/pycode/context/budget.py",
         "name": "ContextMeter.report",
         "purpose": "选择可复用的模型实际返回的用量或明确回退估算",
         "notes": [
@@ -513,7 +468,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/context/services/summary.py",
+            "file": "src/pycode/context/summary.py",
             "name": "SummaryService.checkpoint",
             "purpose": "采用摘要时才取 checkpoint",
             "notes": [
@@ -540,7 +495,7 @@
     "why": "后台生成期间修复还可能继续，文字生成成功不等于能替代现在的历史。",
     "nodes": [
       {
-        "file": "src/pycode/context/services/summary.py",
+        "file": "src/pycode/context/summary.py",
         "name": "SummaryService.prepare",
         "purpose": "在服务锁内检查并开始准备摘要",
         "notes": [
@@ -549,7 +504,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/context/services/summary.py",
+            "file": "src/pycode/context/summary.py",
             "name": "SummaryService.inspect_preparation",
             "purpose": "检查是否达到摘要阈值、旧消息是否变化、已有摘要能否用",
             "notes": [
@@ -562,17 +517,17 @@
         "guide": "模型前准备或用户手工压缩时，调用方把是否强制、是否等待等意图交到这里。它在服务锁内先检查当前历史和容量，再委托已注入的准备步骤。返回报告可能只是生成中或无需处理，并不保证发生压缩；调用方接着用受保护消息名单安排旧输出省略。"
       },
       {
-        "file": "src/pycode/context/adapters/summary.py",
-        "name": "prepare_summary",
-        "purpose": "用官方顺序和分支步骤连接生成、采用检查和报告",
+        "file": "src/pycode/context/summary.py",
+        "name": "SummaryService.prepare",
+        "purpose": "在服务锁内顺序生成、检查采用并返回报告",
         "notes": [
-          "await service.start_generation(current)：生成调用受服务状态机约束。",
-          "该adapter执行注入的服务方法，不另开一个Agent循环，也不绕过service锁。"
+          "inspect_preparation 检查历史与容量，start_generation 启动任务。",
+          "apply_prepared 仅在明确需要时采用；preparation_report 返回当前状态。"
         ],
-        "edge": "注入函数：ContextModule给SummaryService的preparation",
+        "edge": "直接服务方法调用",
         "helpers": [
           {
-            "file": "src/pycode/context/services/summary.py",
+            "file": "src/pycode/context/summary.py",
             "name": "SummaryService.start_generation",
             "purpose": "固定要概括的消息，启动由摘要服务负责等待的后台任务",
             "notes": [
@@ -581,7 +536,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/context/domain/summary_source.py",
+                "file": "src/pycode/context/summary.py",
                 "name": "capture_source",
                 "purpose": "选定要概括的旧消息，避免拆开工具调用和结果",
                 "notes": [
@@ -595,7 +550,7 @@
             "guide": "准备步骤判定需要生成摘要后，才把检查结果交到这里。方法固定本次来源和保留切点，先保存来源与生成说明，再登记一个稍后执行的后台任务。返回时可能还没有摘要文本，服务保存任务引用，后续等待或取消都能找到自己已经启动的工作。"
           },
           {
-            "file": "src/pycode/context/services/summary.py",
+            "file": "src/pycode/context/summary.py",
             "name": "SummaryService.apply_prepared",
             "purpose": "已生成摘要且允许采用时，再调用adopt核对",
             "notes": [
@@ -605,10 +560,10 @@
             "guide": "准备流程已经允许采用，但结果可能还在生成，因此进入这里判断是否等待。方法只在明确等待策略下等待已登记任务，取到可用结果后才调用采用方法。它向父流程返回采用报告或当前状态；失败、取消或未准备好不能被解释成历史已经成功缩短。"
           }
         ],
-        "guide": "服务锁内已经得到本次检查结果，这个注入的方法负责把条件转成具体阶段。它用官方组合步骤决定是否启动生成、是否尝试采用，或者只返回当前报告。输出交回服务调用方；真正生成和写历史仍由服务方法完成，这里不另建一套Agent执行循环。"
+        "guide": "摘要准备直接在 SummaryService 中连接检查、生成和采用步骤，不再注入一个框架 adapter。服务持有任务与锁，关闭时等待任务。"
       },
       {
-        "file": "src/pycode/context/services/summary.py",
+        "file": "src/pycode/context/summary.py",
         "name": "SummaryService.produce",
         "purpose": "分别保存摘要已生成、失败或中断的状态",
         "notes": [
@@ -618,7 +573,7 @@
         "edge": "后台任务入口：start_generation登记的task调用",
         "helpers": [
           {
-            "file": "src/pycode/context/adapters/background.py",
+            "file": "src/pycode/context/summary.py",
             "name": "ConfiguredSummaryGenerator.generate",
             "purpose": "为摘要创建独立模型，用完等待关闭，不启动Agent工具循环",
             "notes": [
@@ -632,7 +587,7 @@
         "guide": "后台任务真正开始时，接收的是先前固定好的来源和生成方法，而不是不断变化的最新对话。它等待生成结果，保存可采用、失败或中断状态，并通知准备流程。文本生成完成仍只是候选结果，父服务以后还要重新核对来源，才有资格追加压缩记录。"
       },
       {
-        "file": "src/pycode/context/adapters/summary.py",
+        "file": "src/pycode/context/summary.py",
         "name": "SummaryWorkflow.run",
         "purpose": "用官方组合步骤请求摘要模型，不允许它调用工具",
         "notes": [
@@ -641,7 +596,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/context/adapters/summary.py",
+            "file": "src/pycode/context/summary.py",
             "name": "validate_summary_response",
             "purpose": "拒绝工具调用和不完整摘要响应",
             "notes": [
@@ -651,7 +606,7 @@
             "guide": "摘要请求已返回，文本解析之前必须先确认它能当作摘要使用，因此父流程调用这里。方法检查最后消息类型、工具调用和结束原因，成功才返回完整助手响应给解析器。若模型想调工具或被输出上限截断，就抛明确错误，不能拿不完整内容覆盖旧历史。"
           },
           {
-            "file": "src/pycode/context/adapters/summary.py",
+            "file": "src/pycode/context/summary.py",
             "name": "clean_summary_text",
             "purpose": "仅接受有效摘要正文",
             "notes": [
@@ -665,7 +620,7 @@
         "guide": "已经有固定来源和可计量的模型，生成方法才调用这里执行一次逻辑摘要。流程把原记录序列化为提示，经过统一请求步骤，再检查正常结束、无工具调用及有效正文。返回文本和实际尝试用量给后台服务；允许重试仍会分别记录，不等于只发一次网络请求。"
       },
       {
-        "file": "src/pycode/context/services/summary.py",
+        "file": "src/pycode/context/summary.py",
         "name": "SummaryService.adopt",
         "purpose": "校验当前历史并模拟压缩后的输入大小",
         "notes": [
@@ -674,7 +629,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/context/domain/summary_source.py",
+            "file": "src/pycode/context/summary.py",
             "name": "valid_source",
             "purpose": "允许后来追加消息，但要检查当时概括的旧消息没有变化",
             "notes": [
@@ -684,7 +639,7 @@
             "guide": "采用摘要或恢复已有结果以前，父函数需要确认后台当时概括的仍是现在这段内容。这里比较会话身份、配置校验值、前次压缩与前缀ID及内容校验值，返回真假。允许仅追加新的尾部，不允许当时选定的旧消息悄悄变化；父函数据此决定继续采用还是使旧结果失效。"
           },
           {
-            "file": "src/pycode/memory/services/memory.py",
+            "file": "src/pycode/memory/memory.py",
             "name": "MemoryService.compacted",
             "purpose": "成功采用摘要后通知记忆模块",
             "notes": [
@@ -695,7 +650,7 @@
             "guide": "摘要已经安全追加到历史以后，Context通过应用交给它的方法通知这里。方法只为这次压缩生成整理身份，并转入记忆服务的普通任务安排流程。它不在压缩函数内部直接跑记忆工具；是否启用、是否已有任务以及最后保存什么，接下来由记忆模块自己处理。"
           }
         ],
-        "edge": "条件采用：prepare_summary经apply_prepared在结果ready后调用",
+        "edge": "条件采用：SummaryService.prepare 经 apply_prepared在结果ready后调用",
         "guide": "后台已经有可用摘要，当前流程也允许采用，但原对话可能已经继续变化。这里再次读历史、核对固定来源和配置，再模拟摘要加保留尾部能否放入窗口。全部通过才追加压缩记录并通知记忆模块；失败保留旧历史，不把生成成功等同于采用成功。"
       }
     ],
@@ -712,7 +667,7 @@
     "why": "缩短模型输入不能删除测试证据，也不能改变正在被后台摘要读取的来源。",
     "nodes": [
       {
-        "file": "src/pycode/context/services/tool_eviction.py",
+        "file": "src/pycode/context/eviction.py",
         "name": "ToolEvictionService.apply",
         "purpose": "按容量决定省略哪些旧输出，并保存这次决定",
         "notes": [
@@ -721,7 +676,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/context/domain/tool_eviction.py",
+            "file": "src/pycode/context/eviction.py",
             "name": "select_old_results",
             "purpose": "纯函数选择可省略的旧结果",
             "notes": [
@@ -734,7 +689,7 @@
         "guide": "摘要准备已经给出正在使用的消息ID，模型前流程才把这些保护信息交到这里处理旧测试输出。方法选择足够旧的结果，追加简短替换说明，再重新计算节省量并记录目标。返回后的下一次整理的发送消息会变短，但原工具消息仍在会话里。"
       },
       {
-        "file": "src/pycode/context/services/context_projector.py",
+        "file": "src/pycode/context/projector.py",
         "name": "ContextProjector.transform_context",
         "purpose": "照 Pi transformContext：把会话记录投影成发给模型的消息",
         "notes": [
@@ -753,22 +708,22 @@
   "05-agent:build": {
     "title": "应用交清方法后，创建本次图并提交输入",
     "input_label": "跟着parser.py修复过程读这一段",
-    "request": "AgentModule.runtime(model, bindings=...); await runtime.run(inputs, context)",
+    "request": "AgentRuntime(model, bindings=...); await runtime.run(inputs, context)",
     "intro": "模块入口先交出带明确方法集合的runtime，Launcher提交用户消息以后才建图。图登记工具、回调与检查点，再由官方调用方法运行；登记中间件本身不等于已经执行工具。",
     "why": "否则容易把一组工厂赋值误认为任务已经完成，或在框架外再写一套重复执行循环。",
     "nodes": [
       {
-        "file": "src/pycode/agent/module.py",
-        "name": "AgentModule.runtime",
-        "purpose": "在功能内部选择AgentRuntime实现",
+        "file": "src/pycode/agent/runtime.py",
+        "name": "AgentRuntime.__init__",
+        "purpose": "建立显式运行依赖",
         "notes": [
-          "AgentRuntime(model, **options)：只有本模块入口知道adapter类型。",
-          "调用方必须显式传bindings；Agent不会默认导入Skills/MCP/Models内部实现。"
+          "不扫描功能列表或调用默认空钩子。",
+          "运行器负责模型循环，服务负责各自业务状态。"
         ],
-        "guide": "应用已经把模型、工具方法和可选功能准备好，现在需要一张能执行修复任务的图。这个模块入口只在本功能内部选择运行实现，并把明确的方法集合交给它。返回的对象还没有发请求；随后由会话运行方法提交用户消息，图的构建和调用才真正开始。"
+        "guide": "app 把核心依赖、真实 middleware 和消息处理函数交给运行器。"
       },
       {
-        "file": "src/pycode/agent/adapters/agent.py",
+        "file": "src/pycode/agent/runtime.py",
         "name": "AgentRuntime.run",
         "purpose": "先保存用户输入，再创建图并调用",
         "notes": [
@@ -779,7 +734,7 @@
         "guide": "会话已经决定启动这次任务，并把用户消息、当前历史和执行方法交到这里。方法先把输入确认为完成记录，按需要设置标题，再构建本次图并准备初始状态。返回值来自后续图调用，不是在这里手工遍历模型工具；恢复等待中的图也不会重新走这条新任务路径。"
       },
       {
-        "file": "src/pycode/agent/adapters/agent.py",
+        "file": "src/pycode/agent/runtime.py",
         "name": "AgentRuntime.build",
         "purpose": "把初始工具说明和扩展交给create_deep_agent",
         "notes": [
@@ -788,7 +743,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/agent/adapters/agent.py",
+            "file": "src/pycode/agent/runtime.py",
             "name": "AgentRuntime.config",
             "purpose": "为图和事件回调分配session/run身份",
             "notes": [
@@ -802,7 +757,7 @@
         "guide": "新任务输入已经保存，父函数现在需要把以后问模型、执行工具和保存结果的方法登记给框架。这里转换初始工具并创建中间件列表，再把状态、上下文和检查点交给唯一的图。方法返回后图才会执行，动态工具仍可在模型前加入，不能说此时已经完成全部工具说明。"
       },
       {
-        "file": "src/pycode/agent/adapters/agent.py",
+        "file": "src/pycode/agent/runtime.py",
         "name": "AgentRuntime.invoke",
         "purpose": "执行图，把等待用户回答的问题装入RunResult",
         "notes": [
@@ -826,7 +781,7 @@
     "why": "用户等待测试时追加的纠正必须真实保存，也不能中途混进已经固定的后台摘要来源。",
     "nodes": [
       {
-        "file": "src/pycode/agent/adapters/history.py",
+        "file": "src/pycode/agent/loop.py",
         "name": "HistoryMiddleware.abefore_model",
         "purpose": "依次整理旧消息、交付即时要求、生成本轮消息",
         "notes": [
@@ -837,7 +792,7 @@
         "guide": "框架即将再次问模型，消息和工具说明还可能因测试输出、补充输入而变化，于是回调到这里。它按维护旧内容、交付新输入、重新整理消息的次序执行本地步骤。返回的是本轮框架状态更新，不是模型回复；这能保证后面的请求使用当前分支而非上一轮残留内容。"
       },
       {
-        "file": "src/pycode/agent/adapters/history.py",
+        "file": "src/pycode/agent/loop.py",
         "name": "HistoryMiddleware.abefore_model.maintain_context",
         "purpose": "先更新工具，再准备摘要与旧测试输出",
         "notes": [
@@ -848,7 +803,7 @@
         "guide": "模型前总流程首先执行这个闭包，因为旧输入还需要更新工具说明、准备摘要或省略长测试日志。它先等待应用交来的准备方法，再调用摘要，并把摘要所用消息交给输出省略保护。处理完返回同一运行上下文，下一个步骤才会交付用户新加的纠正。"
       },
       {
-        "file": "src/pycode/agent/adapters/boundaries.py",
+        "file": "src/pycode/agent/boundaries.py",
         "name": "deliver_input",
         "purpose": "先保存，再发input_delivered通知",
         "notes": [
@@ -858,7 +813,7 @@
         "guide": "队列决定本轮应交付一条补充要求以后，父函数把消息和队列类型交来。这里先通过完成消息保存方法取得真实记录ID，再发布带输入身份的交付通知。它返回前消息已有保存依据，界面提示才有意义，后续模型输入也可以引用同一条记录而非临时事件文字。"
       },
       {
-        "file": "src/pycode/agent/adapters/history.py",
+        "file": "src/pycode/agent/loop.py",
         "name": "HistoryMiddleware.abefore_model.project_turn",
         "purpose": "按当前历史替换框架消息，并记录模型轮次",
         "notes": [
@@ -882,7 +837,7 @@
     "why": "运行parser.py修改或测试之前，必须能指出一条已保存、完整的模型工具指令。",
     "nodes": [
       {
-        "file": "src/pycode/agent/adapters/history.py",
+        "file": "src/pycode/agent/loop.py",
         "name": "HistoryMiddleware.awrap_model_call",
         "purpose": "发请求前统一计量，完整回答后统一保存",
         "notes": [
@@ -893,7 +848,7 @@
         "guide": "模型前状态已经准备，框架把请求和模型处理方法交到这个包装回调。它确认当前消息和工具，按需要执行最终工具选择与校准，再进入统一请求记录方法。完整助手回答回来后先保存，才建立工具调用顺序；返回给图时，后面的工具执行已有可引用的模型指令。"
       },
       {
-        "file": "src/pycode/agent/adapters/boundaries.py",
+        "file": "src/pycode/agent/boundaries.py",
         "name": "prepare_model_boundary",
         "purpose": "有序过滤、选择与校准最终请求",
         "notes": [
@@ -902,7 +857,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/agent/adapters/boundaries.py",
+            "file": "src/pycode/agent/boundaries.py",
             "name": "filter_model_tools",
             "purpose": "让只读与Plan约束影响选择器输入",
             "notes": [
@@ -916,7 +871,7 @@
         "guide": "请求可能刚经过功能自己的工具加入步骤，调用方现在需要在同一个地方做最后过滤、选择和容量校准。这里先执行应用给的过滤方法，再串联普通限制、工具选择与校准。返回最终请求给模型包装层；已经由工具加载扩展执行过的同一轮，不应再重复调用选择模型。"
       },
       {
-        "file": "src/pycode/models/adapters/model_requests.py",
+        "file": "src/pycode/models/requests.py",
         "name": "model_request_step",
         "purpose": "调用事先交来的方法，统一处理请求重试和计费",
         "notes": [
@@ -927,7 +882,7 @@
         "guide": "Agent或摘要流程已经准备好请求，但希望把请求记录和重试接入同一串步骤，所以传入请求方法、框架处理函数与逻辑身份。这里只创建一个以后运行的步骤并返回，不在构造时发网络请求。等调用它的异步执行入口，内部闭包才把请求交给记录方法。"
       },
       {
-        "file": "src/pycode/agent/adapters/boundaries.py",
+        "file": "src/pycode/agent/boundaries.py",
         "name": "save_message",
         "purpose": "把完成消息、输出引用与发布顺序绑定",
         "notes": [
@@ -938,7 +893,7 @@
         "guide": "模型或工具已经有完整结果，调用方需要把它变成可恢复记录以后再通知界面。这里先追加消息，绑定完整输出及文件快照来源，再加入本轮完成列表并发布结束事件。返回真实记录ID给调用方，后续加载回执和队友确认才能依赖它，不能只凭工具已经返回就确认。"
       },
       {
-        "file": "src/pycode/agent/adapters/history.py",
+        "file": "src/pycode/agent/loop.py",
         "name": "HistoryMiddleware.aafter_model",
         "purpose": "只通知这次模型回答已结束，仍由框架决定是否执行工具",
         "notes": [
@@ -955,24 +910,24 @@
     ]
   },
   "05-agent:resume": {
-    "title": "仍持有图的宿主回答问题，结束前再查补充",
+    "title": "回答持久化等待，结束前再查补充",
     "input_label": "跟着parser.py修复过程读这一段",
     "request": "await runtime.resume(context, answers)；图完成时aafter_agent决定是否跳回model",
-    "intro": "同进程TUI或嵌入宿主拿到用户回答后，runtime核对当前图与真实interrupt再恢复。图走到结束回调还会复查队列，有输入就让同一图回到模型；并非CLI退出后另开进程继续旧批准。",
+    "intro": "显式 resume 使用当前图或恢复的 checkpoint，核对真实 interrupt 与用户答案。图结束前仍检查持久输入队列。",
     "why": "图检查点、问题身份和排队消息分别检查，才能避免旧答案执行新操作或漏掉迟到纠正。",
     "nodes": [
       {
-        "file": "src/pycode/agent/adapters/agent.py",
+        "file": "src/pycode/agent/runtime.py",
         "name": "AgentRuntime.resume",
         "purpose": "校验活跃图和用户回答所属中断",
         "notes": [
-          "if self.graph is None: raise StorageError(\"run_expired\", ...)：磁盘历史不自动复活旧执行。",
-          "identifiers = {item.id for item in interrupts}：多问题回答必须按真实interrupt ID映射。 Command(resume={interrupts[0].id: answers})：单问题也显式绑定当前中断。"
+          "build/restore_task 已准备当前图；resume 读取保存 checkpoint 的真实 interrupts。",
+          "答案按 interrupt ID 映射，核对问题和操作身份后构造 Command(resume=...)。"
         ],
-        "guide": "同进程界面还持有等待中的图，用户现在对刚才的命令作出回答，才进入这里。方法读取真实中断，检查答案对应的问题身份并构造恢复命令，再调用同一图。没有活图或问题不符就拒绝，返回的后续结果仍交回原会话处理，不用旧批准创建一次新执行。"
+        "guide": "同进程使用保留的图，进程重启由 launcher 重建资源并恢复持久化 checkpoint；显式回答核对真实问题身份，再继续该任务。打开会话本身不会自动运行。"
       },
       {
-        "file": "src/pycode/agent/adapters/agent.py",
+        "file": "src/pycode/agent/runtime.py",
         "name": "AgentRuntime.invoke",
         "purpose": "继续同一图并整理待回答问题",
         "notes": [
@@ -983,7 +938,7 @@
         "guide": "图已经构建或收到合法恢复命令，父函数把初始状态或命令交到这里实际执行。方法等待框架运行，检查真实检查点与中断，返回完整结束结果或待用户回答的问题。取消和未知异常会等待已登记工具；没有活图则明确失败，不凭磁盘历史猜测继续旧命令。"
       },
       {
-        "file": "src/pycode/agent/adapters/history.py",
+        "file": "src/pycode/agent/loop.py",
         "name": "HistoryMiddleware.aafter_agent",
         "purpose": "保存完结果后，优先读即时补充要求，再读后续任务",
         "notes": [
@@ -992,7 +947,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/agent/adapters/history.py",
+            "file": "src/pycode/agent/loop.py",
             "name": "take_queued",
             "purpose": "先决定接收哪类排队输入，再取出对应消息",
             "notes": [
@@ -1001,7 +956,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/agent/domain/turn_policy.py",
+                "file": "src/pycode/agent/context.py",
                 "name": "next_turn",
                 "purpose": "不读写外部状态，只决定先处理即时要求还是后续任务",
                 "notes": [
@@ -1031,18 +986,7 @@
     "why": "先显示结束或先ACK会让尚未保存的测试结果被当成已经可靠收到。",
     "nodes": [
       {
-        "file": "src/pycode/app/composition/bindings.py",
-        "name": "build_runtime_bindings.settlement_factory",
-        "purpose": "把当前运行保存消息和通知开始结束的方法交给Tools",
-        "notes": [
-          "publisher=agent.publisher(bound)：publisher是真正绑定当前RunContext的对象。",
-          "tool_extensions 与 native_bindings：Skill持久化回执、MCP原生调用保持各自拥有者。"
-        ],
-        "edge": "注入工厂：AgentRuntime.build构造middleware时调用",
-        "guide": "应用创建图时需要一个绑定当前运行的工具结算对象，因此把运行上下文交给这个工厂。它连接消息发布方法、生命周期通知和可选功能方法，返回Tools模块提供的中间件。工厂此时没有执行任何工具，后面框架工具节点回调时才使用这些已明确交过去的方法。"
-      },
-      {
-        "file": "src/pycode/tools/adapters/settlement.py",
+        "file": "src/pycode/tools/settlement.py",
         "name": "ToolSettlementMiddleware.awrap_tool_call",
         "purpose": "登记正在运行的工具任务，确保取消时能等待它",
         "notes": [
@@ -1053,7 +997,7 @@
         "guide": "模型已经留下完整工具调用，框架工具节点才会回调这里执行其中一项。方法登记当前任务，让Agent停止时能等到它结束，再进入次序和执行检查，最后解除登记。返回结果继续框架工具流程；登记的意义是明确取消要等谁，不是额外开一套并行工具循环。"
       },
       {
-        "file": "src/pycode/tools/adapters/settlement.py",
+        "file": "src/pycode/tools/settlement.py",
         "name": "ToolSettlementMiddleware.ordered_call",
         "purpose": "按声明与执行模式决定是否等待前序工具",
         "notes": [
@@ -1064,7 +1008,7 @@
         "guide": "框架可能同时调来多个工具，这里先根据当前运行要求和每项工具说明判断是否必须串行。若要串行，后项等待前项已经分派或中断，再进入单项执行。等待条件满足后把请求交给结算方法，避免改文件等效果因为网络返回快慢而改变模型原先声明的顺序。"
       },
       {
-        "file": "src/pycode/tools/adapters/settlement.py",
+        "file": "src/pycode/tools/settlement.py",
         "name": "ToolSettlementMiddleware.settle_call",
         "purpose": "校验完成assistant、实际声明和统一执行器",
         "notes": [
@@ -1073,7 +1017,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/tools/adapters/settlement.py",
+            "file": "src/pycode/tools/settlement.py",
             "name": "ToolSettlementMiddleware.declaration_error",
             "purpose": "执行前核对调用名在本次请求的工具列表里",
             "notes": [
@@ -1087,7 +1031,7 @@
         "guide": "次序检查通过后，仍需证明调用属于已经保存的助手消息，并且当前说明没有变化。这里建立操作身份，取得实现，把实际调用交给统一执行器，返回结果后暂存为准备完成。只有前项也可结算时才继续保存和发布，不能让工具函数一返回就抢先确认消息。"
       },
       {
-        "file": "src/pycode/tools/adapters/settlement.py",
+        "file": "src/pycode/tools/settlement.py",
         "name": "ToolSettlementMiddleware.settle_ready",
         "purpose": "按模型原调用顺序保存结果，然后确认消息已收到",
         "notes": [
@@ -1096,7 +1040,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/agent/adapters/boundaries.py",
+            "file": "src/pycode/agent/boundaries.py",
             "name": "AgentMessagePublisher.publish",
             "purpose": "接收Tools结果，交给当前Agent保存并通知界面",
             "notes": [

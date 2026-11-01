@@ -1,6 +1,6 @@
 {
-  "src/pycode/app/configuration/settings.py::AppConfig": {
-    "file": "src/pycode/app/configuration/settings.py",
+  "src/pycode/app/config.py::AppConfig": {
+    "file": "src/pycode/app/config.py",
     "name": "AppConfig",
     "purpose": "把这次工作的路径和开关放在一起",
     "notes": [

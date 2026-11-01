@@ -134,7 +134,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/session/services/agent_session.py",
+            "file": "src/pycode/session/agent_session.py",
             "name": "AgentSession.run",
             "purpose": "把题目消息交进正常会话执行",
             "notes": [
@@ -300,7 +300,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/session/services/application.py",
+            "file": "src/pycode/session/sessions.py",
             "name": "ApplicationService.status",
             "purpose": "把工作区检查结果放进统一返回结构",
             "notes": [
@@ -311,7 +311,7 @@
           }
         ],
         "edge": "main向应用要本地状态",
-        "guide": "main要显示当前程序和项目状态时，先来到Application.status。它让已选的SessionsModule创建ApplicationService，再取状态返回。CLI和TUI因此不必各自猜一套目录与Git检查；模型没有参与这一步，本地诊断也就不依赖模型配置。"
+        "guide": "main要显示当前程序和项目状态时，先来到Application.status。它创建具体 ApplicationService，再取状态返回。CLI和TUI因此不必各自猜一套目录与Git检查；模型没有参与这一步，本地诊断也就不依赖模型配置。"
       },
       {
         "file": "src/pycode/app/cli/main.py",
@@ -358,10 +358,10 @@
           "owned_session_id用于说明当前活跃会话，避免管理过程忽略仍在运行的使用者。"
         ],
         "edge": "先取得管理本地数据的服务",
-        "guide": "storage_command需要清点和清理能力时，通过这个公共方法取得StorageGC。Application把请求交给SessionsModule，并保留当前活跃会话的相关信息。返回的服务随后才执行status或collect；门面本身不遍历磁盘，更不会直接删除某个传入路径。"
+        "guide": "storage_command需要清点和清理能力时，通过这个公共方法取得StorageGC。Application 创建具体 StorageGC，并保留当前活跃会话的相关信息。返回的服务随后才执行status或collect；门面本身不遍历磁盘，更不会直接删除某个传入路径。"
       },
       {
-        "file": "src/pycode/session/services/storage_gc.py",
+        "file": "src/pycode/session/storage_gc.py",
         "name": "StorageGC.collect",
         "purpose": "先找还在使用的数据，再决定如何处理",
         "notes": [
@@ -370,7 +370,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/session/domain/storage.py",
+            "file": "src/pycode/session/storage_gc.py",
             "name": "mark_objects",
             "purpose": "沿引用找出仍然需要的数据",
             "notes": [
@@ -380,7 +380,7 @@
             "guide": "collect拿到了对象清单，但单看文件新旧无法知道能否处理。mark_objects从历史和其他保留起点出发，顺着references继续找，把能到达的数据加入marked集合并返回。collect之后据此判断哪些必须保留，而不把一份仍被摘要引用的旧输出当成垃圾。"
           },
           {
-            "file": "src/pycode/session/adapters/storage/objects.py",
+            "file": "src/pycode/session/storage_gc.py",
             "name": "FileStorageObjects.inventory_sync",
             "purpose": "先把管理范围里的文件整理成清单",
             "notes": [

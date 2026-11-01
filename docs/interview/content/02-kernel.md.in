@@ -14,7 +14,7 @@
 
 这样做的直接好处是，后面各模块不用分别猜测对方的字典长什么样。模型转换方法能读取工具调用，历史显示能读取正文，预算方法能读取模型实际返回的用量。`Message`里没有官方SDK的`AIMessage`等对象，读取历史的功能也就不必为了这句话加载某家模型SDK。等真正发送请求时，下一章才会转换格式。
 
-{{inline:src/pycode/kernel/domain/messages.py:Message}}
+{{inline:src/pycode/kernel/messages.py:Message}}
 
 保存后还有一个不明显的问题：`Message`虽然是不能重新赋值的dataclass，它的`provider_metadata`等字段里仍可能装着字典。假如界面为了显示方便修改了那个字典，历史也跟着变了，消息ID就不再对应固定内容。所以存储方法会用`freeze_value`递归处理字典、列表和dataclass内部的值。只读历史可以被很多地方共用；确实要交给可修改的外部代码时，再用`clone_value`做副本。
 
@@ -32,7 +32,7 @@
 
 返回的路径给下一章和Context章继续使用。它还不是最终发给模型的输入，因为后面可能需要采用摘要、缩短旧测试输出，或补上当前Plan提醒。但至少它已经回答了“这些记录属于用户当前选择的路线吗”。
 
-{{inline:src/pycode/kernel/domain/history.py:SessionSnapshot}}
+{{inline:src/pycode/kernel/history.py:SessionSnapshot}}
 
 这里也说明了为什么`SessionTree`可以共用，而“什么时候启动一次运行”不能放进kernel：树查询只回答一批记录之间的关系，不选择模型，不请求审批，也不写文件。真正启动任务仍然由上一章的会话方法负责。
 
@@ -56,13 +56,13 @@
 
 因此，负责工具结算的代码先保存完成消息并绑定完整输出，再调用`EventStream.emit`发布事件。`EventStream`接收的是事件种类、数据和可选操作ID；它只负责顺序投递，不负责把工具消息写进历史。这里要区分调用方保证的“先保存”和发布器保证的“按顺序送”。
 
-发布器持有一个锁。配置了事件记录方法时，它先取得本次事件序号；随后给每个消费者传递独立副本。默认的`MemoryEventJournal`只是在内存里保存有限数量事件，并按会话和每次运行分别计数。程序重启后这个环为空是正常的，历史仍要从会话 Store读取，而不是把事件环当成第二份恢复日志。
+发布器持有一个锁。配置了事件记录方法时，它先取得本次事件序号；随后按配置顺序把同一个不可变事件交给每个消费者。默认的`MemoryEventJournal`只是在内存里保存有限数量事件，并按会话和每次运行分别计数。程序重启后这个环为空是正常的，历史仍要从会话 Store读取，而不是把事件环当成第二份恢复日志。
 
 {{chain:02-kernel:events}}
 
 普通显示消费者出错会被停用，避免每个新事件都重复失败；控制台管道关闭则转成`OutputClosed`，要求命令结束。两者都不会把已经保存的parser.py工具结果改成另一个内容。TUI如何把事件送到Textual消息泵，再从历史刷新卡片，界面章还会继续展开。
 
-{{inline:src/pycode/kernel/domain/events.py:Event}}
+{{inline:src/pycode/kernel/events.py:Event}}
 
 ## 走完后再看：为什么这些代码不直接使用Agent框架
 
@@ -78,7 +78,7 @@
 | FileLease / owned_io / atomic_write | 谁可写、取消时等谁、单个文件怎样完整发布 |
 | EventStream / MemoryEventJournal | 怎样依次通知界面，哪些事件只存在本进程 |
 
-{{inline:src/pycode/kernel/domain/tools.py:ToolSpec}}
+{{inline:src/pycode/kernel/tools.py:ToolSpec}}
 
 ## 读懂检查：把问题带回parser.py任务
 

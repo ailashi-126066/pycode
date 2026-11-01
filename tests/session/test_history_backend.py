@@ -3,7 +3,7 @@ from deepagents.backends import CompositeBackend
 
 from pycode.kernel import Message
 from pycode.session.history_backend import ConversationHistoryBackend
-from pycode.tools.adapters.backend import PycodeBackend
+from pycode.tools import PycodeBackend
 from tests.session.test_session import open_store as store_for
 
 pytestmark = pytest.mark.requires_rg

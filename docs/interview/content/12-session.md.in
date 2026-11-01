@@ -9,15 +9,7 @@
 → 保存本轮结果 → 下次打开时展示旧记录，开始新的任务
 ```
 
-这里有两件容易混在一起的事：对话记录可以存到磁盘，正在等待审批的执行过程却只留在当前进程。下文每一步都会说明自己处理的是哪一件。
-
-## 第一步：打开旧会话，先解释昨天留下了什么
-
-假设昨天的运行在修改 parser.py 后被关掉了。应用通过 `open_agent_session` 打开同一份会话日志，并取得写入这份日志的资格。此时还不能立即请求模型，因为最后一个工具也许已经改了文件，却没来得及保存结果；直接接着跑可能把修改再做一次。
-
-因此打开过程先调用 `recover_conversation`。它把助手发出的工具调用与已经保存的工具结果配对：有完整结果的保留，无法确认的补成 `tool_interrupted`，意思是“不能确认这个工具是否完成”，而不是“工具肯定没执行”。旧运行尚未消费的补充输入也会留下过期提示。这个函数整理日志，不调用昨天的 Bash 或文件工具。
-
-打开成功以后，界面可以重新展示已有历史。用户需要结合文件现状决定下一步，例如重新发出“检查 parser.py 目前的修改，再跑测试”。这才是一轮新任务；磁盘日志不会凭一个旧的批准答案复活昨天的执行图。取消和关闭也在下方同组入口展开，便于比较它们与启动恢复各自做什么。
+会话日志保存用户输入与工具事实，execution.sqlite 保存 LangGraph checkpoint。重新打开只恢复资源和读取状态，不自动运行命令；显式 resume 才继续持久化图。对已经开始却没有结果的外部效果，recover_conversation 补 tool_interrupted，避免盲目重放。
 
 {{chain:12-session:recover}}
 
@@ -27,7 +19,7 @@
 
 同一个消息 ID 再次到达时，服务会比较正文和当前分支。完全相同且已经结束的输入可以返回已保存的结果；内容变了或者属于别的分支，就明确拒绝。这里做的是识别重复提交，不是给修改文件的工具提供一个随便重试的开关。准备完成后，服务写下 `run_start`，为这轮执行分配 `run_id`，后面的工具结果才知道自己属于哪一次任务。
 
-接着 `ConfiguredRuntimeLauncher` 找到刚保存的运行身份，通过应用组装时传入的工厂取得本轮容器。容器中的 `AgentRuntime.run` 创建 Deep Agents 图，最终 `graph.ainvoke` 才开始请求模型、执行工具。会话服务没有另写一个模型循环。图执行期间，框架会调用 `HistoryMiddleware` 保存完整回复；这不是 launcher 返回以后才按章节顺序调用的函数。
+接着 `SessionLauncher` 找到刚保存的运行身份，通过应用组装时传入的工厂取得本轮容器。容器中的 `AgentRuntime.run` 创建 Deep Agents 图，最终 `graph.ainvoke` 才开始请求模型、执行工具。会话服务没有另写一个模型循环。图执行期间，框架会调用 `HistoryMiddleware` 保存完整回复；这不是 launcher 返回以后才按章节顺序调用的函数。
 
 工具已经保存结果时，会先把消息写进日志，再关联完整输出和文件快照，最后通知界面。整轮返回会话服务后，`record_run_result` 才决定记录“等待输入”还是“本轮结束”。因此屏幕出现了流式文字，不能直接推导为这段回复已完整保存。
 
@@ -39,7 +31,7 @@
 
 用户选择批准后，`AgentSession.resume` 找到当前还未结束的运行，先保存这次回答发生过，再把答案交给 launcher。`AgentRuntime.resume` 读取活图中的问题，核对问题 ID、操作 ID和答案形状，然后用 `Command(resume=...)` 交回 LangGraph。答错格式时仍保留等待，不会偷偷替用户选择批准。
 
-恢复后的工具依然要核对这次操作的实际内容，不能把一个旧答案当成对任何测试命令的许可。图结束后，恢复入口也回到与新任务相同的结果保存函数。若进程已退出，launcher 找不到原容器就报告 `run_expired`；日志可以解释当时在等什么，却不能代替那张内存中的图。
+恢复后的工具依然要核对这次操作的实际内容，不能把一个旧答案当成对任何测试命令的许可。图结束后，恢复入口也回到与新任务相同的结果保存函数。若进程已退出，launcher 重建资源并从 execution.sqlite 恢复 checkpoint。当前 provider 配置直接生效，审批答案仍须匹配原 interrupt 和操作身份。
 
 {{chain:12-session:resume}}
 
@@ -57,7 +49,7 @@
 
 测试结束后，用户可能想从旧消息另开一条思路。`branch` 改的是日志当前指向哪一个历史节点，不会把 parser.py 一起变回去。切换后重新初始化 Plan，是因为旧分支的批准不能自动适用于新分支。原消息正文一直保留，分支只是选择接下来沿哪条历史继续。
 
-如果用户真的要撤回代码，先调用 `preview_revert`，明确只回退对话、只恢复文件，还是两者都做。预览把将改哪些文件、预期当前版本是什么列出来；确认后 `revert` 才执行恢复。缺少可核实的文件快照时，不能仅靠一句“撤销上次修改”猜原文件内容。
+如果用户真的要撤回代码，在 execution 上下文中调用 session.snapshots.revert(target, mode)。服务先拍当前快照并检查冲突，再写回文件和保存一条可撤销记录；普通 target 保留自身。没有单独预览阶段，部分失败明确报 revert_partial。
 
 还有一种需求是“对话太长了”。`compact` 不回退代码，也不重跑修复任务，而是准备本轮真实工具信息，生成并验证一份历史摘要。摘要被采用后，旧消息仍在原日志里，只是后续模型不必每次读取整段；这时才通知记忆模块可能需要整理长期偏好。下一章就顺着这个通知，说明它怎样让下次任务记住“先给例子，再解释”。
 
@@ -79,36 +71,23 @@
 | 这条输入属于哪轮任务，现在是否在等人 | `run_start`、`run_wait`、`run_end` | 用 `input_id` 找到 `run_id` 及保存的等待或结束结果 |
 | 现在能否回答审批并继续执行 | 当前进程的 `AgentRuntime.graph` 和 `AsyncSqliteSaver` | 有持久化 checkpoint 时可重建图后继续，打开会话本身不执行任务 |
 | 执行中补充的话有没有被接受 | `input_queued`、`input_expired` | 分清已排队与旧任务结束后仍未处理的输入 |
-| 准备撤回哪些对话或文件 | `RevertPlan` 与文件快照记录 | 核对用户选的范围、目标版本和预期当前版本 |
+| 准备撤回哪些对话或文件 | revert custom 与文件快照记录 | 核对用户选的范围、目标版本和预期当前版本 |
 | 页面该显示哪些消息、用量和问题 | `SessionView` 的只读返回值 | 从保存记录重新生成画面，不改变日志或文件 |
 
 重新打开会话只读取记录，不自动执行命令。显式 resume 可以继续原 checkpoint；已开始但未完成记录的写操作先记录中断，不盲目重放。
 
-## 查找：从哪里创建，交给谁使用，谁负责关闭
+## 查找：谁创建，谁使用，谁关闭
 
-| 创建入口 | 调用前要提供什么 | 得到什么，交给谁 | 谁负责关闭 |
-|---|---|---|---|
-| `SessionsModule(workspace,user_data,timing)` | 项目目录、数据目录、时钟 | 计算会话存放位置，给应用打开记录使用 | 模块本身不运行模型任务；打开后的会话另行关闭 |
-| `SessionsModule.repository`、`service` | 已确定的会话存放位置 | `SqliteSessionRepository`、`SessionService`，供CLI/TUI查列表、分支和复制会话 | 调用者关闭自己打开的store |
-| `SessionsModule.storage`、`history_backend` | 文件对象存储和读取历史的方法 | `StorageGC`供维护操作使用；历史文件后端供只读工具使用 | 创建它们的应用操作或会话 |
-| `composition.open_agent_session` | 所选模块、模型配置、事件接收方 | 完整`AgentSession`，交CLI/TUI调用运行、恢复等操作 | `AgentSession.aclose` |
-| `ConfiguredRuntimeLauncher` | 创建运行容器、钩子、提示的方法 | 开始或继续执行的方法，交会话调用；同时记住摘要、Hook和连接 | `launcher.aclose`；等待审批时先保留本轮容器 |
-| `composition.build_runtime` | 各模块创建的能力、日志、当前运行身份 | `RuntimeContainer`，给launcher或底层验收调用 | 组装成功后容器负责；中途失败由`RunAssembly`逐项关闭 |
+| 对象 | 创建与职责 | 关闭 |
+|---|---|---|
+| SqliteSessionRepository、SessionService | 应用根据配置创建，负责列表、打开、分支与复制 | 打开的 Store 由所有者关闭 |
+| AgentSession | assemble_session 显式传入 launcher、models、view、storage 和具体业务服务 | aclose 进入关闭状态，再等待 execution 锁和 AsyncExitStack |
+| SessionLauncher | 创建或保留 RuntimeContainer，显式 resume 时重建持久化图 | 会话关闭时等待 launcher 和摘要任务 |
+| RuntimeContainer | build_run 创建模型、工具、图和本轮上下文 | 通过 AsyncExitStack 关闭；组装失败也自动清理已创建资源 |
+| SessionView | 只读历史、用量和事件展示 | 总是关闭自身 usage/events；历史仅在拥有时关闭 |
+| DurableInputs | Store 落盘与锁共同保护补充输入和运行结束判断 | 不另开一份去重缓存 |
 
-## 查找：一个类具体做哪段工作
-
-| 代码位置 | 负责的动作 |
-|---|---|
-| `Application.open_session` | 接收应用请求，把当前选中的模块交给内部会话创建函数 |
-| `composition.open_agent_session` | 打开日志、处理旧运行，再接好计划、技能、记忆、连接和launcher |
-| `AgentSession` | 处理运行、回答问题、分支、回退命令，保存任务开始与结束 |
-| `ConfiguredRuntimeLauncher` | 创建或保留本轮容器，并等待摘要、Hook和连接关闭 |
-| `RuntimeContainer`、`RunAssembly` | 前者关闭成功组装的一轮资源；后者关闭组装失败前已创建的资源 |
-| `AgentRuntime` | 创建图、调用`graph.ainvoke`、读出待答问题，不另写模型循环 |
-| `HistoryMiddleware` | 被框架回调时准备模型输入、保存完整助手回复、检查结束前补充输入 |
-| `SqliteSessionStore` | 防止多个进程同时写同一会话，检查分支并追加、修复日志和保存当前位置 |
-| `DurableInputs` | 先保存补充输入，再交给模型；结束前检查是否还能接受新输入 |
-| `SessionView`、`RevertService` | 前者提供只读显示数据；后者计算并应用用户确认的对话或文件回退 |
+固定服务作为 AgentSession 的必填构造参数。调用方使用 history、skills、plans、memory、tasks、snapshots 等具体成员，subagents 才允许缺失。会话没有通用 feature 查询，也不为各业务方法保留转发层。
 
 ## 查找：文件与字段保存什么
 
@@ -123,9 +102,9 @@
 | `run_end` | 结束类型、输入ID列表、最终回复记录ID | 已结束运行仍接受新输入，或找不到最终回复 |
 | `input_queued` | 输入内容、队列类型、所属运行 | 只在内存显示“已排队”，重启后却找不到 |
 | `input_expired` | 未处理输入的记录ID与类型 | 把旧任务未读的补充说明假装成已经响应 |
-| `$TMPDIR/pycode/<session_id>/` | 超限工具输出的完整内容 | 为看后面的输出而重复运行原工具 |
+| 会话对象存储 | 超限工具输出的完整内容 | 为看后面的输出而重复运行原工具 |
 
-{{inline:src/pycode/kernel/domain/history.py:SessionEntry}}
+{{inline:src/pycode/kernel/history.py:SessionEntry}}
 
 
 ## 遇到异常时，程序怎么处理
@@ -156,14 +135,14 @@ SessionView和UI只读取并展示记录；原始 会话 Store 不随展示失�
 
 **回退对话会自动回退文件吗？**
 
-不会。RevertPlan 的 dialogue／code／both 模式分别表达范围，先预览再确认，文件恢复有自己的事务记录。
+不会。revert 的 dialogue／code／both 模式分别表达范围，直接调用快照服务，检查冲突后写入，并记录实际结果。
 
 
 ## 面试常见追问
 
 - **为什么会话服务还需要 launcher？** 会话保存任务记录，launcher保留活图并关闭执行资源；它们结束的时机不同。
 - **为什么 user 消息会 append 两次？** 上层先保存用户输入，runtime也可被独立调用；存储按同 ID 同内容去重。
-- **为什么不用数据库 checkpoint 自动续跑？** 当前选择内存等待，重启只整理未知结果，避免重复命令与旧审批复用。
+- **为什么不用数据库 checkpoint 自动续跑？** 打开时不自动运行；显式 resume 从持久化 checkpoint 继续，未知外部效果先记录中断。
 - **锁解决了什么？** 会话执行锁防止两项命令同时改变会话；writer.lock防止两个进程同时写日志；输入锁使排队提交与结束判断不能互相错过。
 - **完成事件能先发吗？** 不能。先保存工具结果、关联完整输出和文件记录，完成通知在后。
 - **怎么证明恢复没有重跑？** 查看 recover_conversation：它扫描日志、补未知工具结果并记录旧运行结束，没有调用旧工具执行器。

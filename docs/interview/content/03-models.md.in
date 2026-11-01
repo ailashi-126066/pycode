@@ -6,15 +6,13 @@
 
 ## 第一步：选好了Provider，为什么还不能直接发送文本
 
-上一章的应用配置已经选定Provider。这个配置说明模型名、API地址、输入窗口、输出预留和密钥引用，却不是已经打开的连接。为了发出请求，应用调用`await ModelsModule.owner(...)`，传入Provider、本会话和本次运行的ID，以及请求用途。
+应用选定 Provider 后调用 composition.open_model。它用 AsyncExitStack 登记请求账本、同步与异步 HTTP transport 和自有事件 journal，再调用 create_model 选择官方 LangChain 集成。ModelOwner 保存模型、ModelRequestRunner、账本和关闭栈；本轮结束后 aclose 释放这些资源。
 
-方法名里的`owner`可以直接理解为“这组对象最后由谁负责关闭”。它返回的`MeteredModelOwner`把SDK模型、请求记录方法、SQLite连接和可能自建的事件记录放在一起。一轮Agent运行中可能多次请求模型，不是每发一个token就重建这组对象；这轮不再需要它时，调用者统一等待`aclose()`。
-
-在构造过程中，`ModelsModule.credentials`才解析当次Provider引用的密钥。默认情况下它调用应用预先交进来的凭据方法，从环境或授权的.env补齐缺失值。目录适配器和SDK可以在运行内存中持有凭据，但缓存文件与历史不写真实密钥。这也解释了上一章为什么组装应用时不必立即读取全部凭据。
+凭据在创建模型时由 credential_environment 解析，历史和缓存不保存真实密钥。OpenAI 与 DeepSeek 使用 httpx，Anthropic 当前依赖使用 httpx2；应用为每个 owner 创建 transport，避免关闭 LangChain 缓存中其它 owner 共享的客户端。
 
 {{chain:03-models:owner}}
 
-继续展开`ModelFactory.create`，能看到它选择官方`ChatDeepSeek`、`ChatOpenAI`或Anthropic集成，而不是自己拼HTTP和解析SSE。工厂把SDK内置重试设为0。不是不允许重试，而是要让后面每一次重试都经过我们能记录的方法，避免外面只记一条请求，SDK却在里面偷偷发了几次。
+继续展开`create_model`，能看到它选择官方`ChatDeepSeek`、`ChatOpenAI`或Anthropic集成，而不是自己拼HTTP和解析SSE。工厂把SDK内置重试设为0。不是不允许重试，而是要让后面每一次重试都经过我们能记录的方法，避免外面只记一条请求，SDK却在里面偷偷发了几次。
 
 这一步也可能失败。例如同步SDK客户端建好了，异步客户端构造却报错；或者SQLite在初始化时失败。代码先登记已创建客户端，失败后等待关闭。成功返回时，应用才把“最后调用aclose”的责任交给当前运行。现在有了能请求模型的对象，但还不能立刻发送：请求正文里还有工具说明需要最后确认。
 
@@ -34,7 +32,7 @@ calibrate_model_request 记录最终发送的工具及系统提示，供执行�
 
 Runner先拿锁，避免同一组SDK观察状态被内部并发请求覆盖。进入一次实际发送前，它创建`RequestRecord(status="started")`并写入SQLite。记录里既有会话和运行ID，也有这次逻辑请求的`logical_id`，以及实际尝试序号`attempt`。网络请求必须排在这次写入之后；账本写失败，就不能继续悄悄付费请求。
 
-然后才调用框架传来的模型`handler`。SDK负责真正的协议交互，`ProviderObservation`观察SDK已经解码的响应，补充模型实际返回的用量和响应身份；没有返回的用量仍记为未知。完整响应返回后，Runner把记录改成已完成，保存Provider实际报告的token数量，再通知界面更新用量、结束本次请求。代码中的状态值是`completed`。还没结束的token片段由界面显示，不在这里伪造成一条已完成assistant消息。
+然后才调用框架传来的模型`handler`。SDK负责协议交互；Runner 读取 LangChain 返回的 usage_metadata / response_metadata，保存实际用量和响应身份，缺失值保持未知。没有 SDK 响应代理。完整响应返回后，Runner把记录改成已完成，保存Provider实际报告的token数量，再通知界面更新用量、结束本次请求。代码中的状态值是`completed`。还没结束的token片段由界面显示，不在这里伪造成一条已完成assistant消息。
 
 {{chain:03-models:request}}
 
@@ -42,7 +40,7 @@ Runner先拿锁，避免同一组SDK观察状态被内部并发请求覆盖。�
 
 如果返回普通400、认证错误或程序错误，就不是“多等一会儿大概会好”的情况。它们不会无条件重试。取消也会记为interrupted；Provider已经给出的实际用量可以保留，没有给出的值仍为空，不能拿字符估算补成真实账单。
 
-{{inline:src/pycode/models/domain/requests.py:RequestRecord}}
+{{inline:src/pycode/models/types.py:RequestRecord}}
 
 到这里，这次请求不是“成功了才留痕”，而是开始、失败、重试和完成都有记录。重试耗尽后报告错误，由用户决定是否手动切换模型。
 
@@ -52,13 +50,13 @@ Runner先拿锁，避免同一组SDK观察状态被内部并发请求覆盖。�
 
 ## 回看这次请求：模块入口和框架各做了哪部分
 
-应用最开始创建`ModelsModule`时，给的是文件路径、时钟和“以后需要时怎样取得密钥”的方法。真正开始一轮运行才调用`owner`；需要工具选择、摘要或记忆整理时，也通过各自异步工厂建立模型对象，并记录不同用途。`scoped`只为子工作区替换请求数据库路径，保留已经选好的模块类型和凭据来源。
+应用配置本身不建立连接。一轮运行、工具选择、摘要和记忆整理各自通过显式模型工厂获取 owner，并记录 purpose。子工作区通过 child_config 派生数据路径；不存在模型模块 scoped 工厂。ReasoningDeepSeek 只补回官方集成未发送的 reasoning_content，OwnedChatAnthropic 只提供 transport 所有权，不观察或代理 SDK 响应。
 
-SDK构造和协议差异在`ModelFactory`中；同模型重试由官方中间件提供，工具发现由公共 ToolSearch 实现。项目增加的是实际请求前后的记录、错误分类、最终工具名单与“谁来关闭客户端”。所以这些框架类不是一个额外执行器名单，而是刚才四步中各解决一件具体问题。
+SDK构造和协议差异在`create_model`中；同模型重试由官方中间件提供，工具发现由公共 ToolSearch 实现。项目增加的是实际请求前后的记录、错误分类、最终工具名单与“谁来关闭客户端”。所以这些框架类不是一个额外执行器名单，而是刚才四步中各解决一件具体问题。
 
 | 现在回查代码 | 在故事中的位置 | 完成后交给谁 |
 |---|---|---|
-| ModelsModule.owner / ModelFactory.create | 请求之前准备SDK与账本 | 当前运行负责最后aclose |
+| composition.open_model / create_model | 请求之前准备SDK与账本 | 当前运行负责最后aclose |
 | ToolSearch / calibration | 按需加载定义并计量请求大小 | 模型请求，以及之后的执行检查 |
 | ModelRequestRunner | 先保存开始记录，再发送，最后保存完成或失败 | Agent的完成响应保存方法 |
 | ModelFallback | 仅在允许失败后检查候选 | 同一业务请求继续，账本保留候选位置 |

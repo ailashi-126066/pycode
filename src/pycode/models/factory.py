@@ -3,14 +3,18 @@
 """Select public LangChain integrations; never implement a parallel HTTP model client."""
 
 from collections.abc import Mapping
+from functools import cached_property
 from typing import Any
 
+import anthropic
+import httpx
+import httpx2
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_deepseek import ChatDeepSeek
 from langchain_openai import ChatOpenAI
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 
 from pycode.kernel import ModelError
 from pycode.models.types import ProviderConfig
@@ -36,7 +40,28 @@ class ReasoningDeepSeek(ChatDeepSeek):
         return payload
 
 
-def create_model(config: ProviderConfig, credentials: Mapping[str, str]) -> BaseChatModel:
+class OwnedChatAnthropic(ChatAnthropic):
+    """Use app-owned transports instead of LangChain's shared cached clients."""
+
+    http_client: httpx2.Client = Field(exclude=True, repr=False)
+    http_async_client: httpx2.AsyncClient = Field(exclude=True, repr=False)
+
+    @cached_property
+    def _client(self):
+        return anthropic.Anthropic(**self._client_params, http_client=self.http_client)
+
+    @cached_property
+    def _async_client(self):
+        return anthropic.AsyncAnthropic(**self._client_params, http_client=self.http_async_client)
+
+
+def create_model(
+    config: ProviderConfig,
+    credentials: Mapping[str, str],
+    *,
+    http_client: httpx.Client | httpx2.Client | None = None,
+    http_async_client: httpx.AsyncClient | httpx2.AsyncClient | None = None,
+) -> BaseChatModel:
     key = credentials.get(config.api_key_env)
     if not key:
         raise ModelError(
@@ -57,6 +82,11 @@ def create_model(config: ProviderConfig, credentials: Mapping[str, str]) -> Base
         "stream_usage": True,
         "default_headers": {"User-Agent": "pycode/0.1.0"},
     }
+    if (http_client is None) != (http_async_client is None):
+        raise ValueError("Supply both owned HTTP clients or neither")
+    if http_client is not None:
+        common["http_client"] = http_client
+        common["http_async_client"] = http_async_client
     if config.reasoning_effort is not None:
         common["reasoning_effort"] = config.reasoning_effort
     if config.implementation == "deepseek":
@@ -77,5 +107,5 @@ def create_model(config: ProviderConfig, credentials: Mapping[str, str]) -> Base
     if config.implementation == "anthropic":
         if config.thinking:
             common["thinking"] = dict(config.thinking)
-        return ChatAnthropic(**common)
+        return OwnedChatAnthropic(**common) if http_client is not None else ChatAnthropic(**common)
     raise ModelError("unknown_provider", f"Unknown implementation: {config.implementation}")

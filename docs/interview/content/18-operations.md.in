@@ -24,7 +24,7 @@
 
 这一步只确定存放位置，不判断某个输出能不能删。一个文件看起来很旧，也可能仍被历史消息、摘要或回退记录引用。下一步必须先把这些关系查清楚。
 
-{{inline:src/pycode/session/adapters/storage/layout.py:StorageLayout}}
+{{inline:src/pycode/session/store.py:StorageLayout}}
 
 ## 第三步：先找仍在使用的数据，再决定哪些能处理
 

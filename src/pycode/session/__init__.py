@@ -17,7 +17,7 @@ from pycode.session.sessions import (
     assign_initial_title,
 )
 from pycode.session.storage_gc import FileStorageObjects, StorageGC
-from pycode.session.store import SqliteSessionRepository, SqliteSessionStore, StorageLayout
+from pycode.session.store import SqliteSessionRepository, SqliteSessionStore, StorageLayout, read_records
 from pycode.session.view import SessionView
 
 __all__ = [
@@ -39,4 +39,5 @@ __all__ = [
     "assign_initial_title",
     "pending_run_entry",
     "recover_conversation",
+    "read_records",
 ]

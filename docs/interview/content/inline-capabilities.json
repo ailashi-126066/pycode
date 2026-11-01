@@ -1,6 +1,6 @@
 {
-  "src/pycode/sandbox/domain/sandbox.py::SandboxSettings": {
-    "file": "src/pycode/sandbox/domain/sandbox.py",
+  "src/pycode/sandbox/types.py::SandboxSettings": {
+    "file": "src/pycode/sandbox/types.py",
     "name": "SandboxSettings",
     "purpose": "命令隔离设置，不等于审批决定",
     "notes": [
@@ -8,16 +8,6 @@
       "冻结配置有利于比较同一操作的政策是否改变，但enabled仍需真实探测，不能从mode文字直接推断。"
     ],
     "guide": "用户在启动时选择off、on或on-auto，应用把它们保存成这个小配置对象。沙箱查询和命令启动都读取同一份值，网络是否开放则由单独字段控制。定义本身不探测系统、不批准命令；后面status还要查机器能不能运行，权限检查也仍决定具体测试是否获准，避免把一个开关误当成全部安全保证。"
-  },
-  "src/pycode/snapshot/domain/snapshots.py::RestorePlan": {
-    "file": "src/pycode/snapshot/domain/snapshots.py",
-    "name": "RestorePlan",
-    "purpose": "可审阅的选择性恢复计划",
-    "notes": [
-      "before_tree给可能的补偿提供确切起点，恢复ID则区分这次操作与后来的另一份计划。",
-      "每条路径保留expected和target，conflicts会阻断执行；计划允许解释和核对，不提供无条件覆盖许可。"
-    ],
-    "guide": "用户刚看过将要恢复的差异，程序需要把这次决定完整保留下来，稍后执行时再核对。这个定义保存恢复ID、工作区、开始前树，以及每个文件的预期和目标版本、冲突名单。预览构造它，执行和中断恢复都读取它，所以它不只是一段展示diff，也不会因为用户点过确认就放弃执行时的再次比较。"
   },
   "src/pycode/skills/types.py::SkillEntry": {
     "file": "src/pycode/skills/types.py",
@@ -48,5 +38,15 @@
       "reject和background的合法组合在解析时已经限制，前置检查必须同步完成，才能真正阻止原工具。"
     ],
     "guide": "配置读取已经确认规则合法，需要把它交给以后触发事件的引擎，这个定义保留事件、动作、条件和执行方式。fire按它判断是否匹配，执行身份也包含整份定义，因此修改动作会得到不同身份。它只是未来工作的描述，不会在构造时运行命令，也不能凭reject字段让任意时机的后台动作撤回已经发生的编辑。"
+  },
+  "src/pycode/snapshot/types.py::Snapshot": {
+    "file": "src/pycode/snapshot/types.py",
+    "name": "Snapshot",
+    "purpose": "独立 Git 树与已采集文件版本",
+    "notes": [
+      "tree_id 标识保存的树，files 保存每条路径的版本。",
+      "回退前比较当前采集与最后保存的 after，冲突时停止写入。"
+    ],
+    "guide": "工具前后采集快照，结果中的 file_snapshot 保存 before、after 和 paths。回退服务据此选择最早目标版本及最后预期版本，成功或部分失败后再记录实际变化。"
   }
 }

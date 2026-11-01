@@ -66,7 +66,7 @@ Deep Agents负责模型和工具之间的循环，内置工具建在 Deep Agents
 
 ## 这些函数是在哪里接起来的
 
-`composition.runtime.build_runtime` 需要一套能执行本次任务的工具，于是调用 `ToolsModule` 创建registry、文件后端、权限检查、输出存储和执行器。`composition.bindings` 再把消息保存函数、格式转换和结算中间件交给Agent。构造这些对象时没有执行编辑；真正执行仍要等框架收到模型的工具调用。
+`composition.runtime.build_runtime` 需要一套能执行本次任务的工具，于是调用 `ToolExecutor` 创建registry、文件后端、权限检查、输出存储和执行器。`composition.bindings` 再把消息保存函数、格式转换和结算中间件交给Agent。构造这些对象时没有执行编辑；真正执行仍要等框架收到模型的工具调用。
 
 替换后端可以改变文件从哪里读，但不能删除执行器的检查；增加Skill或MCP工具，也只是把它们的处理函数接进相同流程。任务取消时Agent要收集已登记的工具任务，底层文件或进程函数则负责等自己的操作收尾。
 
