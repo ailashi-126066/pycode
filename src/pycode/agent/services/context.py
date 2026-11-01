@@ -71,6 +71,8 @@ class RunContext:
     settlement: asyncio.Condition = field(default_factory=asyncio.Condition)
     turn_end_sent: bool = False
     tool_tasks: set[asyncio.Task] = field(default_factory=set)
+    # Visible text of the streaming reply; None until its first chunk sent message_start.
+    streamed_text: str | None = None
 
     @property
     def assistant(self) -> Message | None:

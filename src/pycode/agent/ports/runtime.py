@@ -26,11 +26,12 @@ class DurableInputDelivery(Protocol):
 
 
 class HistoryProjector(Protocol):
-    def project(self, snapshot: SessionSnapshot) -> ProjectedContext: ...
+    def transform_context(self, snapshot: SessionSnapshot) -> ProjectedContext: ...
 
 
 class RequestTracking(Protocol):
     active_request_id: str | None
+    active_attempt: int
 
     @property
     def selection(self) -> ModelSelection: ...

@@ -41,7 +41,7 @@ async def test_result_write_failure_collects_other_parallel_tool_before_return()
     append = journal.append_message
 
     async def fail_result(message):
-        if message.role == "tool":
+        if message.role == "tool_result":
             raise StorageError("forced_write_failure", "Result persistence failed")
         return await append(message)
 

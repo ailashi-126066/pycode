@@ -21,7 +21,9 @@ async def test_claimed_pass_must_match_actual_result_and_lead_accepts(tmp_path):
 
         async def evidence():
             return SimpleNamespace(
-                entries=[SimpleNamespace(message=Message("result", "tool", tool_result=result))]
+                entries=[
+                    SimpleNamespace(message=Message("result", "tool_result", tool_result=result))
+                ]
             )
 
         child.task_evidence = evidence

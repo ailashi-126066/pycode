@@ -226,7 +226,7 @@ class ConfiguredRuntimeLauncher:
                 raise StorageError("summary_unavailable", "This runtime has no summary service")
             await container.prepare_tools()
             self.summary.set_tools(container.context.registry.model_specs())
-            current = self.projector_factory().project(await store.snapshot())
+            current = self.projector_factory().transform_context(await store.snapshot())
             effective = []
             for declaration in current.checkpoint.get("model_tools", ()):
                 effective.append(ToolSpec(**plain_data(declaration)))

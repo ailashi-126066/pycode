@@ -6,6 +6,7 @@ from textual.widgets import Static
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.ui.adapters.chat_input import ChatInput
+from pycode.ui.adapters.tui import content_text
 from tests.session.adapters.test_revert_http import command_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
@@ -49,7 +50,7 @@ async def test_actual_tui_approval_precedes_effect_and_same_application_ends_wit
             assert not app.query("#perm-inline")
             assert not app.query_one("#chat-input", ChatInput).disabled
             state = await app.session.inspect()
-            assert state["context"]["messages"][-1]["text"] == "done"
+            assert content_text(state["context"]["messages"][-1], "text") == "done"
             assert len(requests) == 2 and app.title == "pycode"
             assert not app.query_one("#notice", Static).display
 
@@ -83,7 +84,10 @@ async def test_tui_clear_expires_old_approval_and_open_recovers_history_without_
             assert not (tmp_path / "old.txt").exists()
             assert len(requests) == 3
             await app.command("/session open " + independent)
-            assert (await app.session.inspect())["context"]["messages"][-1]["text"] == "done"
+            assert (
+                content_text((await app.session.inspect())["context"]["messages"][-1], "text")
+                == "done"
+            )
 
 
 async def test_tui_close_and_reopen_expires_interrupt_and_keeps_one_interrupted_result(

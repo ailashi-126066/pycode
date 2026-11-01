@@ -349,7 +349,8 @@ class AgentSession:
                 provider = await self._models.restore(self._default)
                 return await self.resume_run(provider, pending)
             if any(
-                entry.type == "message" and entry.require_message().role in {"assistant", "tool"}
+                entry.type == "message"
+                and entry.require_message().role in {"assistant", "tool_result"}
                 for entry in following
             ):
                 raise StorageError(
@@ -357,7 +358,9 @@ class AgentSession:
                     "Unsettled execution must be reconciled before continuing",
                 )
             history = tuple(
-                item for item in self._projector.project(before).messages if item.id != message.id
+                item
+                for item in self._projector.transform_context(before).messages
+                if item.id != message.id
             )
         else:
             if pending is not None:
@@ -365,7 +368,7 @@ class AgentSession:
                     "session_needs_input",
                     "Resume or resolve the pending task before adding input",
                 )
-            history = self._projector.project(before).messages
+            history = self._projector.transform_context(before).messages
             await self._store.append_message(message)
             if await self._models.current() is None:
                 await self._models.select(self._default.name, self._default.model_id)

@@ -32,9 +32,7 @@ async def test_next_framework_request_uses_persistent_evictions_not_original_gra
     for index in range(6):
         call_id = f"old-{index}"
         await store.append_message(
-            Message(
-                f"old-assistant-{index}", "assistant", tool_calls=(ToolCall(call_id, "Bash", {}),)
-            )
+            Message(f"old-assistant-{index}", "assistant", content=(ToolCall(call_id, "Bash", {}),))
         )
         operation = ToolContext(context.session_id, "old-run", call_id, "/workspace")
         result = await outputs.prepare(
@@ -43,7 +41,7 @@ async def test_next_framework_request_uses_persistent_evictions_not_original_gra
             "tail",
         )
         entry = await store.append_message(
-            Message(f"old-result-{index}", "tool", tool_result=result)
+            Message(f"old-result-{index}", "tool_result", tool_result=result)
         )
         await outputs.bind(result.output_id, entry)
     await store.append_message(Message("recent-1", "user", "recent one"))
@@ -58,7 +56,7 @@ async def test_next_framework_request_uses_persistent_evictions_not_original_gra
         responses=[AIMessage(id="a1", content="first complete"), AIMessage(id="a2", content="done")]
     )
     runtime = build_agent_runtime(model)
-    history = context.projector.project(await store.snapshot()).messages
+    history = context.projector.transform_context(await store.snapshot()).messages
     await runtime.run((Message("current", "user", "current"),), context, history=history)
     first = [message.content for message in model.requests[0] if isinstance(message, ToolMessage)]
     second = [message.content for message in model.requests[1] if isinstance(message, ToolMessage)]

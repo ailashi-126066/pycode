@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from pydantic_core import from_json
 
 from pycode.context import TaskOutput, validate_task_action
-from pycode.kernel import ModelError, json_dumps
+from pycode.kernel import ModelError, TextBlock, json_dumps
 
 TASK_OUTPUT_MARKER = "PYCODE_TASK_OUTPUT"
 TASK_OUTPUT_PROMPT = (
@@ -45,13 +45,21 @@ def visible_partial(text):
     return message if isinstance(message, str) else ""
 
 
+def with_text(message, text):
+    """Swap the JSON envelope for its reply; thinking and tool calls stay."""
+    return replace(
+        message,
+        content=(*message.thinking, *((TextBlock(text),) if text else ()), *message.tool_calls),
+    )
+
+
 def decode_task_output(message, state, evidence):
     if not message.text:
         if not message.tool_calls and message.stop_reason == "stop":
             raise ModelError("invalid_task_output", "An empty reply requires native tool calls")
         return message
-    if message.stop_reason in {"length", "error", "aborted", "content_filter"}:
-        return replace(message, text=visible_partial(message.text))
+    if message.stop_reason in {"length", "error", "aborted"}:
+        return with_text(message, visible_partial(message.text))
     try:
         output = TaskOutput.model_validate_json(message.text)
         change = (
@@ -68,8 +76,7 @@ def decode_task_output(message, state, evidence):
     except (ValidationError, ValueError) as error:
         raise ModelError("invalid_task_output", str(error)) from error
     return replace(
-        message,
-        text=output.message,
+        with_text(message, output.message),
         provider_metadata={
             **message.provider_metadata,
             "pycode_task_action": output.task_action.model_dump(exclude_unset=True)

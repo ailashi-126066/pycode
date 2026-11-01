@@ -6,7 +6,7 @@ from pycode.kernel import Message
 
 
 class MessagePublisher(Protocol):
-    async def publish(self, message: Message, *, emit_start: bool = False) -> str: ...
+    async def publish(self, message: Message) -> str: ...
 
 
 ContextT = TypeVar("ContextT", contravariant=True)

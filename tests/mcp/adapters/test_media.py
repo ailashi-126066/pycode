@@ -23,7 +23,7 @@ async def test_real_stdio_image_is_preserved_and_forwarded_only_to_capable_model
         assert len(media) == 1 and media[0]["type"] == "image"
         assert media[0]["mime_type"] == "image/png" and media[0]["base64"].startswith("iVBOR")
         result = replace(result, call_id="c1")
-        message = Message("t1", "tool", tool_result=result)
+        message = Message("t1", "tool_result", tool_result=result)
         selection = ModelSelection(
             "test", "fixed", "openai", capabilities=ModelCapabilities(supports_images=True)
         )

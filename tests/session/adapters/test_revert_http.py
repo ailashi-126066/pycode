@@ -93,9 +93,11 @@ async def test_actual_bash_snapshots_and_revert_modes_continue_through_shared_ap
         await session.aclose()
         reader = await compose_application(config).session_repository().open("s1")
         after = await reader.snapshot()
-        projection = ContextProjector().project(after)
-        assert any(entry.message and entry.message.role == "tool" for entry in after.entries)
-        assert any(message.role == "tool" for message in projection.messages) == (mode == "code")
+        projection = ContextProjector().transform_context(after)
+        assert any(entry.message and entry.message.role == "tool_result" for entry in after.entries)
+        assert any(message.role == "tool_result" for message in projection.messages) == (
+            mode == "code"
+        )
         await reader.aclose()
 
 

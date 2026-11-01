@@ -197,7 +197,9 @@ async def test_dynamic_tools_after_skills_disclosure_are_in_final_budget_snapsho
         result = await runtime.run((Message("user", "user", "inspect"),), context)
         assert result.outcome == "completed"
         assert "dynamic" in model.declared_tools[-1]
-        final = context.projector.project(await history.snapshot()).checkpoint["model_tools"]
+        final = context.projector.transform_context(await history.snapshot()).checkpoint[
+            "model_tools"
+        ]
         assert {spec["name"] for spec in final} == set(model.declared_tools[-1])
         assert "dynamic" in {spec.name for spec in context.model_tools}
     finally:

@@ -27,6 +27,10 @@ class ToolSpec:
     approval_details: dict[str, Any] = field(default_factory=dict)
     # None resolves to "safe" for read tools and "never" for everything else.
     replay: Replay | None = None
+    # Pi: AgentTool.prepareArguments, applied by prepare_tool_call before schema validation.
+    prepare_arguments: Callable[[dict[str, Any]], dict[str, Any]] | None = field(
+        default=None, compare=False, repr=False, metadata={"serialize": False}
+    )
 
     def __post_init__(self) -> None:
         if self.replay is None:

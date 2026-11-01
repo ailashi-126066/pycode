@@ -35,7 +35,7 @@ async def test_setup_is_lazy_and_first_user_publishes_header_setup_and_input(tmp
     await store.aclose()
     restored = open_store(tmp_path)
     try:
-        projection = ContextProjector().project(await restored.snapshot())
+        projection = ContextProjector().transform_context(await restored.snapshot())
         assert projection.selection == selection
         assert projection.messages[0].text == "hello"
     finally:
@@ -56,7 +56,9 @@ async def test_append_preserves_prefix_and_branch_position_survives_reopen(tmp_p
         snapshot = await restored.snapshot()
         assert snapshot.leaf_id == new
         assert len(snapshot.entries) == 3
-        assert [message.text for message in ContextProjector().project(snapshot).messages] == [
+        assert [
+            message.text for message in ContextProjector().transform_context(snapshot).messages
+        ] == [
             "start",
             "branch B",
         ]
@@ -78,7 +80,7 @@ async def test_input_id_retry_does_not_append_duplicate_or_move_leaf(tmp_path):
     assert await store.append_message(user) == first
     assert (await store.snapshot()).leaf_id == last
     with pytest.raises(StorageError, match="different content"):
-        await store.append_message(replace(user, text="changed"))
+        await store.append_message(replace(user, content="changed"))
     await store.aclose()
 
 
@@ -110,10 +112,10 @@ async def test_compaction_cannot_split_tool_call_and_result(tmp_path):
     store = open_store(tmp_path)
     await store.append_message(Message("u1", "user", "task"))
     call = await store.append_message(
-        Message("a1", "assistant", tool_calls=(ToolCall("c1", "Read", {}),))
+        Message("a1", "assistant", content=(ToolCall("c1", "Read", {}),))
     )
     result = await store.append_message(
-        Message("t1", "tool", tool_result=ToolResult("c1", "Read", "body"))
+        Message("t1", "tool_result", tool_result=ToolResult("c1", "Read", "body"))
     )
     with pytest.raises(StorageError) as error:
         await store.append_entry(

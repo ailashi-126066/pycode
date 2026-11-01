@@ -31,7 +31,7 @@ class ToolEvictionService:
 
     async def apply(self, *, protected_entry_ids: tuple[str, ...] = ()) -> EvictionReport:
         snapshot = await self._store.snapshot()
-        projection = self._projector.project(snapshot)
+        projection = self._projector.transform_context(snapshot)
         selection = select_old_results(
             snapshot, projection, self._budget, protected_entry_ids=protected_entry_ids
         )
@@ -58,7 +58,7 @@ class ToolEvictionService:
                 )
             )
             applied.append(identifier)
-        after = self._projector.project(await self._store.snapshot())
+        after = self._projector.transform_context(await self._store.snapshot())
         before_tokens = estimate_messages(projection.messages)
         after_tokens = estimate_messages(after.messages)
         recovered = max(0, before_tokens - after_tokens)
@@ -82,5 +82,5 @@ class ToolEvictionService:
                     "notification",
                     {"kind": "tool_eviction", "targets": applied, "reclaimed_tokens": recovered},
                 )
-            after = self._projector.project(await self._store.snapshot())
+            after = self._projector.transform_context(await self._store.snapshot())
         return EvictionReport(tuple(applied), recovered, after_tokens)

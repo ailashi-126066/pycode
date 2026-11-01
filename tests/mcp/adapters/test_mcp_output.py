@@ -32,7 +32,7 @@ async def test_large_mcp_result_is_complete_on_disk_and_pageable_through_read_to
             result = next(
                 entry["message"]["tool_result"]
                 for entry in state["snapshot"]["entries"]
-                if entry["message"] and entry["message"]["role"] == "tool"
+                if entry["message"] and entry["message"]["role"] == "tool_result"
             )
             assert "中文行2399" not in result["text"] and result["output_id"]
             # Complete data is retained as an ordinary output object; the branch owns its reference.
@@ -97,7 +97,7 @@ async def test_dispatch_uses_target_name_for_hook_rejection_and_never_calls_serv
             result = next(
                 entry["message"]["tool_result"]
                 for entry in state["snapshot"]["entries"]
-                if entry["message"] and entry["message"]["role"] == "tool"
+                if entry["message"] and entry["message"]["role"] == "tool_result"
             )
             assert result["name"] == "mcp__srv__mutate" and result["error_code"] == "hook_rejected"
         finally:

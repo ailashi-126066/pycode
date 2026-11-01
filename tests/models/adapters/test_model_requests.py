@@ -76,7 +76,36 @@ async def test_upstream_retry_request_counts_and_outcomes(case):
     else:
         assert result.outcome == "error"
         assert all(record.status == "failed" for record in records)
-        assert [message.role for message in journal.messages] == ["user"]
+        assert [message.role for message in journal.messages] == ["user", "assistant"]
+        failed = journal.messages[-1]
+        assert (failed.stop_reason, failed.error) == ("error", "provider_http_503")
+
+
+async def test_failed_reply_is_saved_with_message_end_and_retry_start_carries_attempt():
+    runtime, context, _, _, journal, recorder, _, _ = assemble_attempts(
+        [status_error(503), AIMessage(id="a1", content="Success")]
+    )
+    await runtime.run((Message("u1", "user", "Test"),), context)
+    starts = [
+        event.data
+        for event in recorder.events
+        if event.kind == "message_start" and event.data["role"] == "assistant"
+    ]
+    # The failed attempt never produced a chunk, so only the retry announced itself.
+    assert [start["attempt"] for start in starts] == [1]
+
+    runtime, context, _, _, journal, recorder, _, _ = assemble_attempts([status_error(401)])
+    await runtime.run((Message("u1", "user", "Test"),), context)
+    failed = journal.messages[-1]
+    assert (failed.role, failed.stop_reason, failed.error) == (
+        "assistant",
+        "error",
+        "provider_http_401",
+    )
+    ends = [event.data for event in recorder.events if event.kind == "message_end"]
+    assert ends[-1]["id"] == failed.id and ends[-1]["stop_reason"] == "error"
+    kinds = [(event.kind, event.data.get("id")) for event in recorder.events]
+    assert kinds.index(("message_start", failed.id)) < kinds.index(("message_end", failed.id))
 
 
 async def test_authentication_failure_never_retries_and_unknown_usage_remains_null():
@@ -121,7 +150,7 @@ async def test_retried_model_request_cannot_repeat_previous_tool_effects():
     assert [message.role for message in journal.messages] == [
         "user",
         "assistant",
-        "tool",
+        "tool_result",
         "assistant",
     ]
     assert [record.purpose for record in await store.list_requests()] == ["agent", "agent", "retry"]

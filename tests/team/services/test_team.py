@@ -374,7 +374,7 @@ async def test_synthetic_interrupted_wait_result_does_not_ack_undelivered_messag
         await team.lead_history.append_message(
             Message(
                 "tool-result",
-                "tool",
+                "tool_result",
                 tool_result=ToolResult(
                     "wait",
                     "wait_agents",

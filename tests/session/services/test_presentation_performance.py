@@ -47,11 +47,11 @@ async def test_5000_entry_presentation_reuses_messages_and_appends_one_view(tmp_
         assert first["history"][0]["message"] is second["history"][0]["message"]
         assert first["snapshot"]["entries"][0] is second["snapshot"]["entries"][0]
         with pytest.raises(TypeError):
-            first["history"][0]["message"]["text"] = "changed"
+            first["history"][0]["message"]["content"] = "changed"
         await store.append_message(Message("new", "user", "new"))
         added = await view.inspect(presentation=True)
         assert added["history"][0]["message"] is first["history"][0]["message"]
-        assert added["history"][-1]["message"]["text"] == "new"
+        assert added["history"][-1]["message"]["content"] == "new"
     finally:
         await view.aclose()
 

@@ -173,7 +173,7 @@ class SummaryService:
         if self._closed:
             raise RuntimeError("Summary service is closed")
         snapshot = await self._history.snapshot()
-        projection = self._projector.project(snapshot)
+        projection = self._projector.transform_context(snapshot)
         fingerprint = self.config_hash(projection)
         tokens = self.estimate(snapshot, projection)
         full = tokens >= self._settings.budget.input_limit or force
@@ -274,7 +274,7 @@ class SummaryService:
 
     async def adopt(self):
         snapshot = await self._history.snapshot()
-        projection = self._projector.project(snapshot)
+        projection = self._projector.transform_context(snapshot)
         source, result = self._source, self._result
         if source is None or result is None:
             raise ModelError("summary_not_ready", "No completed summary is available to adopt")
@@ -292,7 +292,7 @@ class SummaryService:
         }
         entry = SessionEntry(identifier, snapshot.leaf_id, "compaction", "summary", data=data)
         candidate = replace(snapshot, entries=(*snapshot.entries, entry), leaf_id=identifier)
-        after = self._projector.project(candidate)
+        after = self._projector.transform_context(candidate)
         tokens = self.estimate(candidate, after)
         if tokens >= self._settings.budget.input_limit:
             await self._objects.invalidate(source.job_id, "tail_outgrew_retention")

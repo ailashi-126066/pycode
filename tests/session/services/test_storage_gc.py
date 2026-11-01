@@ -34,11 +34,11 @@ async def write_output(repository, layout, workspace, session_id="s1"):
     try:
         await store.append_message(Message("u1", "user", "task"))
         await store.append_message(
-            Message("a1", "assistant", tool_calls=(ToolCall("c1", "Bash", {}),))
+            Message("a1", "assistant", content=(ToolCall("c1", "Bash", {}),))
         )
         context = ToolContext(session_id, "r1", "op1", str(workspace), "c1", "Bash")
         result = await outputs.prepare(context, ToolResult("c1", "Bash", "line\n" * 3000), "tail")
-        entry_id = await store.append_message(Message("t1", "tool", tool_result=result))
+        entry_id = await store.append_message(Message("t1", "tool_result", tool_result=result))
         await outputs.bind(result.output_id, entry_id)
         return result.output_id, entry_id
     finally:

@@ -1,5 +1,10 @@
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/ai/src/api/transform-messages.ts
 """The framework message conversion boundary; histories remain plain data."""
 
+import hashlib
+import re
+from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
@@ -15,25 +20,106 @@ from langchain_core.messages import (
 )
 
 from pycode.kernel import (
+    ContentBlock,
     Message,
     ModelError,
     ModelSelection,
     StopReason,
+    TextBlock,
     ThinkingBlock,
     ToolCall,
     UsageRecord,
     clone_value,
+    convert_to_llm,
     json_dumps,
 )
 from pycode.models.domain.tool_text import model_tool_text
 
 
+def same_model(message: Message, selection: ModelSelection) -> bool:
+    source = message.model_selection
+    return (
+        source is not None
+        and source.provider == selection.provider
+        and source.api_mode == selection.api_mode
+        and source.model_id == selection.model_id
+    )
+
+
+# Pi: normalizeToolCallId (anthropic-messages.ts, openai-completions.ts)
+def normalize_tool_call_id(call_id: str, selection: ModelSelection) -> str:
+    if selection.implementation == "anthropic":
+        return re.sub(r"[^a-zA-Z0-9_-]", "_", call_id)[:64]
+    if "|" in call_id:
+        # OpenAI Responses IDs are "{call_id}|{item_id}"; Chat Completions allows 40 chars.
+        call, item = (re.sub(r"[^a-zA-Z0-9_-]", "_", part) for part in call_id.split("|", 1))
+        combined = f"{call}_{item}" if item else call
+        if len(combined) <= 40:
+            return combined
+        digest = hashlib.sha256(call_id.encode()).hexdigest()[:8]
+        return f"{call[: max(1, 40 - len(digest) - 1)]}_{digest}"
+    if selection.implementation == "openai":
+        return call_id[:40]
+    return call_id
+
+
+# Pi: transformMessages
+def transform_messages(messages: Sequence[Message], selection: ModelSelection) -> list[Message]:
+    """Drop failed replies with their results; adapt another model's replies to this one.
+
+    Only the outgoing copy changes: thinking from another model is dropped and its tool call
+    IDs are normalized for this provider, with the paired results renamed to match.
+    """
+    output = []
+    skipped_calls: set[str] = set()
+    renamed: dict[str, str] = {}
+    started = False
+    for message in messages:
+        if message.role == "assistant":
+            skipped_calls = set()
+            if message.stop_reason in {"error", "aborted"}:
+                skipped_calls = {call.id for call in message.tool_calls}
+                continue
+            if not isinstance(message.content, str) and not same_model(message, selection):
+                content = []
+                for block in message.content:
+                    if isinstance(block, ThinkingBlock):
+                        continue
+                    if isinstance(block, ToolCall):
+                        renamed[block.id] = normalize_tool_call_id(block.id, selection)
+                        block = replace(block, id=renamed[block.id])
+                    content.append(block)
+                message = replace(message, content=tuple(content))
+        elif message.role == "tool_result":
+            result = message.require_tool_result()
+            if result.call_id in skipped_calls:
+                continue
+            if result.call_id in renamed:
+                message = replace(
+                    message, tool_result=replace(result, call_id=renamed[result.call_id])
+                )
+        elif message.role == "system" and started and selection.implementation == "anthropic":
+            # Anthropic accepts system text only before the conversation (Pi folds it there).
+            message = replace(message, role="user")
+        started = started or message.role != "system"
+        output.append(message)
+    return output
+
+
+def to_framework_messages(
+    messages: Sequence[Message], selection: ModelSelection
+) -> list[AnyMessage]:
+    """convert_to_llm, then transform_messages, then LangChain messages for one request."""
+    return [
+        to_framework(message, selection)
+        for message in transform_messages(convert_to_llm(tuple(messages)), selection)
+    ]
+
+
 def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
     blocks: list[str | dict[str, Any]]
-    if message.role == "tool":
-        result = message.tool_result
-        if result is None:
-            raise ValueError("Tool message is missing its paired result")
+    if message.role == "tool_result":
+        result = message.require_tool_result()
         content: str | list[str | dict[str, Any]] = model_tool_text(result)
         if selection.capabilities.supports_images and result.details.get("mcp_content_blocks"):
             blocks = [{"type": "text", "text": content}]
@@ -60,6 +146,7 @@ def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
             )
         reply_content = content
         additional = {}
+        # transform_messages kept thinking only for the model that produced it.
         if selection.implementation == "deepseek" and message.thinking:
             additional["reasoning_content"] = "".join(block.text for block in message.thinking)
         if (
@@ -110,18 +197,25 @@ def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
     return HumanMessage(id=message.id, content=message.text)
 
 
+def raw_stop_reason(response: AIMessage) -> str | None:
+    return response.response_metadata.get("finish_reason") or response.response_metadata.get(
+        "stop_reason"
+    )
+
+
+# The provider stop reason mapping lives only here (Pi: each provider's mapStopReason).
 def stop_reason(response: AIMessage) -> StopReason:
     if response.response_metadata.get("pycode_provider_status") == "incomplete":
         return "length"
-    raw = response.response_metadata.get("finish_reason") or response.response_metadata.get(
-        "stop_reason"
-    )
+    raw = raw_stop_reason(response)
     if raw in {"length", "max_tokens", "incomplete"}:
         return "length"
-    if raw in {"error", "aborted", "content_filter"}:
-        return raw
+    if raw == "aborted":
+        return "aborted"
+    if raw in {"error", "content_filter"}:
+        return "error"
     if response.tool_calls or response.invalid_tool_calls:
-        return "tool_calls"
+        return "tool_use"
     return "stop"
 
 
@@ -192,55 +286,62 @@ def normalize_usage(
 def from_assistant(
     response: AIMessage, selection: ModelSelection, session_id: str, run_id: str
 ) -> Message:
-    thinking = []
-    if isinstance(response.content, list):
-        for block in response.content:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") in {"thinking", "reasoning"}:
-                text = block.get("thinking") or block.get("reasoning") or ""
-                if not text and isinstance(block.get("summary"), list):
-                    text = "\n".join(
-                        part["text"]
-                        for part in block["summary"]
-                        if isinstance(part, dict) and isinstance(part.get("text"), str)
-                    )
-                thinking.append(
-                    ThinkingBlock(
-                        text=text,
-                        signature=block.get("signature"),
-                        provider_data=clone_value(block),
-                    )
-                )
-            elif block.get("type") == "redacted_thinking":
-                thinking.append(ThinkingBlock(text="", redacted_data=block.get("data")))
-    reasoning = response.additional_kwargs.get("reasoning_content")
-    if reasoning and not thinking:
-        thinking.append(ThinkingBlock(text=reasoning))
-    calls = []
+    calls = {}
     for call in response.tool_calls:
         call_id = call["id"]
         if call_id is None or not call_id.strip():
             raise ModelError("invalid_tool_call", "Provider tool call is missing its ID")
-        calls.append(ToolCall(id=call_id, name=call["name"], arguments=clone_value(call["args"])))
-    for call in response.invalid_tool_calls:
-        calls.append(
-            ToolCall(
-                id=call.get("id") or str(uuid4()),
-                name=call.get("name") or "unknown",
-                arguments={},
-                raw_arguments=call.get("args"),
-                parse_error=call.get("error") or "Malformed tool arguments",
-            )
+        calls[call_id] = ToolCall(
+            id=call_id, name=call["name"], arguments=clone_value(call["args"])
         )
+    for call in response.invalid_tool_calls:
+        call_id = call.get("id") or str(uuid4())
+        calls[call_id] = ToolCall(
+            id=call_id,
+            name=call.get("name") or "unknown",
+            arguments={},
+            raw_arguments=call.get("args"),
+            parse_error=call.get("error") or "Malformed tool arguments",
+        )
+    content: list[ContentBlock] = []
+    raw_content = response.content if isinstance(response.content, list) else [response.content]
+    for block in raw_content:
+        if isinstance(block, str):
+            if block:
+                content.append(TextBlock(block))
+        elif block.get("type") == "text" and isinstance(block.get("text"), str):
+            content.append(TextBlock(block["text"]))
+        elif block.get("type") in {"thinking", "reasoning"}:
+            text = block.get("thinking") or block.get("reasoning") or ""
+            if not text and isinstance(block.get("summary"), list):
+                text = "\n".join(
+                    part["text"]
+                    for part in block["summary"]
+                    if isinstance(part, dict) and isinstance(part.get("text"), str)
+                )
+            content.append(
+                ThinkingBlock(
+                    text=text,
+                    signature=block.get("signature"),
+                    provider_data=clone_value(block),
+                )
+            )
+        elif block.get("type") == "redacted_thinking":
+            content.append(ThinkingBlock(text="", redacted_data=block.get("data")))
+        elif block.get("id") in calls:
+            # Anthropic tool_use blocks keep their position among text and thinking.
+            content.append(calls.pop(block["id"]))
+    reasoning = response.additional_kwargs.get("reasoning_content")
+    if reasoning and not any(isinstance(block, ThinkingBlock) for block in content):
+        content.insert(0, ThinkingBlock(text=reasoning))
+    content.extend(calls.values())
     return Message(
         id=str(response.id or uuid4()),
         role="assistant",
         model_selection=selection,
-        text=response.text,
-        thinking=tuple(thinking),
-        tool_calls=tuple(calls),
+        content=tuple(content),
         stop_reason=stop_reason(response),
+        error="provider_content_filter" if raw_stop_reason(response) == "content_filter" else None,
         usage=normalize_usage(response, selection, session_id, run_id),
         provider_metadata={
             "response": clone_value(response.response_metadata),

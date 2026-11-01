@@ -21,7 +21,9 @@ async def test_fork_copies_selected_path_preserves_source_and_records_origin(tmp
     assert snapshot.header.parent_session_id == "source"
     assert snapshot.header.forked_from_entry_id == kept
     assert abandoned not in {entry.id for entry in snapshot.entries}
-    assert [message.text for message in ContextProjector().project(snapshot).messages] == [
+    assert [
+        message.text for message in ContextProjector().transform_context(snapshot).messages
+    ] == [
         "root",
         "kept",
     ]

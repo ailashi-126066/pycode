@@ -245,7 +245,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 )
         assert result.operation_id is not None
         message = self.converter(
-            Message("result:" + result.operation_id, "tool", tool_result=result),
+            Message("result:" + result.operation_id, "tool_result", tool_result=result),
             context.selection,
         )
         return Command(
@@ -662,8 +662,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         assert result.operation_id is not None
         # Pi: createToolResultMessage + emitToolResultMessage.
         entry_id = await self.publisher.publish(
-            Message("result:" + result.operation_id, "tool", tool_result=result),
-            emit_start=True,
+            Message("result:" + result.operation_id, "tool_result", tool_result=result)
         )
         path = call.arguments.get("file_path", "")
         if (

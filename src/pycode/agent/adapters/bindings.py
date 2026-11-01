@@ -1,6 +1,6 @@
 """Explicit framework dependencies assembled outside the agent feature."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -26,6 +26,8 @@ class FrameworkExtension(Protocol):
 @dataclass(frozen=True)
 class RuntimeBindings:
     to_framework: Callable[[Message, ModelSelection], BaseMessage]
+    # convert_to_llm + transform_messages + to_framework for one model request.
+    to_framework_messages: Callable[[Sequence[Message], ModelSelection], list[BaseMessage]]
     from_assistant: Callable[..., Message]
     make_framework_tool: Callable[..., object]
     disclose_model_tools: Callable[[object], Awaitable[object]]

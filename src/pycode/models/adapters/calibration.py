@@ -98,12 +98,10 @@ async def calibrate_model_request(
                     "projector_unavailable", "Calibration history requires a projector"
                 )
             snapshot = await history.snapshot()
-            projection = projector.project(snapshot)
+            projection = projector.transform_context(snapshot)
             context.model_source_leaf_id = snapshot.leaf_id
             if report is not None and report.applied_job_id is not None:
                 request = request.override(
-                    messages=[
-                        converter(message, context.selection) for message in projection.messages
-                    ]
+                    messages=converter(projection.messages, context.selection)
                 )
     return request

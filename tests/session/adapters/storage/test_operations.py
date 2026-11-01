@@ -23,7 +23,7 @@ async def test_restart_pairs_unfinished_call_by_whether_it_started(tmp_path, sta
         Message(
             "a1",
             "assistant",
-            tool_calls=(
+            content=(
                 ToolCall("c1", "write_file", {"file_path": "/workspace/new.txt", "content": "new"}),
             ),
         )
@@ -49,9 +49,9 @@ async def test_restart_pairs_unfinished_call_by_whether_it_started(tmp_path, sta
 async def test_completed_jsonl_result_is_preserved_without_second_result_path(tmp_path):
     store = store_at(tmp_path)
     await store.append_message(Message("u1", "user", "task"))
-    await store.append_message(Message("a1", "assistant", tool_calls=(ToolCall("c1", "Read", {}),)))
+    await store.append_message(Message("a1", "assistant", content=(ToolCall("c1", "Read", {}),)))
     result = ToolResult("c1", "Read", "original result")
-    await store.append_message(Message("t1", "tool", tool_result=result))
+    await store.append_message(Message("t1", "tool_result", tool_result=result))
     await store.aclose()
     original_bytes = (tmp_path / "s1" / "session.sqlite").read_bytes()
     reopened = store_at(tmp_path)
@@ -70,11 +70,11 @@ async def test_missing_result_recovery_is_idempotent_and_branch_scoped(tmp_path)
     try:
         root = await store.append_message(Message("u1", "user", "task"))
         await store.append_message(
-            Message("a1", "assistant", tool_calls=(ToolCall("abandoned", "Write", {}),))
+            Message("a1", "assistant", content=(ToolCall("abandoned", "Write", {}),))
         )
         await store.branch(root)
         await store.append_message(
-            Message("a2", "assistant", tool_calls=(ToolCall("current", "Write", {}),))
+            Message("a2", "assistant", content=(ToolCall("current", "Write", {}),))
         )
         first = await recover_conversation(store)
         second = await recover_conversation(store)
@@ -96,7 +96,7 @@ async def test_continuing_a_run_leaves_replay_safe_calls_to_rerun(tmp_path, repl
     try:
         await store.append_message(Message("u1", "user", "task"))
         await store.append_message(
-            Message("a1", "assistant", tool_calls=(ToolCall("c1", "Read", {}),))
+            Message("a1", "assistant", content=(ToolCall("c1", "Read", {}),))
         )
         await store.append_entry(
             EntryDraft(

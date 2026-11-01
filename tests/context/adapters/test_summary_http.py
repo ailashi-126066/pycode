@@ -84,7 +84,8 @@ async def test_manual_compaction_uses_native_sdk_metering_checkpoint_and_restart
         assert compaction.data["usage"][0]["purpose"] == "summary"
         assert any(entry.message and entry.message.id == "u0" for entry in snapshot.entries)
         assert not any(
-            message.id == "u0" for message in ContextProjector().project(snapshot).messages
+            message.id == "u0"
+            for message in ContextProjector().transform_context(snapshot).messages
         )
         await store.aclose()
 

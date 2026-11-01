@@ -72,7 +72,7 @@ async def test_skill_script_uses_bash_and_never_registers_python_tools(
                 entry["message"]["tool_result"]
                 for entry in entries
                 if entry["message"]
-                and entry["message"]["role"] == "tool"
+                and entry["message"]["role"] == "tool_result"
                 and entry["message"]["tool_result"]["call_id"] == "run"
             ]
             assert len(results) == 1

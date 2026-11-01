@@ -110,7 +110,9 @@ async def test_install_refreshes_catalog_but_never_activates_downloaded_skill(tm
         report = await service.install(URL)
         assert report["skill_name"] == "vendor-sample"
         assert (await service.search("sample"))[0]["name"] == "vendor-sample"
-        projection = ContextProjector((SkillsProjection(),)).project(await store.snapshot())
+        projection = ContextProjector((SkillsProjection(),)).transform_context(
+            await store.snapshot()
+        )
         assert not any(message.text == "Sample SOP" for message in projection.messages)
         assert not active_skills((await store.snapshot()).entries)
         loaded = await read_skill(
@@ -145,7 +147,9 @@ async def test_exact_snapshot_survives_disk_change_restart_and_explicit_reload(t
     )
     try:
         assert (await service.index())["entries"][0]["content_hash"] == original["content_hash"]
-        projected = ContextProjector((SkillsProjection(),)).project(await restored.snapshot())
+        projected = ContextProjector((SkillsProjection(),)).transform_context(
+            await restored.snapshot()
+        )
         assert any(content(message) == original["text"] for message in projected.messages)
         assert not any(
             message.text.startswith("New instructions") for message in projected.messages
@@ -154,7 +158,9 @@ async def test_exact_snapshot_survives_disk_change_restart_and_explicit_reload(t
         updated = await read_skill(restored, catalog, "example")
         assert "New instructions $ARGUMENTS" in updated["text"]
         assert updated["content_hash"] != original["content_hash"]
-        projected = ContextProjector((SkillsProjection(),)).project(await restored.snapshot())
+        projected = ContextProjector((SkillsProjection(),)).transform_context(
+            await restored.snapshot()
+        )
         assert sum(content(message) == updated["text"] for message in projected.messages) == 1
         assert any(content(message) == original["text"] for message in projected.messages)
         assert (
@@ -176,7 +182,9 @@ async def test_branch_and_compaction_preserve_only_current_activations(tmp_path)
         )
         await store.append_message(Message("u2", "user", "Keep this"))
         kept = (await store.snapshot()).leaf_id
-        projected = ContextProjector((SkillsProjection(),)).project(await store.snapshot())
+        projected = ContextProjector((SkillsProjection(),)).transform_context(
+            await store.snapshot()
+        )
         await store.append_entry(
             EntryDraft(
                 "compaction",
@@ -195,10 +203,12 @@ async def test_branch_and_compaction_preserve_only_current_activations(tmp_path)
         )
         # Keep the full tree for parent integrity; projection excludes the old entry itself.
         assert active_skills(reduced.entries)[0]["content_hash"] == loaded["content_hash"]
-        projection = ContextProjector((SkillsProjection(),)).project(snapshot)
+        projection = ContextProjector((SkillsProjection(),)).transform_context(snapshot)
         assert sum(content(message) == loaded["text"] for message in projection.messages) == 1
         await store.branch(before)
-        projection = ContextProjector((SkillsProjection(),)).project(await store.snapshot())
+        projection = ContextProjector((SkillsProjection(),)).transform_context(
+            await store.snapshot()
+        )
         assert "skills" not in projection.checkpoint
         assert not any(message.text == loaded["text"] for message in projection.messages)
     finally:
@@ -222,7 +232,9 @@ async def test_resources_are_on_demand_and_scope_rejects_escape(tmp_path):
             FileSkillCatalog((("user", path.parent.parent),)),
             "example",
         )
-        projection = ContextProjector((SkillsProjection(),)).project(await store.snapshot())
+        projection = ContextProjector((SkillsProjection(),)).transform_context(
+            await store.snapshot()
+        )
         assert not any("Resource only" in message.text for message in projection.messages)
         result = await backend.aread("/example/references/note.txt")
         assert result.error is None and "Resource only" in result.file_data["content"]

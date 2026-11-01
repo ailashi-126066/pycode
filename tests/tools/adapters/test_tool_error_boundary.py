@@ -107,7 +107,7 @@ async def test_failed_write_is_attempted_once_and_records_side_effect_uncertaint
     tool = Write()
     executor.registry.replace_source("builtin", (tool,))
     executor.gate = Gate()
-    result = await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_calls")
+    result = await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_use")
     assert tool.calls == 1 and result.error_code == "tool_io_error"
     assert result.details["executed"] and result.details["side_effects_uncertain"]
     assert "private internals" not in result.text
@@ -142,7 +142,7 @@ async def test_read_retry_exhaustion_has_one_paired_result_and_formal_end_event(
 async def test_supplied_spec_with_direct_execution_uses_the_registered_tool():
     executor, context, tool, _ = make_executor()
     result = await executor.execute(
-        context, ToolCall("call", "echo", {"value": "x"}), "tool_calls", spec=tool.spec
+        context, ToolCall("call", "echo", {"value": "x"}), "tool_use", spec=tool.spec
     )
     assert result.text == "echoed: x" and tool.executed == ["x"]
 
@@ -163,7 +163,7 @@ async def test_critical_snapshot_before_execution_does_not_create_a_recoverable_
     executor.gate = Gate()
     executor.snapshots = Snapshots()
     with pytest.raises(SnapshotError) as error:
-        await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_calls")
+        await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_use")
     assert error.value.code == "snapshot_failed" and tool.executed == []
     assert not any(event.kind == "tool_execution_end" for event in recorder.events)
 
@@ -183,7 +183,7 @@ async def test_critical_output_save_after_error_conversion_still_propagates():
     executor.registry.replace_source("builtin", (Failing(),))
     executor.outputs = Outputs()
     with pytest.raises(StorageError) as error:
-        await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_calls")
+        await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_use")
     assert error.value.code == "output_failed"
     assert not any(
         event.kind in {"tool_execution_end", "tool_output_ready"} for event in recorder.events
@@ -221,7 +221,7 @@ async def test_executed_write_error_retains_before_after_snapshot_binding():
     executor.registry.replace_source("builtin", (PartialWrite(),))
     executor.gate = Gate()
     executor.snapshots = Snapshots()
-    result = await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_calls")
+    result = await executor.execute(context, ToolCall("call", "echo", {"value": "x"}), "tool_use")
     assert result.error_code == "partial_write" and result.details["side_effects_uncertain"]
     assert result.details["file_snapshot"] == {
         "before": "tree-1",

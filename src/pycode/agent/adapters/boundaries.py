@@ -83,62 +83,66 @@ async def filter_model_tools(request):
     return request
 
 
+# This uses LangChain streaming callbacks to implement Pi's message_start/update events.
 class ModelEventCallbacks(AsyncCallbackHandler):
-    def __init__(self, events, requests, request_source=None):
-        self.events = events
-        self.requests = requests
-        self.request_source = request_source
+    def __init__(self, context):
+        self.context = context
         self.text_streams = {}
-
-    def current_request(self):
-        return self.request_source() if self.request_source is not None else self.requests
 
     async def on_chat_model_start(self, serialized, messages, *, run_id, **kwargs):
         if "pycode:internal" in kwargs.get("tags", ()):
             return
         self.text_streams[run_id] = ("", "")
-        await self.events.emit(
-            "message_start",
-            {
-                "role": "assistant",
-                "request_id": self.current_request().active_request_id,
-                "model_selection": plain_data(self.current_request().selection),
-                "provider_run_id": str(run_id),
-            },
-        )
+        self.context.streamed_text = None
 
     async def on_llm_new_token(self, token, *, chunk=None, **kwargs):
         if "pycode:internal" in kwargs.get("tags", ()):
             return
+        context = self.context
+        requests = context.requests
+        if context.streamed_text is None:
+            # Pi: message_start is emitted with the first chunk; a retry starts again.
+            context.streamed_text = ""
+            await context.events.emit(
+                "message_start",
+                {
+                    "role": "assistant",
+                    "request_id": requests.active_request_id,
+                    "attempt": requests.active_attempt,
+                    "model_selection": plain_data(requests.selection),
+                    "provider_run_id": str(kwargs["run_id"]),
+                },
+            )
         if token:
             raw, visible = self.text_streams[kwargs["run_id"]]
             raw += token
             updated = visible_partial(raw)
             self.text_streams[kwargs["run_id"]] = (raw, updated)
-            await self.events.emit(
+            context.streamed_text = updated
+            await context.events.emit(
                 "message_delta",
                 {
                     "text": updated[len(visible) :],
                     "output_activity": True,
-                    "request_id": self.current_request().active_request_id,
+                    "request_id": requests.active_request_id,
                 },
             )
         if chunk is None:
             return
         reasoning = chunk.message.additional_kwargs.get("reasoning_content")
         if reasoning:
-            await self.events.emit(
+            await context.events.emit(
                 "thinking_delta",
-                {"text": reasoning, "request_id": self.current_request().active_request_id},
+                {"text": reasoning, "request_id": requests.active_request_id},
             )
         if isinstance(chunk.message.content, list):
             for block in chunk.message.content:
                 if isinstance(block, dict) and block.get("type") in {"thinking", "reasoning"}:
                     text = block.get("thinking") or block.get("reasoning")
                     if text:
-                        await self.events.emit(
+                        await context.events.emit(
                             "thinking_delta",
-                            {"text": text, "request_id": self.current_request().active_request_id},
+                            {"text": text, "request_id": requests.active_request_id},
                         )
 
     async def on_llm_end(self, response, *, run_id, **kwargs):
@@ -148,7 +152,7 @@ class ModelEventCallbacks(AsyncCallbackHandler):
         self.text_streams.pop(run_id, None)
 
 
-async def save_message(context, message, *, emit_start=False):
+async def save_message(context, message):
     entry_id = await context.journal.append_message(message)
     result = message.tool_result
     if result is not None and result.output_id and context.outputs is not None:
@@ -171,14 +175,16 @@ async def save_message(context, message, *, emit_start=False):
             )
         )
     context.completed.append(message)
-    if emit_start:
+    # A streamed assistant reply already sent message_start with its first chunk.
+    if message.role != "assistant" or context.streamed_text is None:
         await context.events.emit("message_start", plain_data(message))
+    context.streamed_text = None
     await context.events.emit("message_end", {**plain_data(message), "entry_id": entry_id})
     return entry_id
 
 
 async def deliver_input(context, message, kind):
-    entry_id = await save_message(context, message, emit_start=True)
+    entry_id = await save_message(context, message)
     await context.events.emit(
         "notification",
         {
@@ -194,5 +200,5 @@ class AgentMessagePublisher:
     def __init__(self, context):
         self.context = context
 
-    async def publish(self, message, *, emit_start=False):
-        return await save_message(self.context, message, emit_start=emit_start)
+    async def publish(self, message):
+        return await save_message(self.context, message)

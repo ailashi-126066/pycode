@@ -13,11 +13,11 @@ def test_source_pairing_repairs_send_copy_preserving_real_results_and_history():
         Message(
             "a1",
             "assistant",
-            tool_calls=(ToolCall("one", "Read", {}), ToolCall("two", "Write", {})),
+            content=(ToolCall("one", "Read", {}), ToolCall("two", "Write", {})),
         ),
         Message("u2", "user", "interrupted"),
-        Message("t1", "tool", tool_result=ToolResult("one", "Read", "real")),
-        Message("t2", "tool", tool_result=ToolResult("orphan", "Read", "bogus")),
+        Message("t1", "tool_result", tool_result=ToolResult("one", "Read", "real")),
+        Message("t2", "tool_result", tool_result=ToolResult("orphan", "Read", "bogus")),
     )
     before = deepcopy(original)
     repaired = repair_tool_pairing(original)
@@ -36,10 +36,10 @@ def test_source_pairing_repairs_send_copy_preserving_real_results_and_history():
 
 def test_source_pairing_binds_reused_ids_to_correct_occurrence():
     messages = (
-        Message("a1", "assistant", tool_calls=(ToolCall("same", "Read", {}),)),
-        Message("t1", "tool", tool_result=ToolResult("same", "Read", "first")),
-        Message("a2", "assistant", tool_calls=(ToolCall("same", "Read", {}),)),
-        Message("t2", "tool", tool_result=ToolResult("same", "Read", "second")),
+        Message("a1", "assistant", content=(ToolCall("same", "Read", {}),)),
+        Message("t1", "tool_result", tool_result=ToolResult("same", "Read", "first")),
+        Message("a2", "assistant", content=(ToolCall("same", "Read", {}),)),
+        Message("t2", "tool_result", tool_result=ToolResult("same", "Read", "second")),
     )
     repaired = repair_tool_pairing(messages)
     assert repaired[1].tool_result.text == "first"

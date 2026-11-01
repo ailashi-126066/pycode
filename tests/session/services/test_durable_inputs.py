@@ -30,7 +30,8 @@ async def test_queued_input_is_durable_invisible_and_idempotent_until_real_model
     assert await queue.submit(user, "steer", "r1")
     assert not await queue.submit(user, "steer", "r1")
     assert [
-        message.id for message in ContextProjector().project(await store.snapshot()).messages
+        message.id
+        for message in ContextProjector().transform_context(await store.snapshot()).messages
     ] == ["u1"]
     with pytest.raises(StorageError):
         await queue.submit(Message("steer-1", "user", "different"), "steer", "r1")

@@ -24,7 +24,6 @@ async def test_before_jsonl_commit_only_bytes_survive_never_a_confirmed_tool_res
         is_error=True,
         error_code="known_error",
         exit_code=3,
-        terminate=True,
         details={"cause": "known"},
     )
     if streaming:
@@ -58,10 +57,12 @@ async def test_before_jsonl_commit_only_bytes_survive_never_a_confirmed_tool_res
         operation_id=context.operation_id,
         details={"output_recovered": True},
     )
-    entry_id = await journal.append_message(Message("interrupted", "tool", tool_result=interrupted))
+    entry_id = await journal.append_message(
+        Message("interrupted", "tool_result", tool_result=interrupted)
+    )
     await restored.bind(reference, entry_id)
     assert (await restored.read(reference, 1, 1, 4096)).text == "x" * 4096
-    assert interrupted.error_code == "tool_interrupted" and interrupted.terminate is False
+    assert interrupted.error_code == "tool_interrupted"
     await journal.aclose()
 
 

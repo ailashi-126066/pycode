@@ -14,7 +14,7 @@ from pycode.kernel import (
 
 
 class Projector(Protocol):
-    def project(self, snapshot: SessionSnapshot) -> ProjectedContext: ...
+    def transform_context(self, snapshot: SessionSnapshot) -> ProjectedContext: ...
 
 
 class RunOwnership(Protocol):

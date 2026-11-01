@@ -18,7 +18,7 @@ def test_upstream_tool_execution_stop_reason_vectors(case):
     assert tool_calls_may_execute(case["stop_reason"]) == case["expected_execute"]
 
 
-@pytest.mark.parametrize("reason", ["error", "aborted", "content_filter"])
+@pytest.mark.parametrize("reason", ["length", "error", "aborted"])
 def test_failed_response_cannot_execute_its_tool_calls(reason):
     assert not tool_calls_may_execute(reason)
 

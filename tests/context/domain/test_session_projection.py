@@ -32,7 +32,7 @@ def project(entries, leaf):
     snapshot = SessionSnapshot(
         SessionHeader("session-1", "/project", "created"), tuple(entries), leaf, 0, 0
     )
-    return ContextProjector().project(snapshot)
+    return ContextProjector().transform_context(snapshot)
 
 
 @pytest.mark.parametrize("case", VECTORS["cases"], ids=lambda case: case["name"])
@@ -68,11 +68,13 @@ def test_latest_edit_wins_without_rewriting_raw_message_or_usage():
 
 
 def test_tool_replacement_preserves_pairing_error_and_output_reference():
-    call = Message("m1", "assistant", tool_calls=(ToolCall("call-1", "Read", {"path": "file"}),))
+    call = Message("m1", "assistant", content=(ToolCall("call-1", "Read", {"path": "file"}),))
     result = ToolResult("call-1", "Read", "raw output", is_error=True, output_id="output-1")
     entries = [
         SessionEntry("1", None, "message", "t", message=call),
-        SessionEntry("2", "1", "message", "t", message=Message("m2", "tool", tool_result=result)),
+        SessionEntry(
+            "2", "1", "message", "t", message=Message("m2", "tool_result", tool_result=result)
+        ),
         SessionEntry(
             "3", "2", "context_edit", "t", data={"target_id": "2", "replacement": "omitted"}
         ),
@@ -122,3 +124,20 @@ def test_state_only_audit_does_not_change_model_request_prefix_hash():
     before = project(entries, "1")
     entries.append(SessionEntry("2", "1", "custom", "t", data={"kind": "audit"}))
     assert project(entries, "2").messages == before.messages
+
+
+def test_tool_set_changes_are_declared_with_a_system_message():
+    def tools(identifier, parent, *names):
+        data = {"source": "effective_model", "tools": [{"name": name} for name in names]}
+        return SessionEntry(identifier, parent, "tool_set_change", "t", data=data)
+
+    entries = [
+        entry(("u1", None, "user", "hi")),
+        tools("t1", "u1", "read", "bash"),
+        entry(("a1", "t1", "assistant", "ok")),
+        tools("t2", "a1", "read", "mcp__srv__search"),
+    ]
+    projection = project(entries, "t2")
+    declared = projection.messages[-1]
+    assert [message.role for message in projection.messages] == ["user", "assistant", "system"]
+    assert "Added: mcp__srv__search" in declared.text and "Removed: bash" in declared.text

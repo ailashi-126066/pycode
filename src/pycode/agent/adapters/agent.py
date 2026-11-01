@@ -132,9 +132,7 @@ class AgentRuntime:
     def config(self, context) -> RunnableConfig:
         return {
             "configurable": {"thread_id": f"{context.session_id}:{context.run_id}"},
-            "callbacks": [
-                ModelEventCallbacks(context.events, context.requests, lambda: context.requests)
-            ],
+            "callbacks": [ModelEventCallbacks(context)],
         }
 
     async def run(self, inputs, context, *, history=()):
@@ -147,9 +145,7 @@ class AgentRuntime:
             if self.title_assignment is not None:
                 await self.title_assignment.assign(message)
         self.build(context)
-        messages = []
-        for message in (*history, *inputs):
-            messages.append(self.bindings.to_framework(message, context.selection))
+        messages = self.bindings.to_framework_messages((*history, *inputs), context.selection)
         return await self.invoke(
             {
                 "messages": messages,

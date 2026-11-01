@@ -44,13 +44,18 @@ from pycode.kernel.domain.history import (
 )
 from pycode.kernel.domain.history_tree import SessionTree
 from pycode.kernel.domain.messages import (
+    CUSTOM_ROLES,
+    ContentBlock,
     Message,
     Purpose,
+    Role,
     StopReason,
+    TextBlock,
     ThinkingBlock,
     ToolCall,
     ToolResult,
     UsageRecord,
+    convert_to_llm,
 )
 from pycode.kernel.domain.model_identity import ModelCapabilities, ModelSelection, ProviderKind
 from pycode.kernel.domain.path_policy import is_internal_component
@@ -74,7 +79,9 @@ __all__ = [
     "ArgumentValidator",
     "Board",
     "BoardStatus",
+    "CUSTOM_ROLES",
     "CompactionEvent",
+    "ContentBlock",
     "CustomKind",
     "DomainError",
     "EntryDraft",
@@ -107,6 +114,7 @@ __all__ = [
     "Purpose",
     "ResultEvent",
     "RetryEvent",
+    "Role",
     "RunResult",
     "SECRET_PATTERNS",
     "SessionEntry",
@@ -121,6 +129,7 @@ __all__ = [
     "StorageError",
     "SubagentEvent",
     "TaskEvent",
+    "TextBlock",
     "ThinkingBlock",
     "Timing",
     "ToolCall",
@@ -135,6 +144,7 @@ __all__ = [
     "TurnStartEvent",
     "UsageRecord",
     "clone_value",
+    "convert_to_llm",
     "data_hash",
     "estimate_text",
     "freeze_value",

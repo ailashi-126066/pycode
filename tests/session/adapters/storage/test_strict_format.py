@@ -1,11 +1,20 @@
-"""Only current schema fields are accepted; no version or action migration runs."""
+"""Only current schema fields are accepted; pre-11.1 messages get one read-time upgrade."""
 
 import json
 from dataclasses import asdict
 
 import pytest
 
-from pycode.kernel import Message, SessionEntry, SessionHeader, StorageError
+from pycode.kernel import (
+    Message,
+    SessionEntry,
+    SessionHeader,
+    StorageError,
+    TextBlock,
+    ThinkingBlock,
+    ToolCall,
+    ToolResult,
+)
 from pycode.session.adapters.storage.session_codec import (
     decode_entry,
     decode_header,
@@ -21,6 +30,56 @@ def test_current_header_and_message_round_trip():
         "e1", None, "message", "2026-10-22T00:00:00Z", message=Message("u1", "user", "hello")
     )
     assert decode_entry(encode_entry(entry)) == entry
+
+
+def test_interleaved_content_blocks_keep_their_order():
+    message = Message(
+        "a1",
+        "assistant",
+        (
+            ThinkingBlock("plan", signature="sig"),
+            TextBlock("look "),
+            ToolCall("c1", "read", {"path": "a"}),
+            TextBlock("then"),
+            ToolCall("c2", "read", {"path": "b"}),
+        ),
+        stop_reason="tool_use",
+    )
+    entry = SessionEntry("e1", None, "message", "now", message=message)
+    assert decode_entry(encode_entry(entry)) == entry
+
+
+def test_pre_11_1_message_records_are_upgraded_on_read():
+    call = {"id": "c1", "name": "read", "arguments": {}, "raw_arguments": None, "parse_error": None}
+    thinking = {"text": "plan", "signature": None, "redacted_data": None, "provider_data": {}}
+    old = {
+        "id": "a1",
+        "role": "assistant",
+        "text": "reply",
+        "thinking": [thinking],
+        "attachments": [],
+        "tool_calls": [call],
+        "tool_result": None,
+        "usage": None,
+        "stop_reason": "tool_calls",
+        "timestamp": "",
+        "provider_metadata": {},
+        "model_selection": None,
+    }
+    payload = {**asdict(SessionEntry("e1", None, "message", "now")), "message": old}
+    upgraded = decode_entry(json.dumps(payload).encode()).require_message()
+    assert [block.type for block in upgraded.content] == ["thinking", "text", "tool_call"]
+    assert upgraded.stop_reason == "tool_use"
+    result = {**asdict(ToolResult("c1", "read", "out")), "terminate": False}
+    tool = {**old, "id": "t1", "role": "tool", "text": "", "thinking": [], "tool_calls": []}
+    tool.update(tool_result=result, stop_reason=None)
+    payload["message"] = tool
+    upgraded = decode_entry(json.dumps(payload).encode()).require_message()
+    assert (upgraded.role, upgraded.content) == ("tool_result", "")
+    filtered = {**old, "thinking": [], "tool_calls": [], "stop_reason": "content_filter"}
+    payload["message"] = filtered
+    upgraded = decode_entry(json.dumps(payload).encode()).require_message()
+    assert (upgraded.stop_reason, upgraded.error) == ("error", "provider_content_filter")
 
 
 @pytest.mark.parametrize("version", [0, 2, True, "1", 1.0])

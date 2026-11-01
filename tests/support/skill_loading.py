@@ -33,12 +33,12 @@ async def read_skill(store, catalog, name):
         Message(
             uuid4().hex,
             "assistant",
-            tool_calls=(ToolCall(call_id, "read_file", {"file_path": path}),),
+            content=(ToolCall(call_id, "read_file", {"file_path": path}),),
         )
     )
     text = read.file_data["content"]
     result = ToolResult(call_id, "read_file", text, details={"protected_content": True})
-    entry_id = await store.append_message(Message(uuid4().hex, "tool", tool_result=result))
+    entry_id = await store.append_message(Message(uuid4().hex, "tool_result", tool_result=result))
     await SkillLoadRecorder(store, catalog).record(path, result, entry_id)
     loaded = active_skills((await store.snapshot()).entries)[-1]
     return {**plain_data(loaded), "text": text}

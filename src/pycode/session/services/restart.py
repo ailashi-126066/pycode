@@ -94,7 +94,7 @@ async def recover_conversation(
                 details={**details, "source_assistant_id": message.id},
             )
             result_entry_id = await store.append_message(
-                Message(f"interrupted:{message.id}:{call.id}", "tool", tool_result=result)
+                Message(f"interrupted:{message.id}:{call.id}", "tool_result", tool_result=result)
             )
             if output_id is not None:
                 assert outputs is not None

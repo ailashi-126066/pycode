@@ -15,17 +15,17 @@ async def test_cut_moves_before_a_call_whose_result_follows_an_intervening_remin
         await store.append_message(Message("u1", "user", "old history " * 1000))
         await store.append_message(Message("a1", "assistant", "old answer " * 1000))
         call = await store.append_message(
-            Message("call", "assistant", tool_calls=(ToolCall("c1", "Read", {}),))
+            Message("call", "assistant", content=(ToolCall("c1", "Read", {}),))
         )
         await store.append_message(Message("reminder", "custom", "reminder"))
         await store.append_message(
-            Message("t1", "tool", tool_result=ToolResult("c1", "Read", "x" * 8000))
+            Message("t1", "tool_result", tool_result=ToolResult("c1", "Read", "x" * 8000))
         )
         await store.append_message(Message("a2", "assistant", "recent answer"))
         snapshot = await store.snapshot()
         source = capture_source(
             snapshot,
-            ContextProjector().project(snapshot),
+            ContextProjector().transform_context(snapshot),
             job_id="a" * 32,
             selection=ModelSelection("test", "model", "openai"),
             config_hash="config",

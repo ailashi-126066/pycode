@@ -102,7 +102,7 @@ async def test_public_agent_executes_parallel_read_searches_without_approval_and
         snapshot = await reader.snapshot()
         assert (
             sum(
-                entry.message is not None and entry.message.role == "tool"
+                entry.message is not None and entry.message.role == "tool_result"
                 for entry in snapshot.entries
             )
             == 2

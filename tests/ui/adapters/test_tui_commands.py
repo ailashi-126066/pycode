@@ -5,6 +5,7 @@ import pytest
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel.domain.errors import StorageError
+from pycode.ui.adapters.tui import content_text
 from tests.context.adapters.test_summary_http import seed
 from tests.session.adapters.test_revert_http import command_reply
 from tests.snapshot.adapters.test_git_tree import git, repository
@@ -80,7 +81,8 @@ async def test_tui_model_command_fork_and_invalid_open_preserve_selected_native_
                 await app.command("/session open missing")
             assert (
                 app.session_id == original
-                and (await app.session.inspect())["context"]["messages"][-1]["text"] == "done"
+                and content_text((await app.session.inspect())["context"]["messages"][-1], "text")
+                == "done"
             )
             await app.command("/session fork child")
             assert (

@@ -15,6 +15,7 @@ class AgentModule:
         self,
         *,
         to_framework,
+        to_framework_messages,
         from_assistant,
         make_framework_tool,
         disclose_model_tools,
@@ -29,6 +30,7 @@ class AgentModule:
     ) -> RuntimeBindings:
         return RuntimeBindings(
             to_framework=to_framework,
+            to_framework_messages=to_framework_messages,
             from_assistant=from_assistant,
             make_framework_tool=make_framework_tool,
             disclose_model_tools=disclose_model_tools,

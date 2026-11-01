@@ -38,6 +38,7 @@ def build_runtime_bindings(
 
     return agent.bindings(
         to_framework=models.to_framework,
+        to_framework_messages=models.to_framework_messages,
         from_assistant=models.from_assistant,
         make_framework_tool=converter,
         disclose_model_tools=discovery.disclose,

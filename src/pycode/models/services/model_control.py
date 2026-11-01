@@ -40,7 +40,7 @@ class ModelControl:
         if self._store is None:
             return None
         snapshot = await self._store.snapshot()
-        projection = self._projector.project(snapshot)
+        projection = self._projector.transform_context(snapshot)
         path = SessionTree(snapshot.index).path(projection.leaf_id)
         selection = projection.selection
         for entry in reversed(path):

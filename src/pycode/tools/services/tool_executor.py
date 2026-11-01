@@ -74,7 +74,11 @@ class ToolExecutor:
                 spec = self.registry.get_spec(call.name)
             if invoke is None:
                 tool = self.registry.get(call.name)
+            # Pi: prepareToolCall — prepareArguments, then Value.Convert, then schema check.
             arguments = clone_value(call.arguments)
+            if spec.prepare_arguments is not None:
+                arguments = spec.prepare_arguments(arguments)
+            arguments = self.validator.convert(spec.input_schema, arguments)
             self.validator.validate(spec.input_schema, arguments)
             hook_call = replace(call, arguments=arguments)
             if self.hooks is not None:

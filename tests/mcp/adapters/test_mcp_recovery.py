@@ -62,7 +62,7 @@ async def test_changed_server_schema_is_recorded_but_pending_call_keeps_old_cont
             results = [
                 entry["message"]["tool_result"]
                 for entry in state["snapshot"]["entries"]
-                if entry["message"] and entry["message"]["role"] == "tool"
+                if entry["message"] and entry["message"]["role"] == "tool_result"
             ]
             assert (
                 results[-1]["error_code"] == "tool_abandoned"

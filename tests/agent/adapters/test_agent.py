@@ -76,7 +76,7 @@ class EchoTool:
             else:
                 self.first_release.set()
         if self.inject_steering and arguments["value"] == "first":
-            self.inputs.submit(Message(id="steer-1", role="user", text="interrupt"), "steer")
+            self.inputs.submit(Message(id="steer-1", role="user", content="interrupt"), "steer")
         return ToolResult(call_id="", name="", text=f"echoed: {arguments['value']}")
 
 
@@ -162,7 +162,7 @@ async def test_model_is_committed_before_tools_and_results_feed_next_request():
     assert [message.role for message in journal.messages] == [
         "user",
         "assistant",
-        "tool",
+        "tool_result",
         "assistant",
     ]
     assert any(
@@ -186,7 +186,7 @@ async def test_pi_parallel_completion_and_source_order_vectors():
         event.data["call_id"] for event in recorder.events if event.kind == "tool_execution_end"
     ]
     persisted = [
-        message.tool_result.call_id for message in journal.messages if message.role == "tool"
+        message.tool_result.call_id for message in journal.messages if message.role == "tool_result"
     ]
     # The final plan requires completion notifications after durable settlement.
     # Results still finish concurrently, but JSONL and final notifications follow
@@ -224,7 +224,9 @@ async def test_steer_is_delivered_after_the_entire_tool_batch():
     ids = [message.id for message in journal.messages]
     steering_index = ids.index("steer-1")
     assert all(
-        i < steering_index for i, message in enumerate(journal.messages) if message.role == "tool"
+        i < steering_index
+        for i, message in enumerate(journal.messages)
+        if message.role == "tool_result"
     )
     assert any(message.content == "interrupt" for message in model.requests[1])
 
@@ -245,8 +247,8 @@ async def test_follow_up_waits_until_current_work_would_end():
     assert [message.id for message in journal.messages][-2:] == ["follow-1", "assistant-3"]
 
 
-async def test_cancelled_model_stream_never_becomes_completed_history():
-    runtime, context, model, _, journal, _ = assemble([AIMessage(content="uncompleted")])
+async def test_cancelled_model_stream_is_saved_as_aborted_reply():
+    runtime, context, model, _, journal, recorder = assemble([AIMessage(content="uncompleted")])
     model.release = asyncio.Event()
     running = asyncio.create_task(runtime.run((Message("u1", "user", "start"),), context))
     await model.started.wait()
@@ -254,7 +256,12 @@ async def test_cancelled_model_stream_never_becomes_completed_history():
     with pytest.raises(asyncio.CancelledError):
         await running
     assert model.cleaned.is_set()
-    assert [message.role for message in journal.messages] == ["user"]
+    assert [message.role for message in journal.messages] == ["user", "assistant"]
+    aborted = journal.messages[-1]
+    assert (aborted.stop_reason, aborted.content) == ("aborted", ())
+    # No chunk arrived, so saving the reply sends its start and end.
+    kinds = [(event.kind, event.data.get("id")) for event in recorder.events]
+    assert kinds.index(("message_start", aborted.id)) < kinds.index(("message_end", aborted.id))
 
 
 async def test_sequential_tool_forces_barrier_under_parallel_default():
@@ -340,7 +347,7 @@ async def test_graph_tool_cancellation_is_collected_before_run_returns():
     with pytest.raises(asyncio.CancelledError):
         await running
     assert cleaned.is_set()
-    assert [message.role for message in journal.messages] == ["user", "assistant", "tool"]
+    assert [message.role for message in journal.messages] == ["user", "assistant", "tool_result"]
     assert journal.messages[-1].tool_result.error_code == "tool_interrupted"
     end = next(event for event in recorder.events if event.kind == "tool_execution_end")
     assert end.data["outcome"] == "interrupted"
@@ -348,7 +355,7 @@ async def test_graph_tool_cancellation_is_collected_before_run_returns():
     assert recorder.events[-1].data["outcome"] == "aborted"
 
 
-async def test_partial_stream_is_displayed_but_never_saved_as_complete_reply():
+async def test_partial_stream_is_saved_as_aborted_reply_with_its_text():
     runtime, context, model, _, journal, recorder = assemble([AIMessage(content="complete")])
     model.partial_text = "partial stream"
     model.release = asyncio.Event()
@@ -358,7 +365,17 @@ async def test_partial_stream_is_displayed_but_never_saved_as_complete_reply():
     with pytest.raises(asyncio.CancelledError):
         await running
     assert any(event.data.get("text") == "partial stream" for event in recorder.events)
-    assert [message.role for message in journal.messages] == ["user"]
+    assert [message.role for message in journal.messages] == ["user", "assistant"]
+    aborted = journal.messages[-1]
+    assert (aborted.stop_reason, aborted.text) == ("aborted", "partial stream")
+    starts = [event.data for event in recorder.events if event.kind == "message_start"]
+    # The streamed reply announced itself on its first chunk, with the attempt number.
+    assert starts[-1]["role"] == "assistant" and starts[-1]["attempt"] == 0
+    assert "id" not in starts[-1]
+    assert recorder.events[-1].kind != "message_start"
+    assert any(
+        event.kind == "message_end" and event.data["id"] == aborted.id for event in recorder.events
+    )
     assert model.cleaned.is_set()
 
 

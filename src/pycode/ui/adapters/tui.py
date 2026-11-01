@@ -54,6 +54,15 @@ def context_text(report):
     )
 
 
+def content_text(message, kind):
+    """Join the plain message content of one block kind ("text" or "thinking")."""
+    content = message["content"]
+    if isinstance(content, str):
+        return content if kind == "text" else ""
+    separator = "" if kind == "text" else "\n\n"
+    return separator.join(block["text"] for block in content if block["type"] == kind)
+
+
 def reply_metadata(message):
     metadata = message.get("provider_metadata", {})
     turn = metadata.get("pycode_turn")
@@ -440,8 +449,8 @@ class PyApp(App):
                 )
             elif message["role"] == "assistant":
                 await transcript.mount(Static("PYCODE", classes="assistant-label", markup=False))
-                if message["thinking"]:
-                    thinking = "\n\n".join(item["text"] for item in message["thinking"])
+                thinking = content_text(message, "thinking")
+                if thinking:
                     await transcript.mount(
                         Collapsible(
                             Static(thinking, markup=False, classes="message-thinking"),
@@ -450,13 +459,17 @@ class PyApp(App):
                             classes="thinking-block",
                         )
                     )
-                await transcript.mount(Markdown(message["text"], id="message-" + entry_id))
+                await transcript.mount(
+                    Markdown(content_text(message, "text"), id="message-" + entry_id)
+                )
                 metadata = reply_metadata(message)
                 if metadata:
                     await transcript.mount(Static(metadata, markup=False, classes="message-usage"))
             else:
                 await transcript.mount(
-                    Static("› " + message["text"], markup=False, classes="user-message")
+                    Static(
+                        "› " + content_text(message, "text"), markup=False, classes="user-message"
+                    )
                 )
             self._displayed_entries.append(entry_id)
         if at_bottom:

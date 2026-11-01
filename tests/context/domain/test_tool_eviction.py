@@ -27,7 +27,7 @@ def snapshot_for(results):
                 "message",
                 "t",
                 message=Message(
-                    call_entry, "assistant", tool_calls=(ToolCall(f"c{index}", name, {}),)
+                    call_entry, "assistant", content=(ToolCall(f"c{index}", name, {}),)
                 ),
             )
         )
@@ -40,7 +40,7 @@ def snapshot_for(results):
                 "t",
                 message=Message(
                     identifier,
-                    "tool",
+                    "tool_result",
                     tool_result=ToolResult(f"c{index}", name, "x" * (tokens * 4)),
                 ),
             )
@@ -60,7 +60,7 @@ def snapshot_for(results):
 @pytest.mark.parametrize("case", VECTORS["eviction"], ids=lambda case: case["name"])
 def test_upstream_tool_pruning_vectors(case):
     snapshot = snapshot_for([(case["tool_name"], case["tokens"])])
-    projection = ContextProjector().project(snapshot)
+    projection = ContextProjector().transform_context(snapshot)
     selection = select_old_results(snapshot, projection, EvictionBudget(200000))
     assert bool(selection.entry_ids) == case["expected_selected"]
 
@@ -68,20 +68,20 @@ def test_upstream_tool_pruning_vectors(case):
 def test_40k_protection_20k_threshold_and_whole_boundary_selection():
     snapshot = snapshot_for([("Bash", 25000), ("Bash", 40000)])
     selection = select_old_results(
-        snapshot, ContextProjector().project(snapshot), EvictionBudget(200000)
+        snapshot, ContextProjector().transform_context(snapshot), EvictionBudget(200000)
     )
     assert selection.entry_ids == ("r0",)
     assert selection.tokens == 25000
     smaller = snapshot_for([("Bash", 19999), ("Bash", 40000)])
     assert (
         select_old_results(
-            smaller, ContextProjector().project(smaller), EvictionBudget(200000)
+            smaller, ContextProjector().transform_context(smaller), EvictionBudget(200000)
         ).entry_ids
         == ()
     )
     exact = snapshot_for([("Bash", 20000), ("Bash", 40000)])
     assert select_old_results(
-        exact, ContextProjector().project(exact), EvictionBudget(200000)
+        exact, ContextProjector().transform_context(exact), EvictionBudget(200000)
     ).entry_ids == ("r0",)
 
 
@@ -91,7 +91,7 @@ def test_window_proportions_and_recent_region_are_respected():
     shortened = SessionSnapshot(snapshot.header, snapshot.entries[:-1], "u2", 0, 0)
     assert (
         select_old_results(
-            shortened, ContextProjector().project(shortened), EvictionBudget(200000)
+            shortened, ContextProjector().transform_context(shortened), EvictionBudget(200000)
         ).entry_ids
         == ()
     )
@@ -106,6 +106,6 @@ def test_orphan_results_removed_from_model_projection_do_not_consume_eviction_bu
     )
     snapshot = replace(snapshot, entries=entries)
     selection = select_old_results(
-        snapshot, ContextProjector().project(snapshot), EvictionBudget(200000)
+        snapshot, ContextProjector().transform_context(snapshot), EvictionBudget(200000)
     )
     assert selection.entry_ids == () and selection.tokens == 0

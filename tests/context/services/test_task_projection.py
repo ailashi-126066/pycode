@@ -22,7 +22,7 @@ async def test_task_state_reopens_branches_and_survives_compaction(tmp_path):
         Message("a1", "assistant", "开始定位", provider_metadata={"pycode_task_change": first})
     )
     projector = ContextProjector()
-    projection = projector.project(await store.snapshot())
+    projection = projector.transform_context(await store.snapshot())
     state = projection.checkpoint["task_state"]
     second = validate(state, new_task("整理部署脚本"))
     await store.append_message(
@@ -32,11 +32,11 @@ async def test_task_state_reopens_branches_and_survives_compaction(tmp_path):
     store = open_store()
     try:
         snapshot = await store.snapshot()
-        state = projector.project(snapshot).checkpoint["task_state"]
+        state = projector.transform_context(snapshot).checkpoint["task_state"]
         assert state["active_task_id"] == second["task_id"]
         assert state["tasks"][first["task_id"]]["status"] == "paused"
         await store.branch(first_entry)
-        state = projector.project(await store.snapshot()).checkpoint["task_state"]
+        state = projector.transform_context(await store.snapshot()).checkpoint["task_state"]
         assert state["active_task_id"] == first["task_id"]
         assert second["task_id"] not in state["tasks"]
         compact = await store.append_entry(
@@ -50,7 +50,7 @@ async def test_task_state_reopens_branches_and_survives_compaction(tmp_path):
             )
         )
         snapshot = await store.snapshot()
-        after = ContextProjector().project(snapshot)
+        after = ContextProjector().transform_context(snapshot)
         assert after.checkpoint["task_state"] == state
         # A compacted export may contain only its state snapshot and retained messages.
         compact_entry = snapshot.entries_by_id[compact.id]
@@ -60,8 +60,11 @@ async def test_task_state_reopens_branches_and_survives_compaction(tmp_path):
             entries_by_id=None,
             active_path_ids=(),
         )
-        assert ContextProjector().project(exported).checkpoint["task_state"] == state
+        assert ContextProjector().transform_context(exported).checkpoint["task_state"] == state
         await store.branch(root)
-        assert projector.project(await store.snapshot()).checkpoint["task_state"] == empty_tasks()
+        assert (
+            projector.transform_context(await store.snapshot()).checkpoint["task_state"]
+            == empty_tasks()
+        )
     finally:
         await store.aclose()

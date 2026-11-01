@@ -45,7 +45,13 @@ class Connections:
 
 @pytest.mark.parametrize(
     "trusted,argument,expected",
-    [(True, 2, None), (False, 2, "approval_required"), (True, "2", "invalid_arguments")],
+    [
+        (True, 2, None),
+        (False, 2, "approval_required"),
+        # Pi's Value.Convert turns a numeric string into the declared integer.
+        (True, "2", None),
+        (True, "two", "invalid_arguments"),
+    ],
 )
 async def test_dispatch_checks_target_schema_and_parent_permission_before_call(
     tmp_path, trusted, argument, expected
@@ -77,7 +83,7 @@ async def test_dispatch_checks_target_schema_and_parent_permission_before_call(
                 "mcp__srv__search",
                 {"count": argument},
             ),
-            "tool_calls",
+            "tool_use",
         )
         assert result.name == "mcp__srv__search" and result.call_id == "call"
         assert result.error_code == expected

@@ -8,7 +8,7 @@
   "cases": [
     {
       "name": "should handle tool calls and results",
-      "stop_reason": "tool_calls",
+      "stop_reason": "tool_use",
       "results": [{"call_id": "tool-1", "terminate": false}],
       "expected_action": "request"
     },
@@ -21,13 +21,13 @@
     },
     {
       "name": "should stop after a tool batch when every tool result sets terminate=true",
-      "stop_reason": "tool_calls",
+      "stop_reason": "tool_use",
       "results": [{"call_id": "tool-1", "terminate": true}, {"call_id": "tool-2", "terminate": true}],
       "expected_action": "end"
     },
     {
       "name": "should continue after a mixed batch with one terminating blocked call",
-      "stop_reason": "tool_calls",
+      "stop_reason": "tool_use",
       "results": [{"call_id": "tool-1", "terminate": true}, {"call_id": "tool-2", "terminate": false}],
       "expected_action": "request"
     },
@@ -49,7 +49,7 @@
     },
     {
       "name": "lets a natural tool-result request satisfy continuation",
-      "stop_reason": "tool_calls",
+      "stop_reason": "tool_use",
       "finish_action": "continue",
       "results": [{"call_id": "tool-1", "terminate": false}],
       "expected_action": "request",
@@ -57,7 +57,7 @@
     },
     {
       "name": "should inject queued messages after all tool calls complete",
-      "stop_reason": "tool_calls",
+      "stop_reason": "tool_use",
       "results": [{"call_id": "tool-1", "terminate": false}, {"call_id": "tool-2", "terminate": false}],
       "steering_pending": true,
       "follow_up_pending": true,

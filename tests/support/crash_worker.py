@@ -33,7 +33,7 @@ class CrashConsumer:
             or (
                 self._boundary == "history_saved"
                 and event.kind == "message_end"
-                and event.data.get("role") == "tool"
+                and event.data.get("role") == "tool_result"
             )
             or (self._boundary == "model_stream" and event.kind == "message_delta")
             or (

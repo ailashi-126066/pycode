@@ -37,11 +37,11 @@ def test_custom_contributor_observes_new_ordinary_messages():
     first = SessionEntry("u1", None, "message", "t", message=Message("u1", "user", "one"))
     second = SessionEntry("u2", "u1", "message", "t", message=Message("u2", "user", "two"))
     projector = ContextProjector((MessageCount(),))
-    assert projector.project(snapshot(first)).checkpoint["message_count"] == 1
-    current = projector.project(snapshot(first, second))
+    assert projector.transform_context(snapshot(first)).checkpoint["message_count"] == 1
+    current = projector.transform_context(snapshot(first, second))
     assert current.checkpoint["message_count"] == 2
     assert current.messages[0].text == "2"
-    assert projector.project(snapshot(first, second)) is current
+    assert projector.transform_context(snapshot(first, second)) is current
 
 
 def test_contributor_cannot_claim_another_feature_checkpoint():
@@ -51,7 +51,7 @@ def test_contributor_cannot_claim_another_feature_checkpoint():
 
     entry = SessionEntry("u", None, "message", "t", message=Message("u", "user", "x"))
     with pytest.raises(ValueError, match="another feature"):
-        ContextProjector((Invalid(),)).project(snapshot(entry))
+        ContextProjector((Invalid(),)).transform_context(snapshot(entry))
     with pytest.raises(ValueError, match="unique"):
         ContextProjector((MessageCount(), MessageCount()))
 
@@ -63,7 +63,7 @@ def test_usage_invalidation_must_reference_the_active_history():
 
     entry = SessionEntry("u", None, "message", "t", message=Message("u", "user", "x"))
     with pytest.raises(ValueError, match="outside the active history"):
-        ContextProjector((Invalid(),)).project(snapshot(entry))
+        ContextProjector((Invalid(),)).transform_context(snapshot(entry))
 
 
 def test_meter_uses_generic_contribution_metadata_without_feature_event_names():
@@ -100,7 +100,9 @@ def test_completed_plan_clears_active_plan_in_an_older_compaction():
     completed = SessionEntry(
         "done", "c", "plan_state", "t", data={"session_id": "s", "mode": "completed"}
     )
-    projected = ContextProjector((PlanProjection(),)).project(snapshot(compacted, completed))
+    projected = ContextProjector((PlanProjection(),)).transform_context(
+        snapshot(compacted, completed)
+    )
     assert "plan" not in projected.checkpoint
 
 
@@ -113,17 +115,17 @@ def test_incremental_missing_tool_result_is_deeply_immutable():
         "u",
         "message",
         "t",
-        message=Message("a", "assistant", tool_calls=(ToolCall("call", "probe", {}),)),
+        message=Message("a", "assistant", content=(ToolCall("call", "probe", {}),)),
     )
     projector = ContextProjector()
-    projector.project(snapshot(user))
-    current = projector.project(snapshot(user, assistant))
+    projector.transform_context(snapshot(user))
+    current = projector.transform_context(snapshot(user, assistant))
     result = current.messages[-1].require_tool_result()
     assert result.error_code == "execution_unknown"
     with pytest.raises(TypeError):
         result.details["status"] = "success"
     assert (
-        projector.project(snapshot(user, assistant))
+        projector.transform_context(snapshot(user, assistant))
         .messages[-1]
         .require_tool_result()
         .details["status"]

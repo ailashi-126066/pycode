@@ -1,4 +1,4 @@
-# Source: https://github.com/earendil-works/pi/blob/42a3497d03ad17e308a2299fa824727894f2c0ec/packages/coding-agent/src/core/session-manager.ts
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/session-manager.ts
 # Adaptation: plain Python messages, provenance/hash, explicit compaction checkpoint and text edits.
 """Canonical branch and compaction projection used by every context consumer."""
 
@@ -19,6 +19,35 @@ from pycode.kernel import (
     clone_value,
     freeze_value,
 )
+
+
+# Pi: declareToolChanges (agent-loop.ts)
+def declare_tool_changes(path: tuple[SessionEntry, ...]) -> dict[str, Message]:
+    """A system message names the model-visible tools added or removed since the last request."""
+    declarations = {}
+    previous = None
+    for entry in path:
+        if entry.type != "tool_set_change" or entry.data["source"] != "effective_model":
+            continue
+        names = [tool["name"] for tool in entry.data["tools"]]
+        if previous is not None:
+            added = [name for name in names if name not in previous]
+            removed = [name for name in previous if name not in names]
+            if added or removed:
+                lines = ["The available tools changed."]
+                if added:
+                    lines.append("Added: " + ", ".join(added))
+                if removed:
+                    lines.append("Removed: " + ", ".join(removed))
+                declarations[entry.id] = Message(
+                    f"tools:{entry.id}",
+                    "system",
+                    "\n".join(lines),
+                    timestamp=entry.timestamp,
+                    provider_metadata={"source_type": "tool_set_change"},
+                )
+        previous = names
+    return declarations
 
 
 class ContextProjector:
@@ -113,7 +142,8 @@ class ContextProjector:
             self._cached.usage_invalidating_entry_ids,
         )
 
-    def project(self, snapshot: SessionSnapshot) -> ProjectedContext:
+    # Pi: transformContext — compaction, eviction, injected context and orphan-call results.
+    def transform_context(self, snapshot: SessionSnapshot) -> ProjectedContext:
         self._tree = SessionTree(snapshot.index)
         if self._session_id != snapshot.header.session_id:
             self._session_id = snapshot.header.session_id
@@ -188,11 +218,14 @@ class ContextProjector:
             for entry in context_entries
             if entry.type == "context_edit"
         }
+        declarations = declare_tool_changes(path)
         contributions = []
         checkpoint = {}
         for index, entry in enumerate(context_entries):
             if entry.type == "compaction" and index > 0:
                 messages = ()
+            elif entry.id in declarations:
+                messages = (declarations[entry.id],)
             else:
                 messages = self.messages_for(entry)
             edit = edits.get(entry.id)
@@ -202,7 +235,7 @@ class ContextProjector:
                 checkpoint = clone_value(entry.data.get("checkpoint", {}))
             contributions.append(ProjectedEntry(entry.id, messages))
         for entry in path:
-            if entry.type == "tool_set_change" and entry.data.get("source") == "effective_model":
+            if entry.type == "tool_set_change" and entry.data["source"] == "effective_model":
                 checkpoint["model_tools"] = clone_value(entry.data["tools"])
                 checkpoint["harness_system_hash"] = entry.data.get("harness_system_hash", "")
                 checkpoint["harness_system_tokens"] = entry.data.get("harness_system_tokens", 0)
@@ -300,7 +333,7 @@ class ContextProjector:
         if entry.type in {"compaction", "branch_summary"}:
             summary = Message(
                 f"summary:{entry.id}",
-                "custom",
+                "compaction_summary" if entry.type == "compaction" else "branch_summary",
                 entry.data["summary"],
                 timestamp=entry.timestamp,
                 provider_metadata={"source_type": entry.type},
@@ -325,17 +358,16 @@ class ContextProjector:
             return ()
         edited = []
         for message in messages:
-            if message.role == "tool":
+            if message.role == "tool_result":
                 edited.append(
                     replace(
                         message,
                         tool_result=replace(message.require_tool_result(), text=replacement),
                     )
                 )
-            elif message.role == "assistant":
-                edited.append(replace(message, text=replacement, thinking=(), tool_calls=()))
-            elif message.role in {"user", "custom"}:
-                edited.append(replace(message, text=replacement, attachments=()))
-            else:
+            elif message.role == "system":
                 edited.append(message)
+            else:
+                # Replacing the content also drops an assistant's thinking and tool calls.
+                edited.append(replace(message, content=replacement, attachments=()))
         return tuple(edited)

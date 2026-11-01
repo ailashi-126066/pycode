@@ -153,7 +153,7 @@ class Hooks:
                         operation_id=operation_id,
                     )
                 )
-                result = await self._executor.execute(tool_context, call, "tool_calls")
+                result = await self._executor.execute(tool_context, call, "tool_use")
             entry = await self._history.append_entry(
                 EntryDraft(
                     "hook_result",

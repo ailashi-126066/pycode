@@ -1,14 +1,27 @@
-# Source: https://github.com/earendil-works/pi/blob/42a3497d03ad17e308a2299fa824727894f2c0ec/packages/agent/src/types.ts
-# Adaptation: Python dataclasses, separate tool-result role, nullable token fields, no prices.
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/ai/src/types.ts
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/messages.ts
+# Adaptation: Python dataclasses, nullable token fields, no prices.
 """Framework-independent completed messages and tool result contracts."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from pycode.kernel.domain.model_identity import ModelSelection
 
-Role = Literal["system", "user", "assistant", "tool", "custom"]
-StopReason = Literal["stop", "tool_calls", "length", "error", "aborted", "content_filter"]
+# LLM roles plus Pi's AgentMessage custom roles, which convert_to_llm turns into user text.
+Role = Literal[
+    "system",
+    "user",
+    "assistant",
+    "tool_result",
+    "compaction_summary",
+    "branch_summary",
+    "custom",
+    "bash_execution",
+]
+CUSTOM_ROLES = frozenset({"compaction_summary", "branch_summary", "custom", "bash_execution"})
+# "pending" exists only in memory while a response streams.
+StopReason = Literal["pending", "stop", "tool_use", "length", "error", "aborted"]
 Purpose = Literal[
     "agent",
     "summary",
@@ -21,11 +34,18 @@ Purpose = Literal[
 
 
 @dataclass(frozen=True)
+class TextBlock:
+    text: str
+    type: Literal["text"] = "text"
+
+
+@dataclass(frozen=True)
 class ThinkingBlock:
     text: str
     signature: str | None = None
     redacted_data: str | None = None
     provider_data: dict[str, Any] = field(default_factory=dict)
+    type: Literal["thinking"] = "thinking"
 
 
 @dataclass(frozen=True)
@@ -42,6 +62,10 @@ class ToolCall:
     arguments: dict[str, Any]
     raw_arguments: str | None = None
     parse_error: str | None = None
+    type: Literal["tool_call"] = "tool_call"
+
+
+ContentBlock = TextBlock | ThinkingBlock | ToolCall
 
 
 @dataclass(frozen=True)
@@ -55,7 +79,6 @@ class ToolResult:
     exit_code: int | None = None
     structured_content: dict[str, Any] | None = None
     details: dict[str, Any] = field(default_factory=dict)
-    terminate: bool = False
     duration_ms: float | None = None
     session_id: str | None = None
     run_id: str | None = None
@@ -86,19 +109,51 @@ class UsageRecord:
 class Message:
     id: str
     role: Role
-    text: str = ""
-    thinking: tuple[ThinkingBlock, ...] = ()
+    # Pi: UserMessage.content is a string; AssistantMessage.content is ordered blocks.
+    content: str | tuple[ContentBlock, ...] = ""
     attachments: tuple[Attachment, ...] = ()
-    tool_calls: tuple[ToolCall, ...] = ()
     tool_result: ToolResult | None = None
     usage: UsageRecord | None = None
     stop_reason: StopReason | None = None
+    # Assistant only: the error code when stop_reason is error or aborted.
+    error: str | None = None
+    duration_ms: float | None = None
     timestamp: str = ""
     provider_metadata: dict[str, Any] = field(default_factory=dict)
     model_selection: ModelSelection | None = None
+    # Pi: excludeFromContext — persisted and published, but never sent to the model.
+    exclude_from_context: bool = False
+
+    @property
+    def text(self) -> str:
+        if isinstance(self.content, str):
+            return self.content
+        return "".join(block.text for block in self.content if isinstance(block, TextBlock))
+
+    @property
+    def thinking(self) -> tuple[ThinkingBlock, ...]:
+        if isinstance(self.content, str):
+            return ()
+        return tuple(block for block in self.content if isinstance(block, ThinkingBlock))
+
+    @property
+    def tool_calls(self) -> tuple[ToolCall, ...]:
+        if isinstance(self.content, str):
+            return ()
+        return tuple(block for block in self.content if isinstance(block, ToolCall))
 
     def require_tool_result(self) -> ToolResult:
         result = self.tool_result
         if result is None:
             raise ValueError("Tool message requires a result payload: " + self.id)
         return result
+
+
+# Pi: convertToLlm (coding-agent/src/core/messages.ts)
+def convert_to_llm(messages: tuple[Message, ...]) -> tuple[Message, ...]:
+    """Custom AgentMessage roles become user text; LLM roles pass through."""
+    return tuple(
+        replace(message, role="user") if message.role in CUSTOM_ROLES else message
+        for message in messages
+        if not message.exclude_from_context
+    )

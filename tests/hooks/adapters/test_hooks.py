@@ -93,7 +93,7 @@ async def test_pre_tool_rejection_is_a_paired_error_without_approval_or_effect(
             results = [
                 entry["message"]["tool_result"]
                 for entry in state["snapshot"]["entries"]
-                if entry["message"] and entry["message"]["role"] == "tool"
+                if entry["message"] and entry["message"]["role"] == "tool_result"
             ]
             assert len(results) == 1 and results[0]["error_code"] == "hook_rejected"
         finally:
@@ -449,7 +449,7 @@ async def test_failed_pre_tool_check_blocks_only_the_requested_tool(tmp_path, mo
             results = [
                 entry["message"]["tool_result"]
                 for entry in state["snapshot"]["entries"]
-                if entry["message"] and entry["message"]["role"] == "tool"
+                if entry["message"] and entry["message"]["role"] == "tool_result"
             ]
             assert results[0]["error_code"] == "hook_rejected"
         finally:

@@ -14,6 +14,7 @@ from pycode.kernel import (
     SessionEntry,
     SessionHeader,
     StorageError,
+    TextBlock,
     ThinkingBlock,
     ToolCall,
     ToolResult,
@@ -63,19 +64,49 @@ def decode_header(data: bytes) -> SessionHeader:
         ) from error
 
 
+CONTENT_BLOCKS = {"text": TextBlock, "thinking": ThinkingBlock, "tool_call": ToolCall}
+
+
+def upgrade_entry(payload: dict) -> dict:
+    """One-way read upgrade of records written before 11.1; writes use only the new format."""
+    message = payload.get("message")
+    if isinstance(message, dict) and "text" in message:
+        thinking = [{**block, "type": "thinking"} for block in message.pop("thinking")]
+        text = message.pop("text")
+        calls = [{**call, "type": "tool_call"} for call in message.pop("tool_calls")]
+        message["content"] = (
+            [*thinking, *([{"type": "text", "text": text}] if text else []), *calls]
+            if thinking or calls
+            else text
+        )
+        if message["role"] == "tool":
+            message["role"] = "tool_result"
+        if message["stop_reason"] == "tool_calls":
+            message["stop_reason"] = "tool_use"
+        if message["stop_reason"] == "content_filter":
+            message.update(stop_reason="error", error="provider_content_filter")
+        if message["tool_result"] is not None:
+            message["tool_result"].pop("terminate")
+    if payload["type"] == "hook_result":
+        payload["data"]["result"].pop("terminate", None)
+    return payload
+
+
 def decode_entry(data: bytes) -> SessionEntry:
     try:
         payload = json.loads(data)
         reject_unknown_fields(payload, SessionEntry)
+        payload = upgrade_entry(payload)
         if payload.get("selection") is not None:
             validate_selection_fields(payload["selection"])
         message = payload.get("message")
         if message is not None:
             reject_unknown_fields(message, Message)
-            for call in message.get("tool_calls", []):
-                reject_unknown_fields(call, ToolCall)
-            for block in message.get("thinking", []):
-                reject_unknown_fields(block, ThinkingBlock)
+            if isinstance(message["content"], list):
+                for block in message["content"]:
+                    if not isinstance(block, dict) or block.get("type") not in CONTENT_BLOCKS:
+                        raise ValueError("Unsupported content block")
+                    reject_unknown_fields(block, CONTENT_BLOCKS[block["type"]])
             for attachment in message.get("attachments", []):
                 if set(attachment) - {"media_type", "reference", "metadata"}:
                     raise ValueError("Unsupported attachment fields")
@@ -85,10 +116,10 @@ def decode_entry(data: bytes) -> SessionEntry:
                 reject_unknown_fields(message["usage"], UsageRecord)
             if message.get("model_selection") is not None:
                 validate_selection_fields(message["model_selection"])
-        entry = TypeAdapter(SessionEntry).validate_json(data, strict=True)
+        entry = TypeAdapter(SessionEntry).validate_json(json_dumps(payload), strict=True)
         validate_entry(entry)
         return entry
-    except (ValueError, TypeError, ValidationError) as error:
+    except (ValueError, TypeError, KeyError, AttributeError, ValidationError) as error:
         raise StorageError("invalid_session_entry", "Invalid native session entry") from error
 
 
@@ -131,9 +162,9 @@ def validate_entry(entry: SessionEntry) -> None:
         message = entry.message
         if message is None or not message.id:
             raise ValueError("Completed message requires a stable ID")
-        if message.role == "tool" and message.tool_result is None:
+        if message.role == "tool_result" and message.tool_result is None:
             raise ValueError("Tool message requires its paired result")
-        if message.role != "tool" and message.tool_result is not None:
+        if message.role != "tool_result" and message.tool_result is not None:
             raise ValueError("Only tool messages can contain a tool result")
         if message.role != "assistant" and (message.tool_calls or message.thinking):
             raise ValueError("Only assistant messages can contain thinking or tool calls")

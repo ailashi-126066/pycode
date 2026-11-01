@@ -75,7 +75,7 @@ class ContextMeter:
             if (
                 message.role != "assistant"
                 or usage is None
-                or message.stop_reason in {"error", "aborted", "content_filter"}
+                or message.stop_reason in {"error", "aborted"}
             ):
                 continue
             # The fingerprint covers the actual memory snapshot. Repeating an

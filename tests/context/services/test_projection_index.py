@@ -49,11 +49,11 @@ async def test_5000_entries_share_immutable_values_and_append_converts_only_one(
         with pytest.raises(TypeError):
             snapshot.entries_by_id["bad"] = snapshot.entries[0]
         projector = CountingProjector()
-        projected = projector.project(snapshot)
-        assert projector.project(second) is projected
+        projected = projector.transform_context(snapshot)
+        assert projector.transform_context(second) is projected
         assert projector.converted == 5000
         await store.append_message(Message("new", "user", "new input"))
-        appended = projector.project(await store.snapshot())
+        appended = projector.transform_context(await store.snapshot())
         assert projector.converted == 5001
         assert appended.messages[0] is projected.messages[0]
         assert appended.messages[-1].text == "new input"
@@ -71,17 +71,17 @@ async def test_state_only_append_reuses_messages_and_special_edit_invalidates(tm
     try:
         identifier = await store.append_message(Message("u1", "user", "original"))
         projector = CountingProjector()
-        original = projector.project(await store.snapshot())
+        original = projector.transform_context(await store.snapshot())
         await store.append_entry(EntryDraft("custom", data={"kind": "compact_request"}))
-        status = projector.project(await store.snapshot())
+        status = projector.transform_context(await store.snapshot())
         assert status.messages is original.messages
         assert projector.converted == 2
         await store.append_entry(
             EntryDraft("context_edit", data={"target_id": identifier, "replacement": "short"})
         )
-        edited = projector.project(await store.snapshot())
+        edited = projector.transform_context(await store.snapshot())
         assert edited.messages[0].text == "short" and original.messages[0].text == "original"
         await store.branch(identifier)
-        assert projector.project(await store.snapshot()).messages[0].text == "original"
+        assert projector.transform_context(await store.snapshot()).messages[0].text == "original"
     finally:
         await store.aclose()

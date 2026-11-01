@@ -30,7 +30,7 @@ async def setup(tmp_path):
 
 async def save(journal, output, result):
     entry_id = await journal.append_message(
-        Message("tool-" + result.output_id, "tool", tool_result=result)
+        Message("tool-" + result.output_id, "tool_result", tool_result=result)
     )
     await output.bind(result.output_id, entry_id)
     return entry_id

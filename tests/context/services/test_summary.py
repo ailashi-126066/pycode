@@ -73,7 +73,7 @@ async def test_source_85_percent_job_does_not_block_or_replace_history_and_is_st
 ):
     generator = Generator(blocked=True)
     history, objects, _, _, service = await setup(tmp_path, generator)
-    before = ContextProjector().project(await history.snapshot()).messages
+    before = ContextProjector().transform_context(await history.snapshot()).messages
     try:
         report = await asyncio.wait_for(service.prepare(), 1)
         assert report.status == "generating" and report.applied_job_id is None
@@ -81,7 +81,7 @@ async def test_source_85_percent_job_does_not_block_or_replace_history_and_is_st
         for _ in range(3):
             assert (await service.prepare()).status == "generating"
         assert len(generator.sources) == 1
-        assert ContextProjector().project(await history.snapshot()).messages == before
+        assert ContextProjector().transform_context(await history.snapshot()).messages == before
         assert (await objects.load(generator.sources[0].job_id))[1] is None
     finally:
         await service.aclose()
@@ -103,7 +103,7 @@ async def test_source_append_during_generation_keeps_tail_and_adopts_once(tmp_pa
         generator.release.set()
         report = await asyncio.wait_for(applying, 1)
         assert report.applied_job_id == source.job_id
-        projection = ContextProjector().project(await history.snapshot())
+        projection = ContextProjector().transform_context(await history.snapshot())
         assert projection.messages[-1].id == "appended"
         assert any(message.id == "a5" for message in projection.messages)
         assert (await history.snapshot()).entries[: len(original)] == original
@@ -206,12 +206,12 @@ async def test_cancelled_generator_is_collected_and_not_restored_as_generating(t
 async def test_empty_summary_does_not_change_context(tmp_path):
     generator = Generator(text="")
     history, _, _, _, service = await setup(tmp_path, generator)
-    before = ContextProjector().project(await history.snapshot()).messages
+    before = ContextProjector().transform_context(await history.snapshot()).messages
     try:
         with pytest.raises(ModelError) as error:
             await service.prepare(manual=True)
         assert error.value.code == "empty_summary"
-        assert ContextProjector().project(await history.snapshot()).messages == before
+        assert ContextProjector().transform_context(await history.snapshot()).messages == before
     finally:
         await service.aclose()
         await history.aclose()
@@ -224,11 +224,11 @@ async def test_tail_outgrowing_capacity_preserves_original_context(tmp_path):
         await service.prepare()
         await service.collect(cancel=False)
         await history.append_message(Message("huge-tail", "user", "x" * 60000))
-        before = ContextProjector().project(await history.snapshot()).messages
+        before = ContextProjector().transform_context(await history.snapshot()).messages
         with pytest.raises(ModelError) as error:
             await service.prepare(manual=True)
         assert error.value.code == "compaction_capacity"
-        assert ContextProjector().project(await history.snapshot()).messages == before
+        assert ContextProjector().transform_context(await history.snapshot()).messages == before
         assert not any(entry.type == "compaction" for entry in (await history.snapshot()).entries)
     finally:
         await service.aclose()
@@ -239,7 +239,7 @@ async def test_usage_anchor_includes_cache_and_is_discarded_after_context_edit(t
     history, _, _, _, service = await setup(tmp_path, Generator())
     try:
         snapshot = await history.snapshot()
-        projection = ContextProjector().project(snapshot)
+        projection = ContextProjector().transform_context(snapshot)
         fingerprint = service.config_hash(projection)
         await history.append_message(
             Message(
@@ -260,7 +260,7 @@ async def test_usage_anchor_includes_cache_and_is_discarded_after_context_edit(t
             )
         )
         snapshot = await history.snapshot()
-        assert service.estimate(snapshot, ContextProjector().project(snapshot)) == 17300
+        assert service.estimate(snapshot, ContextProjector().transform_context(snapshot)) == 17300
         target = next(
             entry.id for entry in snapshot.entries if entry.message and entry.message.id == "u0"
         )
@@ -268,7 +268,7 @@ async def test_usage_anchor_includes_cache_and_is_discarded_after_context_edit(t
             EntryDraft("context_edit", data={"target_id": target, "replacement": "short"})
         )
         after = await history.snapshot()
-        assert service.estimate(after, ContextProjector().project(after)) < 17300
+        assert service.estimate(after, ContextProjector().transform_context(after)) < 17300
         assert (
             next(
                 entry.message.usage.total_tokens
@@ -324,7 +324,7 @@ async def test_repeated_compaction_then_branch_navigation_rebuilds_each_native_c
             )
         second = await service.prepare(manual=True)
         assert first.applied_job_id != second.applied_job_id
-        current = ContextProjector().project(await history.snapshot())
+        current = ContextProjector().transform_context(await history.snapshot())
         assert (
             sum(
                 message.provider_metadata.get("source_type") == "compaction"
@@ -333,12 +333,12 @@ async def test_repeated_compaction_then_branch_navigation_rebuilds_each_native_c
             == 1
         )
         await history.branch(first_leaf)
-        restored_first = ContextProjector().project(await history.snapshot())
+        restored_first = ContextProjector().transform_context(await history.snapshot())
         assert not any(message.id.startswith("later-") for message in restored_first.messages)
         await history.branch(original_leaf)
         assert not any(
             message.provider_metadata.get("source_type") == "compaction"
-            for message in ContextProjector().project(await history.snapshot()).messages
+            for message in ContextProjector().transform_context(await history.snapshot()).messages
         )
     finally:
         await service.aclose()

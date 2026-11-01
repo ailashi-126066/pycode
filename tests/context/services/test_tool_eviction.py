@@ -26,7 +26,7 @@ async def test_eviction_is_append_only_idempotent_and_readback_survives_branch_r
             Message(
                 f"assistant-{index}",
                 "assistant",
-                tool_calls=(ToolCall(f"call-{index}", "Bash", {}),),
+                content=(ToolCall(f"call-{index}", "Bash", {}),),
             )
         )
         result = await outputs.prepare(
@@ -41,7 +41,9 @@ async def test_eviction_is_append_only_idempotent_and_readback_survives_branch_r
             ),
             "tail",
         )
-        entry = await store.append_message(Message(f"result-{index}", "tool", tool_result=result))
+        entry = await store.append_message(
+            Message(f"result-{index}", "tool_result", tool_result=result)
+        )
         await outputs.bind(result.output_id, entry)
         entry_ids.append(entry)
         output_ids.append(result.output_id)
@@ -55,12 +57,12 @@ async def test_eviction_is_append_only_idempotent_and_readback_survives_branch_r
     assert report.reclaimed_tokens > 20000
     assert (await store.snapshot()).entries[: len(original)] == original
     assert report.context_tokens == estimate_messages(
-        projector.project(await store.snapshot()).messages
+        projector.transform_context(await store.snapshot()).messages
     )
     before_repeat = (await store.snapshot()).revision
     assert (await service.apply()).entry_ids == ()
     assert (await store.snapshot()).revision == before_repeat
-    projected = projector.project(await store.snapshot())
+    projected = projector.transform_context(await store.snapshot())
     first = next(
         message.tool_result
         for message in projected.messages
@@ -72,9 +74,9 @@ async def test_eviction_is_append_only_idempotent_and_readback_survives_branch_r
     restored = SqliteSessionStore(
         directory / "s1", SessionHeader("s1", "/project", "t"), TestTiming()
     )
-    assert projector.project(await restored.snapshot()).messages == projected.messages
+    assert projector.transform_context(await restored.snapshot()).messages == projected.messages
     await restored.branch(prior_leaf)
-    raw = projector.project(await restored.snapshot())
+    raw = projector.transform_context(await restored.snapshot())
     assert all(
         len(message.tool_result.text) == 50000 for message in raw.messages if message.tool_result
     )

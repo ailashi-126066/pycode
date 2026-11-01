@@ -25,7 +25,7 @@ def repair_tool_pairing(messages: tuple[Message, ...]) -> tuple[Message, ...]:
                 resolved.setdefault((owner, result.call_id), message)
     output = []
     for index, message in enumerate(copied):
-        if message.role == "tool":
+        if message.role == "tool_result":
             continue
         output.append(message)
         for call in message.tool_calls:
@@ -34,7 +34,7 @@ def repair_tool_pairing(messages: tuple[Message, ...]) -> tuple[Message, ...]:
                 result = freeze_value(
                     Message(
                         f"unknown:{message.id}:{call.id}",
-                        "tool",
+                        "tool_result",
                         tool_result=ToolResult(
                             call.id,
                             call.name,

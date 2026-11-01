@@ -63,6 +63,7 @@ class ModelRequestRunner:
         self._purpose: Purpose = purpose
         self._observation = observation
         self.active_request_id: str | None = None
+        self.active_attempt = 0
         self._invocation_lock = asyncio.Lock()
 
     @property
@@ -141,6 +142,7 @@ class ModelRequestRunner:
             )
             self._observation.prepare_reasoning(reasoning)
         self.active_request_id = record.request_id
+        self.active_attempt = attempt
         await self._events.emit("model_request_start", plain_data(record))
         failure = None
         try:

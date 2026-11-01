@@ -84,7 +84,7 @@ class SkillsProjection:
                                 call = candidate
                 if call is None:
                     call = ToolCall(result.call_id, "read_file", {"file_path": item["path"]})
-                replay = Message("skill-read:" + source.id, "assistant", tool_calls=(call,))
+                replay = Message("skill-read:" + source.id, "assistant", (call,))
                 pinned.append(ProjectedEntry(source.id, (replay, original)))
             else:
                 pinned.append(

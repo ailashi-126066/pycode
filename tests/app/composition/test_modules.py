@@ -178,7 +178,7 @@ async def test_public_runtime_with_history_keeps_active_skill_scope(tmp_path, mo
         result = await runtime.context.executor.execute(
             ToolContext("scope", "r", "probe", str(tmp_path)),
             ToolCall("probe", tool.spec.name, {}),
-            "tool_calls",
+            "tool_use",
         )
         assert result.error_code == "skill_tool_not_allowed" and not tool.executed
     finally:

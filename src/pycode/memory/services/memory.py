@@ -153,7 +153,7 @@ class MemoryService:
         """Keep one recall batch for the active task, across turns and process restarts."""
         snapshot = await self.history.snapshot()
         path = SessionTree(snapshot.index).path(snapshot.leaf_id)
-        state = self.projector.project(snapshot).checkpoint["task_state"]
+        state = self.projector.transform_context(snapshot).checkpoint["task_state"]
         task_id = state["active_task_id"]
         task = state["tasks"].get(task_id)
         loaded = None

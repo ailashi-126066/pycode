@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 from langchain_core.messages import AIMessage
 
@@ -15,10 +17,7 @@ def test_task_action_with_empty_reply_survives_thinking_message_replay(implement
     message = Message(
         "a1",
         "assistant",
-        "",
-        thinking=(
-            ThinkingBlock("reason", signature="signature", provider_data={"type": "reasoning"}),
-        ),
+        (ThinkingBlock("reason", signature="signature", provider_data={"type": "reasoning"}),),
         provider_metadata={"pycode_task_output": True, "pycode_task_action": action},
     )
     selection = ModelSelection("p", "m", implementation, api_mode="responses")
@@ -159,3 +158,113 @@ def test_openai_responses_reasoning_summary_is_not_lost():
         normalized, ModelSelection("local", "model", "openai", api_mode="responses")
     )
     assert restored.content[0] == block
+
+
+def test_thinking_is_replayed_only_for_the_model_that_produced_it():
+    from pycode.kernel import Message, TextBlock, ThinkingBlock
+    from pycode.models.adapters.messages import transform_messages
+
+    current = ModelSelection("p", "m1", "anthropic")
+    reply = Message(
+        "a1",
+        "assistant",
+        (ThinkingBlock("think", signature="s"), TextBlock("reply")),
+        model_selection=current,
+    )
+    assert transform_messages([reply], current)[0].thinking
+    other_model = ModelSelection("p", "m2", "anthropic")
+    dropped = transform_messages([reply], other_model)[0]
+    assert dropped.thinking == () and dropped.text == "reply"
+    other_api = ModelSelection("p", "m1", "anthropic", api_mode="responses")
+    assert transform_messages([reply], other_api)[0].thinking == ()
+
+
+def test_failed_reply_and_its_tool_results_are_not_replayed():
+    from pycode.kernel import Message, TextBlock, ToolCall, ToolResult
+    from pycode.models.adapters.messages import to_framework_messages
+
+    selection = ModelSelection("p", "m", "openai")
+    messages = [
+        Message("u1", "user", "go"),
+        Message(
+            "a1",
+            "assistant",
+            (TextBlock("partial"), ToolCall("c1", "echo", {})),
+            stop_reason="error",
+            error="provider_http_503",
+        ),
+        Message("t1", "tool_result", tool_result=ToolResult("c1", "echo", "unknown")),
+        Message("s1", "compaction_summary", "summary"),
+    ]
+    replay = to_framework_messages(messages, selection)
+    assert [type(message).__name__ for message in replay] == ["HumanMessage", "HumanMessage"]
+    assert replay[1].content == "summary"
+
+
+def test_interleaved_provider_blocks_keep_their_order():
+    selection = ModelSelection("local", "model", "anthropic")
+    response = AIMessage(
+        id="a1",
+        content=[
+            {"type": "thinking", "thinking": "first", "signature": "s1"},
+            {"type": "text", "text": "look "},
+            {"type": "tool_use", "id": "call-1", "name": "echo", "input": {}},
+            {"type": "text", "text": "then"},
+        ],
+        tool_calls=[{"id": "call-1", "name": "echo", "args": {}}],
+    )
+    normalized = from_assistant(response, selection, "s1", "r1")
+    assert [block.type for block in normalized.content] == [
+        "thinking",
+        "text",
+        "tool_call",
+        "text",
+    ]
+    assert normalized.text == "look then"
+    assert normalized.stop_reason == "tool_use"
+
+
+def test_content_filter_maps_to_error_with_its_code():
+    response = AIMessage(content="", response_metadata={"finish_reason": "content_filter"})
+    normalized = from_assistant(response, ModelSelection("local", "model", "openai"), "s", "r")
+    assert (normalized.stop_reason, normalized.error) == ("error", "provider_content_filter")
+
+
+def test_other_model_tool_call_ids_are_normalized_with_their_results():
+    from pycode.kernel import Message, TextBlock, ToolCall, ToolResult
+    from pycode.models.adapters.messages import transform_messages
+
+    source = ModelSelection("p", "gpt", "openai", api_mode="responses")
+    call_id = "call_1|fc_" + "x" * 300
+    messages = [
+        Message("a1", "assistant", (TextBlock("run"), ToolCall(call_id, "echo", {}))),
+        Message("t1", "tool_result", tool_result=ToolResult(call_id, "echo", "ok")),
+    ]
+    messages[0] = replace(messages[0], model_selection=source)
+    sent = transform_messages(messages, ModelSelection("p", "claude", "anthropic"))
+    normalized = sent[0].tool_calls[0].id
+    assert len(normalized) <= 64 and "|" not in normalized
+    assert sent[1].tool_result.call_id == normalized
+    assert messages[0].tool_calls[0].id == call_id
+    # The producing model gets its own IDs back unchanged.
+    assert transform_messages(messages, source)[0].tool_calls[0].id == call_id
+
+
+def test_excluded_messages_are_not_sent_and_late_system_text_suits_anthropic():
+    from pycode.kernel import Message
+    from pycode.models.adapters.messages import to_framework_messages
+
+    messages = [
+        Message("s0", "system", "rules"),
+        Message("u1", "user", "hi"),
+        Message("x1", "custom", "local note", exclude_from_context=True),
+        Message("s1", "system", "The available tools changed."),
+    ]
+    anthropic = to_framework_messages(messages, ModelSelection("p", "m", "anthropic"))
+    assert [type(m).__name__ for m in anthropic] == [
+        "SystemMessage",
+        "HumanMessage",
+        "HumanMessage",
+    ]
+    openai = to_framework_messages(messages, ModelSelection("p", "m", "openai"))
+    assert [type(m).__name__ for m in openai] == ["SystemMessage", "HumanMessage", "SystemMessage"]

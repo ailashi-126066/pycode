@@ -6,7 +6,7 @@ import pytest
 from pycode.context.domain.compaction import find_cut_point
 from pycode.context.services.context_projector import ContextProjector
 from pycode.kernel.domain.history import SessionEntry, SessionHeader, SessionSnapshot
-from pycode.kernel.domain.messages import Message, ToolCall, ToolResult
+from pycode.kernel.domain.messages import Message, TextBlock, ToolCall, ToolResult
 
 VECTORS = json.loads((Path(__file__).parents[2] / "fixtures/compaction-baselines.json").read_text())
 
@@ -25,20 +25,21 @@ def test_pi_cut_vectors_use_effective_native_projection(case):
             message = Message(identifier, role, text)
             if role == "tool":
                 message = Message(
-                    identifier, "tool", tool_result=ToolResult(record[3], "Read", text)
+                    identifier, "tool_result", tool_result=ToolResult(record[3], "Read", text)
                 )
             elif len(record) > 3:
                 message = Message(
                     identifier,
                     "assistant",
-                    text,
-                    tool_calls=(ToolCall(record[3], "Read", {"path": "big.txt"}),),
+                    (TextBlock(text), ToolCall(record[3], "Read", {"path": "big.txt"})),
                 )
             entry = SessionEntry(identifier, parent, "message", "t", message=message)
         entries.append(entry)
         parent = identifier
     snapshot = SessionSnapshot(SessionHeader("s1", "/project", "t"), tuple(entries), parent, 0, 0)
-    result = find_cut_point(tuple(entries), ContextProjector().project(snapshot), case["budget"])
+    result = find_cut_point(
+        tuple(entries), ContextProjector().transform_context(snapshot), case["budget"]
+    )
     assert result.first_kept_index == case["expected"]
     assert result.split_turn == case["split"]
     assert result.turn_start_index == case["turn_start"]

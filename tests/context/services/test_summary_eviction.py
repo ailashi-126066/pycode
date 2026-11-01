@@ -33,11 +33,13 @@ async def test_eviction_protects_generating_prefix_and_all_original_outputs_surv
     for index in range(6):
         call = f"c{index}"
         await history.append_message(
-            Message(f"a{index}", "assistant", tool_calls=(ToolCall(call, "Read", {}),))
+            Message(f"a{index}", "assistant", content=(ToolCall(call, "Read", {}),))
         )
         context = ToolContext("s1", "r1", call, "/project", call, "Read")
         result = await outputs.prepare(context, ToolResult(call, "Read", "x" * 14000), "head")
-        entry = await history.append_message(Message(f"t{index}", "tool", tool_result=result))
+        entry = await history.append_message(
+            Message(f"t{index}", "tool_result", tool_result=result)
+        )
         await outputs.bind(result.output_id, entry)
         references.append(result.output_id)
     await history.append_message(Message("u2", "user", "recent one"))

@@ -214,10 +214,7 @@ class MeteredChatModel(BaseChatModel):
 
         settled = await self.requests.invoke(ModelMessages(messages), invoke, logical_id=logical_id)
         response = settled.result[-1]
-        if (
-            stop_reason(response) in {"length", "error", "aborted", "content_filter"}
-            or response.invalid_tool_calls
-        ):
+        if stop_reason(response) in {"length", "error", "aborted"} or response.invalid_tool_calls:
             raise ModelError("component_incomplete", "Internal model response was incomplete")
         allowed = {schema.get("function", {}).get("name") for schema in self.schemas}
         if any(call["name"] not in allowed for call in response.tool_calls):

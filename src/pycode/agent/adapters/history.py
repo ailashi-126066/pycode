@@ -1,7 +1,10 @@
 """Deep Agents boundary extracted for sequential, readable ownership."""
 
+import asyncio
+import time
 from dataclasses import replace
 from typing import Any, cast
+from uuid import uuid4
 
 from langchain.agents.middleware import (
     AgentMiddleware,
@@ -23,7 +26,7 @@ from pycode.agent.adapters.task_output import decode_task_output
 from pycode.agent.domain.turn_policy import next_turn
 from pycode.agent.services.context import RunContext
 from pycode.context import apply_task_change, empty_tasks, task_evidence
-from pycode.kernel import Message, ModelError, SessionTree, plain_data
+from pycode.kernel import Message, ModelError, SessionTree, TextBlock, plain_data
 
 MAX_OUTPUT_CONTINUATIONS = 3
 OUTPUT_CONTINUATION_PROMPT = (
@@ -78,7 +81,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         snapshot = await context.history_store.snapshot()
         cached = context.model_projection
         if cached is None or cached.leaf_id != snapshot.leaf_id:
-            cached = context.projector.project(snapshot)
+            cached = context.projector.transform_context(snapshot)
             context.model_projection = cached
         context.model_source_leaf_id = snapshot.leaf_id
         return cached
@@ -128,9 +131,10 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             updates: dict[str, Any] = {"turn": turn}
             if context.history_store is not None:
                 projection = await self.current_projection(context)
-                messages: list[BaseMessage] = [RemoveMessage(id=REMOVE_ALL_MESSAGES)]
-                for message in projection.messages:
-                    messages.append(self.bindings.to_framework(message, context.selection))
+                messages: list[BaseMessage] = [
+                    RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                    *self.bindings.to_framework_messages(projection.messages, context.selection),
+                ]
                 updates.update(messages=messages, branch_leaf_id=projection.leaf_id)
                 updates["task_state"] = plain_data(projection.checkpoint["task_state"])
             elif pending:
@@ -152,10 +156,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         if context.history_store is not None:
             projection = await self.current_projection(context)
             request = request.override(
-                messages=[
-                    self.bindings.to_framework(message, context.selection)
-                    for message in projection.messages
-                ]
+                messages=self.bindings.to_framework_messages(projection.messages, context.selection)
             )
         tools = list(request.tools)
         names = set()
@@ -178,23 +179,44 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         model_step = self.bindings.model_request_step(
             context.requests, handler, logical_id=boundary
         )
+        started = time.monotonic()
         try:
-            response = await model_step.ainvoke(request)
-        except ModelError as error:
-            if error.code != "context_overflow" or context.summary is None:
-                raise
-            report = await context.summary.prepare(force=True)
-            if report.applied_job_id is None:
-                raise
-            projection = await self.current_projection(context)
-            request = request.override(
-                messages=[
-                    self.bindings.to_framework(message, context.selection)
-                    for message in projection.messages
-                ]
+            try:
+                response = await model_step.ainvoke(request)
+            except ModelError as error:
+                if error.code != "context_overflow" or context.summary is None:
+                    raise
+                report = await context.summary.prepare(force=True)
+                if report.applied_job_id is None:
+                    raise
+                projection = await self.current_projection(context)
+                request = request.override(
+                    messages=self.bindings.to_framework_messages(
+                        projection.messages, context.selection
+                    )
+                )
+                request = attach_task_context(request, projection)
+                response = await model_step.ainvoke(request)
+        except (ModelError, asyncio.CancelledError) as error:
+            # Pi keeps a failed reply (stopReason error|aborted) and transform_messages skips it.
+            partial = context.streamed_text
+            await save_message(
+                context,
+                Message(
+                    uuid4().hex,
+                    "assistant",
+                    (TextBlock(partial),) if partial else (),
+                    stop_reason="error" if isinstance(error, ModelError) else "aborted",
+                    error=error.code if isinstance(error, ModelError) else "model_interrupted",
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                    model_selection=context.selection,
+                    provider_metadata={
+                        "pycode_run_id": context.run_id,
+                        "pycode_turn": state["turn"],
+                    },
+                ),
             )
-            request = attach_task_context(request, projection)
-            response = await model_step.ainvoke(request)
+            raise
         model_response = (
             response.model_response if isinstance(response, ExtendedModelResponse) else response
         )
@@ -221,6 +243,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         )
         message = replace(
             message,
+            duration_ms=round((time.monotonic() - started) * 1000),
             provider_metadata={
                 **message.provider_metadata,
                 "pycode_run_id": context.run_id,
@@ -264,7 +287,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         for callback in self.bindings.after_model:
             await callback()
         outcome = "running" if message.tool_calls else "completed"
-        if message.stop_reason in {"error", "aborted", "content_filter"}:
+        if message.stop_reason in {"error", "aborted"}:
             outcome = message.stop_reason
         elif message.stop_reason == "length" and not message.tool_calls:
             outcome = "output_limit"

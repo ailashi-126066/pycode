@@ -31,7 +31,7 @@ async def test_recall_reused_switched_released_and_restored(tmp_path):
             )
         )
         if normalized["task"]["status"] in {"completed", "cancelled"}:
-            before_release = ContextProjector((MemoryProjection(),)).project(
+            before_release = ContextProjector((MemoryProjection(),)).transform_context(
                 await history.snapshot()
             )
             assert "memories" not in before_release.checkpoint
@@ -88,7 +88,7 @@ async def test_recall_reused_switched_released_and_restored(tmp_path):
         loads = [entry for entry in snapshot.entries if entry.type == "memory_load"]
         assert not loads[-1].data["records"]
         assert loads[-1].data["task_id"] == first
-        projection = ContextProjector((MemoryProjection(),)).project(snapshot)
+        projection = ContextProjector((MemoryProjection(),)).transform_context(snapshot)
         assert "memories" not in projection.checkpoint
         assert len((await memory.list())["records"]) == 2
     finally:
@@ -107,11 +107,15 @@ async def test_provisional_memory_survives_truncation_and_leaves_after_simple_re
             Message("partial", "assistant", "连接池", stop_reason="length")
         )
         await memory.prepare_task(settled=True)
-        projection = ContextProjector((MemoryProjection(),)).project(await history.snapshot())
+        projection = ContextProjector((MemoryProjection(),)).transform_context(
+            await history.snapshot()
+        )
         assert len(projection.checkpoint["memories"]) == 1
         await history.append_message(Message("final", "assistant", "解释完毕", stop_reason="stop"))
         await memory.prepare_task(settled=True)
-        projection = ContextProjector((MemoryProjection(),)).project(await history.snapshot())
+        projection = ContextProjector((MemoryProjection(),)).transform_context(
+            await history.snapshot()
+        )
         assert "memories" not in projection.checkpoint
         assert len(updater.selections) == 1
         assert len((await memory.list())["records"]) == 1

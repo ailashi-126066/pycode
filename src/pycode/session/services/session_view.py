@@ -109,7 +109,7 @@ class SessionView:
 
     async def inspect(self, *, presentation=False):
         snapshot = await self._history.snapshot()
-        projected = self._projector.project(snapshot)
+        projected = self._projector.transform_context(snapshot)
         run = pending_run_entry(snapshot)
         revert = pending_revert(snapshot)
         waiting = ()
@@ -153,7 +153,9 @@ class SessionView:
     async def usage(self, run_id=None):
         report = await self._usage.report(run_id)
         snapshot = await self._history.snapshot()
-        report["context"] = self.context_report(snapshot, self._projector.project(snapshot))
+        report["context"] = self.context_report(
+            snapshot, self._projector.transform_context(snapshot)
+        )
         return report
 
     async def request_records(self):

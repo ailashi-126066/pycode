@@ -60,7 +60,7 @@ def make_executor(tool=None, gate=None):
 async def test_upstream_echo_result_and_event_contract():
     executor, context, tool, recorder = make_executor()
     result = await executor.execute(
-        context, ToolCall("tool-1", "echo", {"value": "hello"}), "tool_calls"
+        context, ToolCall("tool-1", "echo", {"value": "hello"}), "tool_use"
     )
     assert tool.executed == ["hello"]
     assert result.call_id == "tool-1"
@@ -86,6 +86,43 @@ async def test_upstream_echo_result_and_event_contract():
     assert isinstance(end["duration_ms"], int)
 
 
+async def test_prepare_arguments_then_string_conversion_precede_schema_validation():
+    class CountTool:
+        spec = ToolSpec(
+            name="count",
+            description="Count",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer"},
+                    "ratio": {"type": "number"},
+                    "deep": {"type": "boolean"},
+                    "label": {"type": "string"},
+                },
+                "required": ["limit"],
+                "additionalProperties": False,
+            },
+            category="read",
+            # Pi: prepareArguments repairs an old argument shape before validation.
+            prepare_arguments=lambda arguments: {
+                ("limit" if name == "max" else name): value for name, value in arguments.items()
+            },
+        )
+
+        def __init__(self):
+            self.executed = []
+
+        async def execute(self, context, arguments):
+            self.executed.append(arguments)
+            return ToolResult(call_id="", name="", text="ok")
+
+    executor, context, tool, _ = make_executor(CountTool())
+    arguments = {"max": "5", "ratio": "0.5", "deep": "true", "label": "7"}
+    result = await executor.execute(context, ToolCall("c1", "count", arguments), "tool_use")
+    assert not result.is_error
+    assert tool.executed == [{"limit": 5, "ratio": 0.5, "deep": True, "label": "7"}]
+
+
 async def test_upstream_length_truncated_arguments_are_never_executed():
     executor, context, tool, _ = make_executor()
     result = await executor.execute(context, ToolCall("tool-1", "echo", {"value": "hel"}), "length")
@@ -106,7 +143,7 @@ async def test_upstream_length_truncated_arguments_are_never_executed():
 )
 async def test_invalid_input_settles_as_paired_error(name, arguments, code):
     executor, context, tool, _ = make_executor()
-    result = await executor.execute(context, ToolCall("call-1", name, arguments), "tool_calls")
+    result = await executor.execute(context, ToolCall("call-1", name, arguments), "tool_use")
     assert result.call_id == "call-1"
     assert result.error_code == code
     assert tool.executed == []
@@ -116,9 +153,7 @@ async def test_gate_denial_is_checked_at_the_actual_execution_entry():
     tool = EchoTool()
     tool.spec = replace(tool.spec, category="write")
     executor, context, _, _ = make_executor(tool)
-    result = await executor.execute(
-        context, ToolCall("call-1", "echo", {"value": "x"}), "tool_calls"
-    )
+    result = await executor.execute(context, ToolCall("call-1", "echo", {"value": "x"}), "tool_use")
     assert result.error_code == "approval_required"
     assert tool.executed == []
 
@@ -129,9 +164,7 @@ async def test_tool_io_error_is_a_domain_result():
             raise OSError("disk is unavailable")
 
     executor, context, _, _ = make_executor(FailingTool())
-    result = await executor.execute(
-        context, ToolCall("call-1", "echo", {"value": "x"}), "tool_calls"
-    )
+    result = await executor.execute(context, ToolCall("call-1", "echo", {"value": "x"}), "tool_use")
     assert result.error_code == "tool_io_error"
 
 
@@ -141,9 +174,7 @@ async def test_programming_defect_becomes_one_error_result_without_its_message()
             raise RuntimeError("implementation defect")
 
     executor, context, _, _ = make_executor(BrokenTool())
-    result = await executor.execute(
-        context, ToolCall("call-1", "echo", {"value": "x"}), "tool_calls"
-    )
+    result = await executor.execute(context, ToolCall("call-1", "echo", {"value": "x"}), "tool_use")
     assert result.is_error and result.error_code == "tool_execution_error"
     assert result.text == "Tool failed with RuntimeError" and result.details["executed"]
 
@@ -162,7 +193,7 @@ async def test_cancellation_reaches_tool_and_waits_for_cleanup():
 
     executor, context, _, _ = make_executor(WaitingTool())
     task = asyncio.create_task(
-        executor.execute(context, ToolCall("call-1", "echo", {"value": "x"}), "tool_calls")
+        executor.execute(context, ToolCall("call-1", "echo", {"value": "x"}), "tool_use")
     )
     await started.wait()
     task.cancel()
@@ -191,7 +222,7 @@ async def test_tool_argument_mutation_cannot_rewrite_recorded_call():
 
     executor, context, _, _ = make_executor(MutatingTool())
     call = ToolCall("call-1", "echo", {"value": "original"})
-    await executor.execute(context, call, "tool_calls")
+    await executor.execute(context, call, "tool_use")
     assert call.arguments == {"value": "original"}
 
 

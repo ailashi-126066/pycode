@@ -33,7 +33,7 @@ async def test_selected_provider_and_branch_context_drive_real_framework_after_r
 
         async def run(input_id, text):
             provider = await control.restore()
-            history = ContextProjector().project(await store.snapshot()).messages
+            history = ContextProjector().transform_context(await store.snapshot()).messages
             container = await compose_application(config).runtime(
                 SessionResources(session_id="s1", journal=store, tools=(), consumers=()),
                 RunOptions(provider=provider, run_id=input_id),

@@ -7,6 +7,7 @@ from textual.widgets import Static
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
+from pycode.ui.adapters.tui import content_text
 from tests.session.adapters.test_revert_http import command_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
@@ -159,7 +160,8 @@ async def test_tui_steer_is_durable_and_delivered_after_current_model_settles(
                     for message in requests[-1]["body"]["messages"]
                 )
                 assert any(
-                    item["text"] == "queued correction" for item in app.state["context"]["messages"]
+                    content_text(item, "text") == "queued correction"
+                    for item in app.state["context"]["messages"]
                 )
             finally:
                 release.set()

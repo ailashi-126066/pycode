@@ -27,7 +27,7 @@ async def build_configured_run(
         if mcp_session is not None and provider.supports_tools
         else None
     )
-    projected = modules.projector().project(snapshot)
+    projected = modules.projector().transform_context(snapshot)
     inherited = tuple(
         ToolSpec(**plain_data(item)) for item in projected.checkpoint.get("model_tools", ())
     )

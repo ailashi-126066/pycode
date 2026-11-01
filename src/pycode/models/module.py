@@ -18,7 +18,12 @@ from pycode.models.adapters.calibration import calibrate_model_request
 from pycode.models.adapters.directory import SDKModelDirectory
 from pycode.models.adapters.factory import ModelFactory
 from pycode.models.adapters.failures import ProviderFailureClassifier
-from pycode.models.adapters.messages import from_assistant, stop_reason, to_framework
+from pycode.models.adapters.messages import (
+    from_assistant,
+    stop_reason,
+    to_framework,
+    to_framework_messages,
+)
 from pycode.models.adapters.metered_model import MeteredChatModel
 from pycode.models.adapters.model_requests import ModelRequestRunner, model_request_step
 from pycode.models.adapters.observation import ProviderObservation
@@ -77,11 +82,14 @@ class ModelsModule:
     """Immutable configuration; each owner opens an independent accounting lifetime."""
 
     to_framework = staticmethod(to_framework)
+    to_framework_messages = staticmethod(to_framework_messages)
     from_assistant = staticmethod(from_assistant)
     stop_reason = staticmethod(stop_reason)
     model_request_step = staticmethod(model_request_step)
     calibrate_model_request = staticmethod(
-        partial(calibrate_model_request, converter=to_framework, estimate_text=estimate_text)
+        partial(
+            calibrate_model_request, converter=to_framework_messages, estimate_text=estimate_text
+        )
     )
 
     def scoped(self, request_database):
