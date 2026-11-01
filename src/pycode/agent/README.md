@@ -1,36 +1,16 @@
 # Agent
 
-`AgentModule` is the construction entry for `AgentRuntime`, explicit
-`RuntimeBindings`, the bound message publisher and an in-memory graph checkpointer.
-The framework adapters own graph state, history translation and middleware order.
+Pi-style agent loop on Deep Agents, with explicit dependencies assembled by app.
 
-```python
-from pycode.agent.module import AgentModule
+- runtime.py: AgentRuntime(model, *, bindings, middleware=(), context_transforms=(), tool_filters=(), before_finish=None, assign_title=None, checkpointer=None, backend=None, subagents=(), instructions=(), instruction_backend=None).
+- loop.py: history, turns, queued inputs and durable model requests.
+- context.py: RunContext, RunState, next_turn and PycodeState.
+- boundaries.py: actual model tool filtering and streamed/durable message events.
+- calibration.py: effective model tool set and system prompt accounting.
 
-agent = AgentModule()
-bindings = agent.bindings(
-    to_framework=to_framework,
-    from_assistant=from_assistant,
-    make_framework_tool=make_framework_tool,
-    disclose_model_tools=discovery.disclose,
-    calibrate_model_request=calibrate_model_request,
-    model_request_step=model_request_step,
-    settlement_middleware_factory=settlement_factory,
-    run_hook=run_hook,
-    framework_extensions=extensions,
-    model_filters=filters,
-    before_model=callbacks,
-)
-runtime = agent.runtime(model, bindings=bindings, backend=backend, checkpointer=agent.checkpoint())
-```
-
-Extensions own optional Skill loading and model-request policies. Their ordered factories
-receive only the current context, backend and injected conversion/model-boundary
-callbacks. An extension that prepares the model boundary declares that capability
-explicitly; history then avoids preparing the same request twice. The agent does
-not parse Skill scopes or open MCP connections. `RunContext` contains per-run
-execution state and native capabilities; it is not a service locator.
-
-Main-model text is plain text. An active task board (TaskWrite/TaskUpdate results on the
-branch) is injected as a compact view each request, as the full view once after a
-compaction, and reminded once before the run ends. See docs/context-request.md.
+App refreshes services and registers tools before constructing the runtime. Runtime receives actual
+framework middleware and callback functions, never a generic service list. Context transforms run
+in supplied order; tool filters run after the core read-only filter. The optional before_finish
+callback performs a task-board exit check before the run closes its input boundary. RuntimeBindings
+contains the actual model/tool adapters and run_hook callback. No service discovery or lifecycle
+framework is implemented here.

@@ -1,9 +1,14 @@
+# Pi 没有，pycode 新增
 """Claude Code style subagent records and their state machine (11.1 sections 5.2 and 10)."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from pycode.kernel import StateMachine
+from pycode.kernel import EventConsumer, StateMachine
+
+if TYPE_CHECKING:
+    from pycode.session import AgentSession
 
 SubagentStatus = Literal["running", "waiting", "completed", "partial", "failed", "cancelled"]
 SubagentTrigger = Literal["wait", "resume", "complete", "partial", "fail", "cancel", "send"]
@@ -73,3 +78,6 @@ def child_prompt(agent: Subagent) -> str:
         "You cannot start other agents. Do not git push or merge; the main agent merges.\n"
         "When done, report the result, changed files and anything left unverified."
     )
+
+
+OpenChild = Callable[[Subagent, EventConsumer], Awaitable["AgentSession"]]
