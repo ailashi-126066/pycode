@@ -4,10 +4,14 @@ import pytest
 
 from pycode.context import ContextProjector
 from pycode.kernel import (
+    Feature,
     Message,
+    ProjectedEntry,
+    ProjectionContribution,
     SessionEntry,
     SessionHeader,
     SessionSnapshot,
+    ToolResult,
 )
 
 
@@ -21,8 +25,55 @@ def snapshot(*entries):
     )
 
 
-def test_completed_plan_clears_active_plan_in_an_older_compaction():
-    from pycode.plans.services.projection import PlanProjection
+class Recording(Feature):
+    """A fake feature: pins one system message and records the checkpoint it was shown."""
+
+    def __init__(self, name, key, calls):
+        self.name = name
+        self.checkpoint_keys = frozenset({key})
+        self.key = key
+        self.calls = calls
+
+    def contribute(self, snapshot, path, checkpoint):
+        self.calls.append((self.name, dict(checkpoint)))
+        return ProjectionContribution(
+            (ProjectedEntry(path[-1].id, (Message(self.name, "system", self.name),)),),
+            {self.key: len(path)},
+        )
+
+
+class Silent(Feature):
+    name = "silent"
+
+    def contribute(self, snapshot, path, checkpoint):
+        return None
+
+
+PROMPT = SessionEntry(
+    "p", None, "system_prompt", "t", data={"text": "SYSTEM", "sha256": "h", "source": None}
+)
+
+
+def test_features_contribute_in_list_order_after_the_system_prompt():
+    calls = []
+    first, second = Recording("first", "one", calls), Recording("second", "two", calls)
+    user = SessionEntry("u", "p", "message", "t", message=Message("u", "user", "hi"))
+    projected = ContextProjector((first, Silent(), second)).transform_context(
+        snapshot(PROMPT, user)
+    )
+    assert [name for name, _ in calls] == ["first", "second"]
+    assert calls[1][1]["one"] == 2 and "two" not in calls[1][1]
+    assert [message.text for message in projected.messages] == ["SYSTEM", "first", "second", "hi"]
+    assert projected.checkpoint["one"] == projected.checkpoint["two"] == 2
+
+
+def test_removal_clears_a_key_carried_by_an_older_compaction():
+    class Clearing(Feature):
+        name = "plans"
+        checkpoint_keys = frozenset({"plan"})
+
+        def contribute(self, snapshot, path, checkpoint):
+            return ProjectionContribution(checkpoint_removals=self.checkpoint_keys)
 
     compacted = SessionEntry(
         "c",
@@ -35,13 +86,32 @@ def test_completed_plan_clears_active_plan_in_an_older_compaction():
             "checkpoint": {"plan": {"mode": "planning"}},
         },
     )
-    completed = SessionEntry(
-        "done", "c", "plan_state", "t", data={"session_id": "s", "mode": "completed"}
-    )
-    projected = ContextProjector((PlanProjection(),)).transform_context(
-        snapshot(compacted, completed)
-    )
+    projected = ContextProjector((Clearing(),)).transform_context(snapshot(compacted))
     assert "plan" not in projected.checkpoint
+
+
+def test_feature_state_in_a_tool_result_recomputes_but_ordinary_messages_reuse():
+    calls = []
+    feature = Recording("tasks", "task_board", calls)
+    projector = ContextProjector((feature,))
+    user = SessionEntry("u", "p", "message", "t", message=Message("u", "user", "hi"))
+    projector.transform_context(snapshot(PROMPT, user))
+    reply = SessionEntry("a", "u", "message", "t", message=Message("a", "assistant", "ok"))
+    projector.transform_context(snapshot(PROMPT, user, reply))
+    assert len(calls) == 1
+    board = SessionEntry(
+        "r",
+        "a",
+        "message",
+        "t",
+        message=Message(
+            "r",
+            "tool_result",
+            tool_result=ToolResult("c", "TaskWrite", "saved", details={"task_board": {}}),
+        ),
+    )
+    projected = projector.transform_context(snapshot(PROMPT, user, reply, board))
+    assert len(calls) == 2 and projected.checkpoint["task_board"] == 4
 
 
 def test_incremental_missing_tool_result_is_deeply_immutable():

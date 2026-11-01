@@ -1,27 +1,29 @@
 # Context
+负责上下文投影、系统提示、预算、压缩摘要和大输出驱逐。系统提示默认文本在 `resources/`。
+完整请求组成见 `docs/context-request.md`。
 
-负责上下文投影、预算、压缩、安全采用和大输出驱逐。系统提示位于本模块 `resources/`。
-也负责 TaskProjection：沿当前分支取最后一份任务板快照（工具结果的 `details.task_board`）。
-完整请求组成见 `docs/context-request.md`。有 active 任务板时由 History 加入请求并单独计量。
-`domain/` 是纯策略，`ports/` 描述摘要存储/生成与投影贡献，`services/` 编排事实，
-`adapters/` 连接框架和文件。此模块不解析 Skill、MCP、Plan 或 Memory 的内部记录。
+- `projector.py`：`ContextProjector(features)`。先放核心的系统提示投影，再按列表顺序调用每个
+  `Feature.contribute(snapshot, path, checkpoint)`；功能模块只写自己 `checkpoint_keys` 里的键
+  （契约规则，由测试守住，运行时不检查）。追加的工具结果 `details` 或 `custom` 记录碰到任一
+  功能模块的 checkpoint 键时重算，否则走增量快路径。
+- `prompts.py`：`PromptService(scope, features, *, suffix="")` 拼接默认提示、`agent.md`、后缀和
+  各功能模块的 `prompt_sections(scope)`（列表顺序，空串跳过）；`instruction_files` 给出
+  MemoryMiddleware 可读的 AGENTS.md 和只服务这些文件的 backend。
+- `budget.py`：`InputBudget`、`estimate_messages`、`ContextMeter`。meter 不认识任何功能模块，
+  功能模块每次请求追加的尾部消息由调用方经 `tail` 交给它一起估算。
+- `summary.py`：摘要源的截取与校验、`FileSummaryStore`、`SummaryWorkflow`、
+  `ConfiguredSummaryGenerator`、`SummaryService`。采用压缩后发出 `compaction` 事件
+  （`status="applied"`），需要跟进的功能模块在 `on_event` 里处理。
+- `compaction.py`：切点、保留范围、保留边界、文件操作记录和工具调用配对修复。
+- `eviction.py`：选出旧工具结果并追加 `context_edit`。
+- `types.py`：摘要相关的不可变数据。
 
-装配入口为 `module.py:ContextModule`。输入是模型调用/停止原因回调、摘要记录工厂及
-有序 `ProjectionContributor`；输出是 projector、summary、eviction、prompt/workflow。
-Projector 每实例缓存自己的会话版本；贡献器输入只读，检查名称和 checkpoint key 所有权。
-
-在应用装配层可以显式建立：
-
+组装由 `app/composition.py` 完成，例如：
 ```python
-from pycode.context.module import ContextModule
-from pycode.models.module import ModelsModule
+from pycode.context import ContextProjector, PromptService
 
-context = ContextModule(
-    request_step=ModelsModule.model_request_step, stop_reason=ModelsModule.stop_reason
-)
-projector = context.projector(contributors=())
+projector = ContextProjector(features)
+prompts = PromptService(scope, features, suffix=suffix)
 ```
-
-摘要生成器每次拥有一个后台模型 scope，并在成功、失败或取消后关闭；服务的 aclose 由
-session/run 所有者调用。纯投影不打开连接。完整接线见 `app/bootstrap.py` 与
-`app/composition/modules.py`；跨模块依赖只通过公开原生契约。
+摘要生成器每次拥有一个后台模型 scope，在成功、失败或取消后关闭；服务的 aclose 由会话所有者调用。
+纯投影不打开连接。
