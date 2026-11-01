@@ -1,4 +1,4 @@
-# Source: https://github.com/earendil-works/pi/blob/42a3497d03ad17e308a2299fa824727894f2c0ec/packages/coding-agent/src/core/session-manager.ts
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/session-manager.ts
 # Adaptation: native Python schema and immutable data; no framework message classes.
 """Completed session history, active position and projection contracts."""
 
@@ -8,6 +8,59 @@ from typing import Any, Literal
 
 from pycode.kernel.domain.messages import Message
 from pycode.kernel.domain.model_identity import ModelSelection
+
+# Every SessionEntry.type that is written today; team_* goes away with the team package.
+EntryType = Literal[
+    "message",
+    "custom",
+    "custom_message",
+    "compaction",
+    "context_edit",
+    "fork_context",
+    "hook_call",
+    "hook_result",
+    "hook_context",
+    "input_queued",
+    "input_expired",
+    "mcp_catalog",
+    "memory_load",
+    "memory_recall_error",
+    "model_change",
+    "thinking_level_change",
+    "tool_set_change",
+    "plan_state",
+    "plan_review",
+    "plan_decision",
+    "session_metadata",
+    "session_deleted",
+    "session_restored",
+    "skill_catalog",
+    "skill_load",
+    "skill_install",
+    "system_prompt",
+    "team_agent",
+    "team_parent",
+    "team_transition",
+]
+
+# data["kind"] of a "custom" entry.
+CustomKind = Literal[
+    "run_start",
+    "run_resume",
+    "run_wait",
+    "run_end",
+    "tool_started",
+    "tool_approval",
+    "file_snapshot",
+    "tool_eviction_audit",
+    "summary_job",
+    "compact_request",
+    "revert_started",
+    "revert_completed",
+    "revert_recovery",
+    "skill_created",
+    "skill_updated",
+]
 
 
 @dataclass(frozen=True)
@@ -25,7 +78,7 @@ class SessionHeader:
 class SessionEntry:
     id: str
     parent_id: str | None
-    type: str
+    type: EntryType
     timestamp: str
     data: dict[str, Any] = field(default_factory=dict)
     message: Message | None = None
@@ -43,7 +96,7 @@ class SessionEntry:
 
 @dataclass(frozen=True)
 class EntryDraft:
-    type: str
+    type: EntryType
     data: dict[str, Any] = field(default_factory=dict)
     message: Message | None = None
     selection: ModelSelection | None = None

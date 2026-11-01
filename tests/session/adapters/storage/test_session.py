@@ -95,18 +95,13 @@ async def test_two_store_instances_cannot_write_same_session(tmp_path):
     await second.aclose()
 
 
-async def test_unknown_entry_is_kept_but_not_sent_to_model(tmp_path):
+async def test_unknown_entry_type_is_rejected(tmp_path):
     store = open_store(tmp_path)
-    await store.append_message(Message("u1", "user", "hello"))
-    await store.append_entry(EntryDraft("future_state", data={"keep": "opaque"}))
-    await store.aclose()
-    restored = open_store(tmp_path)
     try:
-        snapshot = await restored.snapshot()
-        assert snapshot.entries[-1].type == "future_state"
-        assert len(ContextProjector().project(snapshot).messages) == 1
+        with pytest.raises(StorageError):
+            await store.append_entry(EntryDraft("future_state", data={"keep": "opaque"}))  # type: ignore[arg-type]
     finally:
-        await restored.aclose()
+        await store.aclose()
 
 
 async def test_compaction_cannot_split_tool_call_and_result(tmp_path):

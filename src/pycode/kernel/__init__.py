@@ -1,5 +1,6 @@
 """Public native contracts, policies and services for kernel."""
 
+from pycode.kernel.domain import work_graph
 from pycode.kernel.domain.completion import RunResult
 from pycode.kernel.domain.errors import (
     DomainError,
@@ -9,9 +10,32 @@ from pycode.kernel.domain.errors import (
     StorageError,
     ToolError,
 )
+from pycode.kernel.domain.events import (
+    AgentEndEvent,
+    AgentEvent,
+    AgentStartEvent,
+    CompactionEvent,
+    MessageEndEvent,
+    MessageStartEvent,
+    MessageUpdateEvent,
+    ModelChangeEvent,
+    NeedsInputEvent,
+    NotificationEvent,
+    ResultEvent,
+    RetryEvent,
+    SubagentEvent,
+    TaskEvent,
+    ToolExecutionEndEvent,
+    ToolExecutionStartEvent,
+    ToolExecutionUpdateEvent,
+    TurnEndEvent,
+    TurnStartEvent,
+)
 from pycode.kernel.domain.hashing import data_hash
 from pycode.kernel.domain.history import (
+    CustomKind,
     EntryDraft,
+    EntryType,
     ProjectedContext,
     ProjectedEntry,
     SessionEntry,
@@ -31,10 +55,12 @@ from pycode.kernel.domain.messages import (
 from pycode.kernel.domain.model_identity import ModelCapabilities, ModelSelection, ProviderKind
 from pycode.kernel.domain.path_policy import is_internal_component
 from pycode.kernel.domain.redaction import SECRET_PATTERNS
+from pycode.kernel.domain.state_machine import StateMachine
 from pycode.kernel.domain.token_estimate import estimate_text
 from pycode.kernel.domain.tools import ExecutionMode, ToolContext, ToolSpec
 from pycode.kernel.domain.truncation import MAX_BYTES, MAX_LINES, PreviewMode, line_count, truncate
 from pycode.kernel.domain.values import clone_value, freeze_value, json_dumps, plain_data
+from pycode.kernel.domain.work_graph import Board, BoardStatus, Step, StepStatus
 from pycode.kernel.ports.events import EventConsumer, EventJournal, EventSink
 from pycode.kernel.ports.history import HistoryJournal, MessageJournal
 from pycode.kernel.ports.timing import Timing
@@ -42,9 +68,17 @@ from pycode.kernel.ports.tools import ArgumentValidator, ExecutableTool
 from pycode.kernel.services.events import EventStream
 
 __all__ = [
+    "AgentEndEvent",
+    "AgentEvent",
+    "AgentStartEvent",
     "ArgumentValidator",
+    "Board",
+    "BoardStatus",
+    "CompactionEvent",
+    "CustomKind",
     "DomainError",
     "EntryDraft",
+    "EntryType",
     "EventConsumer",
     "EventJournal",
     "EventSink",
@@ -55,16 +89,24 @@ __all__ = [
     "MAX_BYTES",
     "MAX_LINES",
     "Message",
+    "MessageEndEvent",
     "MessageJournal",
+    "MessageStartEvent",
+    "MessageUpdateEvent",
     "ModelCapabilities",
+    "ModelChangeEvent",
     "ModelError",
     "ModelSelection",
+    "NeedsInputEvent",
+    "NotificationEvent",
     "OutputClosed",
     "PreviewMode",
     "ProjectedContext",
     "ProjectedEntry",
     "ProviderKind",
     "Purpose",
+    "ResultEvent",
+    "RetryEvent",
     "RunResult",
     "SECRET_PATTERNS",
     "SessionEntry",
@@ -72,15 +114,25 @@ __all__ = [
     "SessionSnapshot",
     "SessionTree",
     "SnapshotError",
+    "StateMachine",
+    "Step",
+    "StepStatus",
     "StopReason",
     "StorageError",
+    "SubagentEvent",
+    "TaskEvent",
     "ThinkingBlock",
     "Timing",
     "ToolCall",
     "ToolContext",
     "ToolError",
+    "ToolExecutionEndEvent",
+    "ToolExecutionStartEvent",
+    "ToolExecutionUpdateEvent",
     "ToolResult",
     "ToolSpec",
+    "TurnEndEvent",
+    "TurnStartEvent",
     "UsageRecord",
     "clone_value",
     "data_hash",
@@ -91,4 +143,5 @@ __all__ = [
     "line_count",
     "plain_data",
     "truncate",
+    "work_graph",
 ]

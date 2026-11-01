@@ -69,8 +69,17 @@ def test_removed_hook_fields_and_review_records_are_rejected():
     }
     with pytest.raises(StorageError):
         decode_entry(encode_entry(SessionEntry("e", None, "hook_call", "now", data={"hook": old})))
+
+
+@pytest.mark.parametrize(
+    ("entry_type", "data"),
+    [("hook_review", {}), ("branch_summary", {}), ("custom", {"kind": "model_candidate"})],
+)
+def test_unknown_entry_type_or_custom_kind_is_rejected(entry_type, data):
+    payload = asdict(SessionEntry("e", None, "custom", "now", data=data))
+    payload["type"] = entry_type
     with pytest.raises(StorageError):
-        decode_entry(encode_entry(SessionEntry("e", None, "hook_review", "now")))
+        decode_entry(json.dumps(payload).encode())
 
 
 def test_run_owner_is_explicit_not_inferred_from_parent_session():

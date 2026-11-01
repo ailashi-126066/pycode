@@ -2,10 +2,12 @@
 
 import json
 from dataclasses import fields
+from typing import get_args
 
 from pydantic import TypeAdapter, ValidationError
 
 from pycode.kernel import (
+    CustomKind,
     Message,
     ModelCapabilities,
     ModelSelection,
@@ -97,15 +99,11 @@ def validate_selection_fields(selection):
 
 
 def validate_entry(entry: SessionEntry) -> None:
-    if not entry.id or not entry.type or not entry.timestamp:
-        raise ValueError("Entry identity, type and timestamp are required")
-    if entry.type in {"hook_review", "hook_review_result"}:
-        raise ValueError("Hook review records are not part of the current format")
-    if entry.type == "custom" and entry.data.get("kind") in {
-        "hook_review_request",
-        "model_candidate",
-    }:
-        raise ValueError("Removed execution metadata is not part of the current format")
+    if not entry.id or not entry.timestamp:
+        raise ValueError("Entry identity and timestamp are required")
+    # Unknown entry types are rejected by the EntryType Literal during validation.
+    if entry.type == "custom" and entry.data.get("kind") not in get_args(CustomKind):
+        raise ValueError("Unknown custom entry kind")
     if entry.type == "hook_result":
         reject_unknown_fields(entry.data.get("result"), ToolResult)
     if entry.type == "hook_call":
@@ -167,11 +165,6 @@ def validate_entry(entry: SessionEntry) -> None:
             entry.data.get("first_kept_entry_id"), str
         ):
             raise ValueError("Compaction requires summary and retained boundary")
-    elif entry.type == "branch_summary":
-        if not isinstance(entry.data.get("summary"), str) or not isinstance(
-            entry.data.get("from_id"), str
-        ):
-            raise ValueError("Branch summary requires source and summary")
     elif entry.type == "custom_message":
         if not isinstance(entry.data.get("text"), str):
             raise ValueError("Custom message requires model-visible text")

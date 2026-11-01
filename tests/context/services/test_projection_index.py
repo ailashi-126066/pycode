@@ -72,7 +72,7 @@ async def test_state_only_append_reuses_messages_and_special_edit_invalidates(tm
         identifier = await store.append_message(Message("u1", "user", "original"))
         projector = CountingProjector()
         original = projector.project(await store.snapshot())
-        await store.append_entry(EntryDraft("custom", data={"kind": "status"}))
+        await store.append_entry(EntryDraft("custom", data={"kind": "compact_request"}))
         status = projector.project(await store.snapshot())
         assert status.messages is original.messages
         assert projector.converted == 2
