@@ -30,7 +30,7 @@ from pycode.kernel import (
 from pycode.kernel import HistoryJournal as SessionStore
 from pycode.kernel.adapters.path_io import atomic_write, io_path, owned_io
 from pycode.tools.adapters.read_range import read_range
-from pycode.tools.domain.outputs import OutputMetadata
+from pycode.tools.domain.outputs import CONTROL_DETAILS, OutputMetadata
 from pycode.tools.ports.outputs import SessionHeaderReader
 
 
@@ -51,6 +51,11 @@ def artifact_exceeds_limit(result: ToolResult) -> bool:
         if size > MAX_BYTES:
             return True
     return False
+
+
+def externalized_details(details: dict, output: dict) -> dict:
+    control = {key: value for key, value in details.items() if key in CONTROL_DETAILS}
+    return {**control, "output": output}
 
 
 def owned_result(context: ToolContext, result: ToolResult) -> ToolResult:
@@ -205,7 +210,10 @@ class FileToolOutputStore:
                 structured_content=result.structured_content if small else None,
                 details=result.details
                 if small
-                else {"output": {"bytes": previous.byte_count, "lines": previous.line_count}},
+                else externalized_details(
+                    result.details,
+                    {"bytes": previous.byte_count, "lines": previous.line_count},
+                ),
             )
         if small and self.can_inline():
             prepared = replace(result, output_id=identifier)
@@ -545,13 +553,10 @@ class StreamingOutputWriter:
         details = (
             result.details
             if small
-            else {
-                "output": {
-                    "bytes": self._size,
-                    "lines": total_lines,
-                    "sha256": self._digest.hexdigest(),
-                }
-            }
+            else externalized_details(
+                result.details,
+                {"bytes": self._size, "lines": total_lines, "sha256": self._digest.hexdigest()},
+            )
         )
         prepared = owned_result(
             self._context,

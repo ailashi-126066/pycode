@@ -5,6 +5,9 @@ from typing import Literal
 
 from pycode.kernel import PreviewMode
 
+# Control fields later stages read from details; they survive output externalization.
+CONTROL_DETAILS = frozenset({"loaded_tools", "executed", "side_effects_uncertain", "task_board"})
+
 
 @dataclass(frozen=True)
 class OutputMetadata:

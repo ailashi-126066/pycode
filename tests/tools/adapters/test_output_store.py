@@ -182,6 +182,21 @@ async def test_large_structured_payload_is_preserved_without_bloating_history(tm
     await journal.aclose()
 
 
+async def test_large_output_keeps_control_details(tmp_path):
+    journal, output, context = await setup(tmp_path)
+    text = "x" * 60000
+    result = await output.prepare(
+        context,
+        ToolResult(
+            "call-1", "ToolSearch", text, details={"loaded_tools": {"echo": "h"}}, session_id="s1"
+        ),
+        "head",
+    )
+    assert result.details["loaded_tools"] == {"echo": "h"}
+    assert result.details["output"]["bytes"] == 60000
+    await journal.aclose()
+
+
 async def test_readback_rejects_forged_call_identity_even_if_entry_binding_matches(tmp_path):
     from dataclasses import replace
 
