@@ -11,9 +11,9 @@ from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.hooks.types import HOOK_EVENTS
 from pycode.kernel import Message, StorageError
-from tests.context.adapters.test_summary_http import seed
+from tests.context.test_summary_http import seed
 from tests.session.adapters.test_revert_http import command_reply
-from tests.skills.adapters.test_skills_http import skill_reply
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
@@ -77,9 +77,7 @@ async def test_prompt_action_appends_context_and_notification_before_actual_requ
             await session.aclose()
 
 
-async def test_pre_tool_rejection_is_a_paired_error_without_approval_or_effect(
-    tmp_path, monkeypatch
-):
+async def test_pre_tool_rejection_after_approval_is_paired_without_effect(tmp_path, monkeypatch):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
     await hook_file(
@@ -100,7 +98,11 @@ async def test_pre_tool_rejection_is_a_paired_error_without_approval_or_effect(
     ):
         session = await open_session(config, url, create=True)
         try:
-            result = await session.run(Message("u1", "user", "run command"))
+            waiting = await session.run(Message("u1", "user", "run command"))
+            assert waiting.outcome == "needs_input"
+            result = await session.resume(
+                {"operation_id": waiting.pending[0]["operation_id"], "decision": "approve"}
+            )
             assert result.outcome == "completed" and len(requests) == 2
             assert not (tmp_path / "effect.txt").exists()
             state = await session.inspect()
@@ -134,7 +136,7 @@ async def test_command_once_persists_and_cannot_approve_parent_tool(tmp_path, mo
     ):
         session = await open_session(config, url, create=True)
         waiting = await session.run(Message("u1", "user", "command"))
-        assert waiting.outcome == "needs_input" and (tmp_path / "hook.txt").read_text() == "hook"
+        assert waiting.outcome == "needs_input" and not (tmp_path / "hook.txt").exists()
         assert not (tmp_path / "parent.txt").exists() and len(requests) == 1
         await session.aclose()
         session = await open_session(config, url)
@@ -414,7 +416,12 @@ async def test_failed_pre_tool_check_blocks_only_the_requested_tool(tmp_path, mo
     ):
         session = await open_session(config, url, create=True)
         try:
-            assert (await session.run(Message("u", "user", "run"))).outcome == "completed"
+            waiting = await session.run(Message("u", "user", "run"))
+            assert waiting.outcome == "needs_input"
+            result = await session.resume(
+                {"operation_id": waiting.pending[0]["operation_id"], "decision": "approve"}
+            )
+            assert result.outcome == "completed"
             assert not (tmp_path / "effect.txt").exists()
             state = await session.inspect()
             assert not state["pending"] and len(requests) == 2

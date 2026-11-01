@@ -1,4 +1,5 @@
-"""Hooks config: component-owned implementation."""
+# Pi 没有，pycode 新增；参照 MewCode hooks/loader.py
+"""Trusted file loading and external Hook configuration validation."""
 
 # Source: MewCode local hooks/loader.py; SHA-256:
 # f70cd9c61d908f98f7666171aae1789f806cdd5bc04ea518f2e6219c01d38914

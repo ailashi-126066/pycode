@@ -1,32 +1,38 @@
+import asyncio
 import json
+import os
+import shutil
 from pathlib import Path
 
 import pytest
 
-from pycode.hooks.actions import ConfiguredHookActions
+from pycode.hooks import ConfiguredHookActions
 from pycode.hooks.config import parse_hooks
 from pycode.hooks.types import HookAction, HookContext
-from pycode.kernel import DomainError, ToolContext
-from pycode.sandbox.adapters.seatbelt import UnavailableSandbox
-from pycode.sandbox.adapters.tools.bash import find_bash
-from pycode.sandbox.adapters.tools.process_runner import run_process
-from pycode.sandbox.domain.sandbox import SandboxSettings
-from pycode.tools.adapters.output_store import TempOutputStore
+from pycode.kernel import DomainError, ToolContext, ToolResult
 
 VECTORS = json.loads(
-    (Path(__file__).parents[2] / "fixtures/hook-baselines.json").read_text(encoding="utf-8")
+    (Path(__file__).parents[1] / "fixtures/hook-baselines.json").read_text(encoding="utf-8")
 )
 
 
 def actions(tmp_path, environment=None):
-    return ConfiguredHookActions(
-        TempOutputStore("s1"),
-        find_bash(),
-        UnavailableSandbox(),
-        SandboxSettings(),
-        environment or {},
-        process_runner=run_process,
-    )
+    async def run_command(argv, cwd, env, seconds):
+        # Inject the command boundary. Sandbox allowlisting itself is tested in tests/sandbox.
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=cwd,
+            env={"PATH": os.environ["PATH"], **env},
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        async with asyncio.timeout(seconds):
+            output, error = await process.communicate()
+        return ToolResult(
+            "hook", "hook", output.decode() + error.decode(), is_error=process.returncode != 0
+        )
+
+    return ConfiguredHookActions(run_command, shutil.which("bash"), environment or {})
 
 
 def test_source_condition_vectors_evaluate_in_process():

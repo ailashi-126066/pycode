@@ -1,25 +1,18 @@
 # Hooks
 
-Hooks 是同步事件动作：command 执行命令，prompt 添加提示文本（不调用模型）。
-agent 动作和 `async: true` 后台模式已移除，旧配置明确报错。
+HooksService 是普通服务，不继承 Feature。command 执行显式配置的命令，prompt 追加提示。
+app 注入 sandbox.run_command、shell 与环境引用；本包不 import sandbox，不自行管理子进程。
 
-阅读顺序：`api.py`（触发、顺序、结果记录）→ `config.py`（配置）→ `actions.py`（实际动作）。
-`types.py` 是事件和配置数据；`conditions.py` 是有时间限制的正则条件子进程。
-`module.py` 仅负责本组件组装，`contracts.py` 保留实际用到的依赖契约。
+阅读顺序：hooks.py（服务、执行和结果记录）→ config.py（外部配置）→ types.py（值与条件）。
 
-执行路径：事件 → 条件匹配 → 已执行记录检查 → 受限执行器授权 → 命令/提示 → 保存结果。
-只有 pre_tool_use 可以拒绝父工具；Hook 不能批准父工具。command 复用公共进程执行器，
-保留计划/只读限制、环境白名单、沙箱、超时和取消。其内部执行不会递归触发相同 Hook。
+构造：`HooksService(trusted=, worker=, run_command=, shell=, environment=, enabled=True)`。
+`open(SessionScope)` 加载配置，项目 hooks 仅 trusted 生效，worker/read_only 只保留 prompt，执行 startup。
+`aclose()` 执行 shutdown。`run_hook(RunScope, event, message="", error="")` 由 app/agent 明确接入
+run_start/run_end、turn_start/turn_end、pre_send/post_receive、compact 和运行错误边界。
+`before_tool_call(run, spec, call)` 做 pre_tool_use，失败或 reject 返回 block；不能批准父工具。
+`after_tool_call(run, call, result)` 做 post_tool_use，实际快照变化时做 file_change，工具错误做 error。
+`permission_request(run, call)` 在审批边界调用。没有通用事件扫描或 lifecycle Protocol。
 
-`once` 和已完成结果继续持久化。命令中断后保留开始记录；同一操作再次遇到时记录
-“结果未知”，不自动重跑，也不提供补录结果/重试/放弃的专门核对命令或界面。
-普通检查的失败结果和输出进入会话供 Agent 阅读，不自动终止整个任务。
-pre_tool_use 检查失败或显式 reject 会阻止对应工具；它不会批准父工具。
-
-command Hook 用于用户明确配置的检查，脚本仍受现有计划/只读规则和沙箱约束；
-“检查”是配置用途，不通过命令名字猜测它是否具有写入副作用。不会默认添加格式化、修复或提交命令。
-旧操作不重放；正常的新事件仍按配置触发新的同步检查。
-输出绑定、快照和通知发生在结果保存之后。
-
-Hooks 不拥有后台任务；取消当前运行会取消正在等待的命令并收拢进程。
-用户配置来自用户数据目录 hooks.json；项目配置需要显式信任；worker 只保留 prompt 动作。
+配置中 once 的已执行结果仍记录在历史中。command 变量通过独立环境变量替换，防止插入 shell 代码；
+ENV 引用只显式传给命令，不允许进入 prompt。命令超时/取消/环境白名单由注入的沙箱命令边界负责。
+普通 hook 失败被记录供模型阅读，pre_tool_use 保持 fail-closed；取消不吞掉。

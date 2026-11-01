@@ -1,13 +1,14 @@
-"""Synchronous command and prompt Hooks."""
+# Pi 没有，pycode 新增
+"""Synchronous command and prompt hooks."""
 
-from pycode.hooks.api import Hooks, ToolHookBridge, run_hook
+from pycode.hooks.hooks import ConfiguredHookActions, HookEngine, HooksService
 from pycode.hooks.types import Hook, HookAction, HookContext
 
 __all__ = [
-    "Hooks",
+    "ConfiguredHookActions",
+    "HookEngine",
+    "HooksService",
     "Hook",
     "HookAction",
     "HookContext",
-    "ToolHookBridge",
-    "run_hook",
 ]

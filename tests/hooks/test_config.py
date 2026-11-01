@@ -8,7 +8,7 @@ from pycode.hooks.types import HOOK_EVENTS, HookContext, parse_condition
 from pycode.kernel import DomainError
 
 VECTORS = json.loads(
-    (Path(__file__).parents[2] / "fixtures/hook-baselines.json").read_text(encoding="utf-8")
+    (Path(__file__).parents[1] / "fixtures/hook-baselines.json").read_text(encoding="utf-8")
 )
 
 
