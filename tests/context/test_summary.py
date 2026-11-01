@@ -11,7 +11,6 @@ from pycode.kernel import (
     Board,
     EntryDraft,
     EventStream,
-    Feature,
     Message,
     ModelError,
     ModelSelection,
@@ -52,8 +51,8 @@ class Generator:
         return None
 
 
-class BoardFeature(Feature):
-    """Stands in for TasksFeature: the last task board on the branch goes into the checkpoint."""
+class BoardProjection:
+    """Project the latest task board on the branch into the checkpoint."""
 
     name = "tasks"
     checkpoint_keys = frozenset({"task_board"})
@@ -76,7 +75,7 @@ class Recorder:
         self.events.append(event)
 
 
-async def setup(tmp_path, generator, *, consumers=(), features=()):
+async def setup(tmp_path, generator, *, consumers=(), projections=(), on_compacted=None):
     history = SqliteSessionStore(
         tmp_path / "s1", SessionHeader("s1", "/project", "t"), TestTiming()
     )
@@ -89,7 +88,16 @@ async def setup(tmp_path, generator, *, consumers=(), features=()):
     )
     events = EventStream("s1", "r1", consumers)
     service = SummaryService(
-        history, ContextProjector(features), objects, generator, settings, events
+        history,
+        ContextProjector(
+            tuple(item.contribute for item in projections),
+            checkpoint_keys=frozenset().union(*(item.checkpoint_keys for item in projections)),
+        ),
+        objects,
+        generator,
+        settings,
+        events,
+        on_compacted=on_compacted,
     )
     return history, objects, settings, events, service
 
@@ -491,7 +499,7 @@ async def test_task_update_during_generation_keeps_the_summary_and_lands_in_the_
     tmp_path,
 ):
     generator = Generator(blocked=True)
-    history, _, _, _, service = await setup(tmp_path, generator, features=(BoardFeature(),))
+    history, _, _, _, service = await setup(tmp_path, generator, projections=(BoardProjection(),))
     try:
         await service.prepare()
         await generator.started.wait()
@@ -518,8 +526,42 @@ async def test_task_update_during_generation_keeps_the_summary_and_lands_in_the_
         snapshot = await history.snapshot()
         compaction = SessionTree(snapshot.index).get(snapshot.leaf_id)
         assert compaction.data["checkpoint"]["task_board"]["id"] == "b1"
-        projection = ContextProjector((BoardFeature(),)).transform_context(snapshot)
+        projection = ContextProjector(
+            (BoardProjection().contribute,), checkpoint_keys=BoardProjection.checkpoint_keys
+        ).transform_context(snapshot)
         assert projection.checkpoint["task_board"]["id"] == "b1"
+    finally:
+        await service.aclose()
+        await history.aclose()
+
+
+async def test_compaction_callback_receives_the_adopted_snapshot_before_event(tmp_path):
+    seen = []
+
+    class Applied:
+        async def on_event(self, event):
+            if event.kind == "compaction" and event.data["status"] == "applied":
+                assert len(seen) == 1
+                assert seen[0].entries[-1].data["summary_job_id"] == event.data["job_id"]
+
+    generator = Generator()
+    history, _, settings, events, service = await setup(
+        tmp_path, generator, consumers=(Applied(),), on_compacted=seen.append
+    )
+    try:
+        # Reconfiguration retains the session-owned callback.
+        service.configure(settings, generator, events)
+        await service.prepare()
+        assert seen == []
+        await service.collect(cancel=False)
+        await service.prepare()
+        assert len(seen) == 1
+        adopted = seen[0]
+        assert adopted.entries[-1].type == "compaction"
+        assert adopted.leaf_id == adopted.entries[-1].id
+        await history.append_message(Message("later", "user", "after compaction"))
+        assert seen[0] == adopted
+        assert adopted.leaf_id != (await history.snapshot()).leaf_id
     finally:
         await service.aclose()
         await history.aclose()

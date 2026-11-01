@@ -1,17 +1,17 @@
 # Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/system-prompt.ts
 # Adaptation: one prompt snapshot per task in branch history; bounded project instruction files;
-# feature sections come from Feature.prompt_sections in list order.
-"""The system prompt: default text, project instructions, feature sections and its projection."""
+# prompt sections come from explicitly supplied readers in order.
+"""The system prompt: default text, project instructions, additional sections and its projection."""
 
 import hashlib
 import platform
+from collections.abc import Callable
 from pathlib import Path
 
 from deepagents.backends.protocol import FileDownloadResponse
 
 from pycode.kernel import (
     EntryDraft,
-    Feature,
     Message,
     ProjectedEntry,
     ProjectionContribution,
@@ -157,18 +157,21 @@ def system_prompt_contribution(snapshot, path, checkpoint) -> ProjectionContribu
 class PromptService:
     """One task-level prompt snapshot, retained in canonical branch history."""
 
-    def __init__(self, scope: SessionScope, features: tuple[Feature, ...], *, suffix: str = ""):
+    def __init__(
+        self,
+        scope: SessionScope,
+        sections: tuple[Callable[[SessionScope], tuple[str, ...]], ...] = (),
+        *,
+        suffix: str = "",
+    ):
         self._scope = scope
-        self._features = features
+        self._sections = sections
         self._suffix = suffix
 
     async def read(self):
-        # Feature sections (the memory index) are read at each refresh; empty ones are left out.
+        # Section readers (the memory index) run at each refresh; empty texts are left out.
         sections = [
-            text
-            for feature in self._features
-            for text in feature.prompt_sections(self._scope)
-            if text
+            text for read_section in self._sections for text in read_section(self._scope) if text
         ]
         workspace = self._scope.workspace.resolve()
 

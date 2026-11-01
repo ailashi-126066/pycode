@@ -2,15 +2,17 @@
 # Adaptation: plain Python messages, provenance/hash, explicit compaction checkpoint and text edits.
 """Canonical branch and compaction projection used by every context consumer."""
 
+from collections.abc import Callable, Mapping
 from dataclasses import replace
+from typing import Any
 
 from pycode.context.compaction import repair_tool_pairing, retained_context_entries
 from pycode.context.prompts import system_prompt_contribution
 from pycode.kernel import (
-    Feature,
     Message,
     ProjectedContext,
     ProjectedEntry,
+    ProjectionContribution,
     SessionEntry,
     SessionSnapshot,
     SessionTree,
@@ -49,6 +51,12 @@ def declare_tool_changes(path: tuple[SessionEntry, ...]) -> dict[str, Message]:
     return declarations
 
 
+ProjectionSource = Callable[
+    [SessionSnapshot, tuple[SessionEntry, ...], Mapping[str, Any]],
+    ProjectionContribution | None,
+]
+
+
 class ContextProjector:
     PROJECTION_VERSION = 1
     ORDINARY_STATES = frozenset(
@@ -59,9 +67,14 @@ class ContextProjector:
         }
     )
 
-    def __init__(self, features: tuple[Feature, ...] = ()):
-        self._features = features
-        self._feature_keys = frozenset().union(*(feature.checkpoint_keys for feature in features))
+    def __init__(
+        self,
+        contributors: tuple[ProjectionSource, ...] = (),
+        *,
+        checkpoint_keys: frozenset[str] = frozenset(),
+    ):
+        self._contributors = contributors
+        self._checkpoint_keys = checkpoint_keys
         self._session_id = None
         self._key = None
         self._cached = None
@@ -91,9 +104,9 @@ class ContextProjector:
             if (
                 entry.message is not None
                 and entry.message.tool_result is not None
-                and self._feature_keys & entry.message.tool_result.details.keys()
-            ) or (entry.type == "custom" and entry.data["kind"] in self._feature_keys):
-                # New feature state (a task board) changes the checkpoint, not just the tail.
+                and self._checkpoint_keys & entry.message.tool_result.details.keys()
+            ) or (entry.type == "custom" and entry.data["kind"] in self._checkpoint_keys):
+                # New projected state (a task board) changes the checkpoint, not just the tail.
                 return None
             if (
                 entry.type == "message"
@@ -144,7 +157,7 @@ class ContextProjector:
         contributions, checkpoint, raw_messages = self.projected_entries(path)
         messages = repair_tool_pairing(raw_messages)
         pinned = []
-        contributors = (system_prompt_contribution, *(f.contribute for f in self._features))
+        contributors = (system_prompt_contribution, *self._contributors)
         for contribute in contributors:
             contribution = contribute(snapshot, path, checkpoint)
             if contribution is None:

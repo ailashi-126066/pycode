@@ -1,10 +1,9 @@
-"""Feature contributions survive compaction and the incremental cache stays immutable."""
+"""Explicit projection functions survive compaction and the incremental cache stays immutable."""
 
 import pytest
 
 from pycode.context import ContextProjector
 from pycode.kernel import (
-    Feature,
     Message,
     ProjectedEntry,
     ProjectionContribution,
@@ -25,8 +24,8 @@ def snapshot(*entries):
     )
 
 
-class Recording(Feature):
-    """A fake feature: pins one system message and records the checkpoint it was shown."""
+class Recording:
+    """A test projection: pins one system message and records the checkpoint it was shown."""
 
     def __init__(self, name, key, calls):
         self.name = name
@@ -42,7 +41,7 @@ class Recording(Feature):
         )
 
 
-class Silent(Feature):
+class Silent:
     name = "silent"
 
     def contribute(self, snapshot, path, checkpoint):
@@ -54,13 +53,14 @@ PROMPT = SessionEntry(
 )
 
 
-def test_features_contribute_in_list_order_after_the_system_prompt():
+def test_functions_contribute_in_list_order_after_the_system_prompt():
     calls = []
     first, second = Recording("first", "one", calls), Recording("second", "two", calls)
     user = SessionEntry("u", "p", "message", "t", message=Message("u", "user", "hi"))
-    projected = ContextProjector((first, Silent(), second)).transform_context(
-        snapshot(PROMPT, user)
-    )
+    projected = ContextProjector(
+        (first.contribute, Silent().contribute, second.contribute),
+        checkpoint_keys=frozenset({"one", "two"}),
+    ).transform_context(snapshot(PROMPT, user))
     assert [name for name, _ in calls] == ["first", "second"]
     assert calls[1][1]["one"] == 2 and "two" not in calls[1][1]
     assert [message.text for message in projected.messages] == ["SYSTEM", "first", "second", "hi"]
@@ -68,7 +68,7 @@ def test_features_contribute_in_list_order_after_the_system_prompt():
 
 
 def test_removal_clears_a_key_carried_by_an_older_compaction():
-    class Clearing(Feature):
+    class Clearing:
         name = "plans"
         checkpoint_keys = frozenset({"plan"})
 
@@ -86,14 +86,16 @@ def test_removal_clears_a_key_carried_by_an_older_compaction():
             "checkpoint": {"plan": {"mode": "planning"}},
         },
     )
-    projected = ContextProjector((Clearing(),)).transform_context(snapshot(compacted))
+    projected = ContextProjector(
+        (Clearing().contribute,), checkpoint_keys=frozenset({"plan"})
+    ).transform_context(snapshot(compacted))
     assert "plan" not in projected.checkpoint
 
 
-def test_feature_state_in_a_tool_result_recomputes_but_ordinary_messages_reuse():
+def test_projected_state_in_a_tool_result_recomputes_but_ordinary_messages_reuse():
     calls = []
     feature = Recording("tasks", "task_board", calls)
-    projector = ContextProjector((feature,))
+    projector = ContextProjector((feature.contribute,), checkpoint_keys=feature.checkpoint_keys)
     user = SessionEntry("u", "p", "message", "t", message=Message("u", "user", "hi"))
     projector.transform_context(snapshot(PROMPT, user))
     reply = SessionEntry("a", "u", "message", "t", message=Message("a", "assistant", "ok"))

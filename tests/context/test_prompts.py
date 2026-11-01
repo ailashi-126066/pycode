@@ -3,7 +3,7 @@
 import pytest
 
 from pycode.context.prompts import PromptService
-from pycode.kernel import EventStream, Feature, SessionHeader, SessionScope, StorageError
+from pycode.kernel import EventStream, SessionHeader, SessionScope, StorageError
 from pycode.session import SqliteSessionStore
 from tests.support.requests import TestTiming
 
@@ -14,7 +14,7 @@ def scope(tmp_path, history=None):
     )
 
 
-class Section(Feature):
+class Section:
     def __init__(self, name, *texts):
         self.name = name
         self.texts = texts
@@ -36,12 +36,14 @@ async def test_missing_project_rules_and_bounded_utf8_errors(tmp_path):
         await prompts.read()
 
 
-async def test_feature_sections_follow_the_list_and_refresh_appends_only_changes(tmp_path):
+async def test_prompt_sections_follow_the_list_and_refresh_appends_only_changes(tmp_path):
     history = SqliteSessionStore(
         tmp_path / "s1", SessionHeader("s1", str(tmp_path), "t"), TestTiming()
     )
     first, second = Section("memory", "MEMORY_INDEX"), Section("skills", "", "SKILL_INDEX")
-    prompts = PromptService(scope(tmp_path, history), (first, second), suffix="SUFFIX")
+    prompts = PromptService(
+        scope(tmp_path, history), (first.prompt_sections, second.prompt_sections), suffix="SUFFIX"
+    )
     try:
         text = (await prompts.refresh())["text"]
         assert text.index("SUFFIX") < text.index("MEMORY_INDEX") < text.index("SKILL_INDEX")

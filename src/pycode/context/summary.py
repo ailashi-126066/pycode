@@ -510,6 +510,8 @@ class SummaryService:
         generator: ConfiguredSummaryGenerator,
         settings: SummarySettings,
         events: EventStream,
+        *,
+        on_compacted: Callable[[SessionSnapshot], None] | None = None,
     ):
         self._history = history
         self._projector = projector
@@ -518,6 +520,7 @@ class SummaryService:
         self._settings = settings
         self._meter = ContextMeter(settings)
         self._events = events
+        self._on_compacted = on_compacted
         self._source = None
         self._result = None
         self._task: asyncio.Task | None = None
@@ -652,7 +655,7 @@ class SummaryService:
     ):
         """Generation and adoption are consecutive stages under one lock.
 
-        ``tail`` holds the messages features append to each request, so the estimate counts them.
+        ``tail`` holds the messages services append to each request, so the estimate counts them.
         """
         async with self._lock:
             check = await self.inspect_preparation(
@@ -808,6 +811,8 @@ class SummaryService:
                 "Summary and recent tail still exceed capacity; history preserved",
             )
         await self._history.append_entry(EntryDraft("compaction", id=identifier, data=data))
+        if self._on_compacted is not None:
+            self._on_compacted(await self._history.snapshot())
         await self._events.emit(
             "compaction", {"job_id": source.job_id, "status": "applied", "context_tokens": tokens}
         )
