@@ -24,7 +24,7 @@ from pycode.kernel import (
     ToolSpec,
 )
 from pycode.plans import PlanService
-from pycode.tools import ToolExecutor, ToolOutputStore, ToolRegistry
+from pycode.tools import ProgressGuard, ToolExecutor, ToolOutputStore, ToolRegistry
 
 
 @dataclass
@@ -40,6 +40,7 @@ class RunContext:
     inputs: InputQueue
     requests: RequestTracking
     max_turns: int
+    loop_repeat_threshold: int
     initial_inputs: tuple[Message, ...] = ()
     one_at_a_time: bool = False
     completed: list[Message] = field(default_factory=list)
@@ -59,6 +60,7 @@ class RunContext:
     disclosed_tool_names: tuple[str, ...] | None = None
     read_only: bool = False
     failure_guard: dict = field(default_factory=dict)
+    progress_guard: ProgressGuard = field(default_factory=ProgressGuard)
     interrupted_calls: set[str] = field(default_factory=set)
     duplicate_calls: asyncio.Condition = field(default_factory=asyncio.Condition)
     dispatched_calls: set[str] = field(default_factory=set)

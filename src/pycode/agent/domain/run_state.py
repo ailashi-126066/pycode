@@ -44,7 +44,7 @@ RUN_TRANSITIONS: StateMachine[RunStatus, RunTrigger] = StateMachine(
 class RunState:
     status: RunStatus = "starting"
     turn: int = 0
-    # Set when the loop itself stops early (turn_limit, needs_input); otherwise it completes.
+    # Set when the loop stops early (turn_limit, needs_input, loop_detected); else it completes.
     reason: RunEndReason | None = None
 
     def apply(self, trigger: RunTrigger) -> bool:

@@ -24,7 +24,8 @@ from pycode.agent.adapters.boundaries import (
 from pycode.agent.adapters.state import PycodeState
 from pycode.agent.domain.turn_policy import next_turn
 from pycode.agent.services.context import RunContext
-from pycode.kernel import EntryDraft, Message, ModelError, TextBlock, plain_data
+from pycode.kernel import EntryDraft, Message, ModelError, SnapshotError, TextBlock, plain_data
+from pycode.tools import ProgressGuard, enter_tree
 
 BOARD_EXIT_REMINDER = (
     "The task board is still active. Before finishing, close it with "
@@ -79,6 +80,33 @@ def blocked_board_note(context):
     return None
 
 
+async def start_progress_guard(context):
+    """The run's first workspace tree; later trees come from each call's file_snapshot."""
+    context.progress_guard = ProgressGuard()
+    if context.executor.snapshots is None:
+        return
+    try:
+        snapshot = await context.executor.snapshots.capture()
+    except SnapshotError:
+        # No tree (e.g. an unmerged index): the guard waits for a call's file_snapshot.
+        return
+    if snapshot is not None:
+        enter_tree(context.progress_guard, snapshot.tree_id)
+
+
+def loop_reminder(context) -> tuple[Message, ...]:
+    """The first detection is reminded once, in the next request only."""
+    guard = context.progress_guard
+    if guard.evidence is None or guard.reminded:
+        return ()
+    evidence, guard.evidence, guard.reminded = guard.evidence, None, True
+    text = (
+        f"Progress guard: {evidence}. This is not progress; change your approach. "
+        "Another repeat ends the run with loop_detected."
+    )
+    return (Message(uuid4().hex, "system", text),)
+
+
 def take_queued(context):
     # The agent loop has already settled with no tool calls. Queued input is delivered after
     # any completed loop, so no stop reason is applied here.
@@ -115,6 +143,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         context = runtime.context
         await self.bindings.run_hook(context, "run_start")
         await context.events.emit("agent_start", {})
+        await start_progress_guard(context)
         await context.events.emit("turn_start", {"turn": 1})
         for message in context.initial_inputs:
             await context.events.emit("message_start", {"message": plain_data(message)})
@@ -135,6 +164,10 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         if run.turn >= context.max_turns:
             # The last turn has finished; end with turn_limit instead of starting another.
             run.reason = "turn_limit"
+            return {"jump_to": "end"}
+        if context.progress_guard.evidence is not None and context.progress_guard.reminded:
+            # Detected again after the reminder: end the run instead of another request.
+            run.reason = "loop_detected"
             return {"jump_to": "end"}
         ended = run.apply("model")
         if ended:
@@ -192,11 +225,14 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         state = cast(PycodeState, request.state)
         boundary = f"{context.run_id}:model-{state['turn']}"
         await self.bindings.run_hook(context, "pre_send")
+        reminder = loop_reminder(context)
         projection = None
         if context.history_store is not None:
             projection = await self.current_projection(context)
             request = request.override(
-                messages=self.bindings.to_framework_messages(projection.messages, context.selection)
+                messages=self.bindings.to_framework_messages(
+                    (*projection.messages, *reminder), context.selection
+                )
             )
         tools = list(request.tools)
         names = set()
@@ -233,7 +269,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 projection = await self.current_projection(context)
                 request = request.override(
                     messages=self.bindings.to_framework_messages(
-                        projection.messages, context.selection
+                        (*projection.messages, *reminder), context.selection
                     )
                 )
                 request = attach_task_board(request, projection)

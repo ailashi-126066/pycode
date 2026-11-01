@@ -2,6 +2,7 @@ import asyncio
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
@@ -119,6 +120,7 @@ def assemble(responses):
         registry=registry,
         requests=requests,
         max_turns=100,
+        loop_repeat_threshold=2,
     )
     runtime = build_agent_runtime(model)
     return runtime, context, model, tool, journal, recorder
@@ -346,6 +348,52 @@ async def test_max_turns_finishes_the_current_turn_and_ends_with_turn_limit():
     assert model.call_index == 1 and tool.executed == ["first"]
     assert [end["turn"] for end in payloads(recorder, "turn_end")] == [1]
     assert payloads(recorder, "agent_end") == [{"reason": "turn_limit"}]
+
+
+class UnchangedWorkspace:
+    async def capture(self):
+        return SimpleNamespace(tree_id="tree-a")
+
+
+def same_echo(index):
+    return AIMessage(
+        id=f"assistant-{index}",
+        content="Checking",
+        tool_calls=[{"id": f"tool-{index}", "name": "echo", "args": {"value": "same"}}],
+        response_metadata={"finish_reason": "tool_calls"},
+    )
+
+
+async def test_repeated_action_on_unchanged_workspace_is_reminded_then_loop_detected(tmp_path):
+    runtime, context, model, tool, journal, recorder = assemble(
+        [same_echo(1), same_echo(2), same_echo(3), AIMessage(id="unused", content="unused")]
+    )
+    store = SqliteSessionStore(
+        tmp_path / "session", SessionHeader(context.session_id, "/workspace", "t"), TestTiming()
+    )
+
+    class Mirror:
+        # EchoTool checks the shared journal; the run itself writes to the session store.
+        async def append_message(self, message):
+            journal.messages.append(message)
+            return await store.append_message(message)
+
+    context.journal, context.history_store = Mirror(), store
+    context.projector = ContextProjector()
+    context.executor.snapshots = UnchangedWorkspace()
+    try:
+        result = await runtime.run((Message("u1", "user", "echo"),), context)
+    finally:
+        await store.aclose()
+    assert result.outcome == "loop_detected"
+    assert model.call_index == 3 and tool.executed == ["same"] * 3
+    reminders = [
+        [m.content for m in request if "Progress guard" in str(m.content)]
+        for request in model.requests
+    ]
+    assert [len(found) for found in reminders] == [0, 0, 1]
+    assert "`echo` ran 2 times" in reminders[2][0] and "tree-a" in reminders[2][0]
+    assert payloads(recorder, "agent_end") == [{"reason": "loop_detected"}]
 
 
 async def test_each_run_writes_one_run_end_before_agent_end(tmp_path):

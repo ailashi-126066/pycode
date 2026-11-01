@@ -34,6 +34,7 @@ from pycode.tools.adapters.framework_tool import make_framework_tool
 from pycode.tools.adapters.state import ToolSettlementState
 from pycode.tools.domain.execution import batch_execution_mode
 from pycode.tools.domain.operations import operation_spec_hash
+from pycode.tools.domain.progress_guard import ProgressGuard, observe_call
 from pycode.tools.domain.tool_call_state import abandoned_result, interrupted_result
 from pycode.tools.domain.tool_failures import (
     FailureGuard,
@@ -64,6 +65,8 @@ class SettlementContext(Protocol):
     completed: list[Message]
     call_order: list[str]
     failure_guard: FailureGuard
+    progress_guard: ProgressGuard
+    loop_repeat_threshold: int
     tool_tasks: set[asyncio.Task]
     interrupted_calls: set[str]
     dispatched_calls: set[str]
@@ -567,8 +570,15 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
 
     async def settle(self, context: SettlementContext, call: ToolCall, result: ToolResult):
         """The only exit: persist, update guards, then emit tool_execution_end and Hooks."""
-        context.failure_guard = failure_update(
-            context.failure_guard, call, result, data_hash(call.arguments)
+        digest = data_hash(call.arguments)
+        context.failure_guard = failure_update(context.failure_guard, call, result, digest)
+        observe_call(
+            context.progress_guard,
+            context.loop_repeat_threshold,
+            call.name,
+            digest,
+            failed=result.is_error,
+            file_snapshot=result.details.get("file_snapshot"),
         )
         assert result.operation_id is not None
         # Pi: createToolResultMessage + emitToolResultMessage.
