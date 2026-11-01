@@ -5,7 +5,7 @@ import pytest
 from pycode.app.api import RunOptions, SessionResources
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.models.domain.models import ProviderConfig
 from pycode.models.domain.requests import RetryPolicy
 from pycode.session.services.input_queue import PendingInputs

@@ -9,8 +9,7 @@ from pycode.app.composition.subagents import build_subagents
 from pycode.app.configuration.credentials import credential_environment
 from pycode.app.lifecycle.session import ConfiguredRuntimeLauncher
 from pycode.context import InputBudget, SummarySettings
-from pycode.kernel import ToolSpec, plain_data
-from pycode.kernel.adapters.event_journal import MemoryEventJournal
+from pycode.kernel import MemoryEventJournal, ToolSpec, plain_data
 from pycode.mcp.module import MCPModule, MCPSettings
 from pycode.models import UsageService
 from pycode.session import (

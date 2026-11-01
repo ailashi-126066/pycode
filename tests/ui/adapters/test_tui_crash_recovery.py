@@ -9,7 +9,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.session.adapters.storage.layout import StorageLayout
 from tests.session.adapters.test_revert_http import command_reply
 from tests.snapshot.adapters.test_git_tree import git, repository

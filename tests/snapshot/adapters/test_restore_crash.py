@@ -7,7 +7,7 @@ from dataclasses import asdict
 
 import pytest
 
-from pycode.kernel.domain.errors import SnapshotError
+from pycode.kernel import SnapshotError
 from pycode.snapshot.adapters.git_tree import GitSnapshotStore
 from tests.snapshot.adapters.test_git_tree import git, repository
 

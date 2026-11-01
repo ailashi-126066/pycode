@@ -5,7 +5,7 @@ import pytest
 from tests.models.adapters.test_factory import configuration
 
 from pycode.app.configuration.providers import load_providers
-from pycode.kernel.domain.errors import DomainError
+from pycode.kernel import DomainError
 
 
 def write_config(tmp_path, data):

@@ -2,8 +2,15 @@
 
 import pytest
 
-from pycode.context import ContextProjector, ProjectionContribution
-from pycode.kernel import Message, ProjectedEntry, SessionEntry, SessionHeader, SessionSnapshot
+from pycode.context import ContextProjector
+from pycode.kernel import (
+    Message,
+    ProjectedEntry,
+    ProjectionContribution,
+    SessionEntry,
+    SessionHeader,
+    SessionSnapshot,
+)
 
 
 def snapshot(*entries):

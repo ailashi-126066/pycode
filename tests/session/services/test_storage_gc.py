@@ -2,8 +2,7 @@
 
 import pytest
 
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message, StorageError
 from pycode.session.adapters.storage.layout import StorageLayout
 from pycode.session.adapters.storage.objects import FileStorageObjects
 from pycode.session.adapters.storage.session_repository import SqliteSessionRepository

@@ -1,12 +1,15 @@
 """Apply budget decisions only through branch-local append-only context edits."""
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from pycode.context.domain.token_estimate import estimate_messages
 from pycode.context.domain.tool_eviction import EvictionBudget, select_old_results
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel import EntryDraft, EventSink
-from pycode.kernel import HistoryJournal as SessionStore
+from pycode.kernel import EntryDraft, EventStream
+
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
 
 
 @dataclass(frozen=True)
@@ -19,10 +22,10 @@ class EvictionReport:
 class ToolEvictionService:
     def __init__(
         self,
-        store: SessionStore,
+        store: "SqliteSessionStore",
         projector: ContextProjector,
         budget: EvictionBudget,
-        events: EventSink | None = None,
+        events: EventStream | None = None,
     ) -> None:
         self._store = store
         self._projector = projector

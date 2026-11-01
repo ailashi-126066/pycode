@@ -29,7 +29,7 @@ class ChildSession:
 
     async def run(self, message):
         self.inputs.append(message.text)
-        await self.consumer.consume(Event(1, "child", "r", "turn_start", {"turn": 1}))
+        await self.consumer.on_event(Event(1, "child", "r", "turn_start", {"turn": 1}))
         await self.release.wait()
         return self.results.pop(0)
 

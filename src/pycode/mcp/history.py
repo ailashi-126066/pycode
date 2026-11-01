@@ -3,8 +3,13 @@
 from collections.abc import Mapping
 from typing import Any
 
-from pycode.context import ProjectionContribution
-from pycode.kernel import Message, ProjectedEntry, SessionEntry, SessionSnapshot
+from pycode.kernel import (
+    Message,
+    ProjectedEntry,
+    ProjectionContribution,
+    SessionEntry,
+    SessionSnapshot,
+)
 from pycode.mcp.types import active_mcp
 
 

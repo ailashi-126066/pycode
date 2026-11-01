@@ -1,9 +1,7 @@
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
-from pycode.kernel.domain.messages import Message, ToolResult
-from pycode.kernel.domain.tools import ToolSpec
-from pycode.kernel.domain.truncation import MAX_BYTES
+from pycode.kernel import MAX_BYTES, Message, ToolResult, ToolSpec
 from pycode.tools.adapters.builtin.read import Read
 from pycode.tools.adapters.output_store import TempOutputStore
 from pycode.tools.adapters.schema import JsonSchemaValidator

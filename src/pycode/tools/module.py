@@ -9,9 +9,8 @@ from deepagents.backends.protocol import BackendProtocol
 from langchain_core.messages import BaseMessage
 
 from pycode.kernel import (
-    ArgumentValidator,
-    EventSink,
-    ExecutableTool,
+    AgentTool,
+    EventStream,
     Message,
     ModelSelection,
     ToolCall,
@@ -69,10 +68,10 @@ class ToolsModule:
     def __init__(self) -> None:
         self._validator = JsonSchemaValidator()
 
-    def validator(self) -> ArgumentValidator:
+    def validator(self) -> JsonSchemaValidator:
         return self._validator
 
-    def registry(self, tools: tuple[ExecutableTool, ...]) -> ToolRegistry:
+    def registry(self, tools: tuple[AgentTool, ...]) -> ToolRegistry:
         return ToolRegistry(self._validator, tools)
 
     @staticmethod
@@ -121,7 +120,7 @@ class ToolsModule:
         return CompositeBackend(default=StateBackend(), routes=backends)
 
     @staticmethod
-    def builtin_tools(backend: CompositeBackend) -> tuple[ExecutableTool, ...]:
+    def builtin_tools(backend: CompositeBackend) -> tuple[AgentTool, ...]:
         """Pi's file tools; bash is owned by the sandbox feature."""
         return (
             Read(backend),
@@ -137,7 +136,7 @@ class ToolsModule:
         return InterruptQuestionPrompt()
 
     @staticmethod
-    def default_tools(question_prompt: QuestionPrompt | None = None) -> tuple[ExecutableTool, ...]:
+    def default_tools(question_prompt: QuestionPrompt | None = None) -> tuple[AgentTool, ...]:
         return (AskUserQuestion(question_prompt),) if question_prompt is not None else ()
 
     @staticmethod
@@ -171,7 +170,7 @@ class ToolsModule:
         self,
         registry: ToolRegistry,
         gate: ToolGate,
-        events: EventSink,
+        events: EventStream,
         outputs: ToolOutputStore | None = None,
         *,
         snapshots: SnapshotStore | None = None,

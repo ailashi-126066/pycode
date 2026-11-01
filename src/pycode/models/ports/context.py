@@ -1,9 +1,8 @@
 """Consumer-owned projection and execution attribution capabilities."""
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pycode.kernel import (
-    HistoryJournal,
     ModelSelection,
     ProjectedContext,
     SessionEntry,
@@ -11,6 +10,9 @@ from pycode.kernel import (
     SessionSnapshot,
     ToolSpec,
 )
+
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
 
 
 class Projector(Protocol):
@@ -50,7 +52,7 @@ class CalibrationContext(Protocol):
     def registry(self) -> RegistryLookup: ...
 
     @property
-    def history_store(self) -> HistoryJournal | None: ...
+    def history_store(self) -> "SqliteSessionStore | None": ...
 
     @property
     def summary(self) -> SummaryBudget | None: ...

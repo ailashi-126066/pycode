@@ -23,7 +23,6 @@ __all__ = [
     "task_board",
     "task_board_text",
     "task_evidence",
-    "ProjectionContribution",
     "ProjectionContributor",
     "ProjectedContext",
     "estimate_messages",
@@ -41,6 +40,5 @@ __all__ = [
     "retained_context_entries",
 ]
 
-from pycode.context.domain.projection import ProjectionContribution
 from pycode.context.ports.projection import ProjectionContributor
 from pycode.kernel import ProjectedContext

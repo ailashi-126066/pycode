@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from itertools import count
 from uuid import uuid4
 
-from pycode.kernel import DomainError, Event, EventSink, Message, RunResult, ToolError, plain_data
+from pycode.kernel import DomainError, Event, EventStream, Message, RunResult, ToolError, plain_data
 from pycode.subagents.contracts import SubagentSession, SubagentSessions, Worktrees
 from pycode.subagents.types import FINISHED, OUTCOME_TRIGGERS, Subagent, SubagentMode, Worktree
 
@@ -20,7 +20,7 @@ class SubagentManager:
         self,
         sessions: SubagentSessions,
         worktrees: Worktrees,
-        events: Callable[[Subagent], EventSink],
+        events: Callable[[Subagent], EventStream],
         *,
         workspace: str,
         max_agents: int,
@@ -32,7 +32,7 @@ class SubagentManager:
         self._can_write = can_write
         self.agents: dict[str, Subagent] = {}
         self._sessions: dict[str, SubagentSession] = {}
-        self._streams: dict[str, EventSink] = {}
+        self._streams: dict[str, EventStream] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._answers: dict[str, asyncio.Queue] = {}
         # TaskUpdate calls that complete a step, by call id, until their result settles.
@@ -261,7 +261,7 @@ class _Relay:
     def __init__(self, manager: SubagentManager, agent: Subagent):
         self.manager, self.agent = manager, agent
 
-    async def consume(self, event: Event) -> None:
+    async def on_event(self, event: Event) -> None:
         await self.manager.forward(self.agent, event)
 
 

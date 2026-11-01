@@ -9,11 +9,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.history import SessionHeader
-from pycode.kernel.domain.messages import Message, ToolCall
-from pycode.kernel.domain.tools import ToolContext
-from pycode.kernel.domain.truncation import MAX_BYTES
-from pycode.kernel.services.events import EventStream
+from pycode.kernel import MAX_BYTES, EventStream, Message, SessionHeader, ToolCall, ToolContext
 from pycode.sandbox.adapters.tools.bash import Bash, find_bash
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from pycode.tools.adapters.output_store import TempOutputStore

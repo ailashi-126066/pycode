@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.models.adapters.storage.requests import SQLiteRequestStore
 from tests.support.execution import provider
 
@@ -17,7 +17,7 @@ class Crash:
     def __init__(self, boundary):
         self._boundary = boundary
 
-    async def consume(self, event):
+    async def on_event(self, event):
         if event.kind == "compaction" and event.data.get("status") == self._boundary:
             os._exit(74)
 

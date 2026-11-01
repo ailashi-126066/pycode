@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from pycode.agent import RunContext, Runtime
-from pycode.kernel import EventJournal
+from pycode.kernel import MemoryEventJournal
 from pycode.models import RequestStore
 
 
@@ -40,7 +40,7 @@ class RuntimeContainer:
     request_store: RequestStore
     model_owner: AsyncResource
     owns_summary: bool = True
-    event_store: EventJournal | None = None
+    event_store: MemoryEventJournal | None = None
     preparations: tuple[Callable[[], Awaitable[None]], ...] = ()
 
     async def prepare_tools(self):

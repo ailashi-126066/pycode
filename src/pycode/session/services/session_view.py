@@ -3,8 +3,8 @@
 from pycode.context import ContextMeter, ContextProjector
 from pycode.kernel import (
     EventConsumer,
-    EventJournal,
     EventStream,
+    MemoryEventJournal,
     SessionTree,
     freeze_value,
     plain_data,
@@ -23,7 +23,7 @@ class SessionView:
         history: SessionStore,
         projector: ContextProjector,
         usage: UsageService,
-        events: EventJournal,
+        events: MemoryEventJournal,
         consumers: tuple[EventConsumer, ...] = (),
         *,
         owns_history=False,

@@ -19,10 +19,10 @@ from pycode.kernel import (
     ToolResult,
     format_size,
     line_count,
+    owned_io,
     plain_data,
     truncate,
 )
-from pycode.kernel.adapters.path_io import owned_io
 
 
 def output_directory(session_id: str) -> Path:

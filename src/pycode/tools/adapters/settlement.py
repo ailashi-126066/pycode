@@ -4,7 +4,7 @@
 import asyncio
 import re
 from dataclasses import replace
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from langchain.agents.middleware import (
     AgentMiddleware,
@@ -16,7 +16,6 @@ from langgraph.types import Command
 
 from pycode.kernel import (
     EntryDraft,
-    HistoryJournal,
     Message,
     ModelSelection,
     StorageError,
@@ -44,6 +43,9 @@ from pycode.tools.domain.tool_failures import (
 from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
 from pycode.tools.ports.publication import MessagePublisher
 
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
+
 
 class WorkspaceTools(Protocol):
     receipts: dict[str, str]
@@ -52,7 +54,7 @@ class WorkspaceTools(Protocol):
 class SettlementContext(Protocol):
     """The fields settlement actually uses, without depending on AgentRuntime state."""
 
-    history_store: HistoryJournal | None
+    history_store: "SqliteSessionStore | None"
     session_id: str
     run_id: str
     workspace: str

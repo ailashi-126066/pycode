@@ -1,8 +1,8 @@
-"""Public native contracts, policies and services for kernel."""
+# Pi 没有，pycode 新增
+"""Kernel public API: shared native types, pure policies, events and the only I/O helpers."""
 
-from pycode.kernel.domain import work_graph
-from pycode.kernel.domain.completion import RunResult
-from pycode.kernel.domain.errors import (
+from pycode.kernel import work_graph
+from pycode.kernel.errors import (
     DomainError,
     ModelError,
     OutputClosed,
@@ -10,12 +10,15 @@ from pycode.kernel.domain.errors import (
     StorageError,
     ToolError,
 )
-from pycode.kernel.domain.events import (
+from pycode.kernel.events import (
     AgentEndEvent,
     AgentEvent,
     AgentStartEvent,
     CompactionEvent,
     Event,
+    EventConsumer,
+    EventStream,
+    MemoryEventJournal,
     MessageEndEvent,
     MessageStartEvent,
     MessageUpdateEvent,
@@ -24,6 +27,7 @@ from pycode.kernel.domain.events import (
     NotificationEvent,
     ResultEvent,
     RetryEvent,
+    RunResult,
     SubagentEvent,
     TaskEvent,
     ToolExecutionEndEvent,
@@ -32,20 +36,38 @@ from pycode.kernel.domain.events import (
     TurnEndEvent,
     TurnStartEvent,
 )
-from pycode.kernel.domain.hashing import data_hash
-from pycode.kernel.domain.history import (
+from pycode.kernel.feature import (
+    AfterToolCallResult,
+    BeforeToolCallResult,
+    CommandRunner,
+    Feature,
+    RunScope,
+    SessionScope,
+    ToolGate,
+)
+from pycode.kernel.history import (
     CustomKind,
     EntryDraft,
     EntryType,
     ProjectedContext,
     ProjectedEntry,
+    ProjectionContribution,
     SessionEntry,
     SessionHeader,
     SessionSnapshot,
+    SessionTree,
 )
-from pycode.kernel.domain.history_tree import SessionTree
-from pycode.kernel.domain.messages import (
+from pycode.kernel.io import (
+    FileLease,
+    SystemTiming,
+    atomic_write,
+    file_sha256,
+    is_internal_component,
+    owned_io,
+)
+from pycode.kernel.messages import (
     CUSTOM_ROLES,
+    Attachment,
     ContentBlock,
     Message,
     Purpose,
@@ -58,41 +80,51 @@ from pycode.kernel.domain.messages import (
     UsageRecord,
     convert_to_llm,
 )
-from pycode.kernel.domain.model_identity import ModelCapabilities, ModelSelection, ProviderKind
-from pycode.kernel.domain.path_policy import is_internal_component
-from pycode.kernel.domain.redaction import SECRET_PATTERNS
-from pycode.kernel.domain.state_machine import StateMachine
-from pycode.kernel.domain.token_estimate import estimate_text
-from pycode.kernel.domain.tools import ExecutionMode, ToolContext, ToolSpec
-from pycode.kernel.domain.truncation import (
+from pycode.kernel.text import (
     MAX_BYTES,
     MAX_LINES,
     PreviewMode,
+    estimate_text,
     format_size,
     line_count,
     truncate,
 )
-from pycode.kernel.domain.values import clone_value, freeze_value, json_dumps, plain_data
-from pycode.kernel.domain.work_graph import (
+from pycode.kernel.tools import AgentTool, ExecutionMode, ToolContext, ToolSpec
+from pycode.kernel.values import (
+    SECRET_PATTERNS,
+    ModelCapabilities,
+    ModelSelection,
+    ProviderKind,
+    clone_value,
+    data_hash,
+    freeze_value,
+    json_dumps,
+    plain_data,
+)
+from pycode.kernel.work_graph import (
     Acceptance,
     Board,
     BoardStatus,
     Evidence,
+    StateMachine,
     Step,
     StepStatus,
 )
-from pycode.kernel.ports.events import EventConsumer, EventJournal, EventSink
-from pycode.kernel.ports.history import HistoryJournal, MessageJournal
-from pycode.kernel.ports.timing import Timing
-from pycode.kernel.ports.tools import ArgumentValidator, ExecutableTool
-from pycode.kernel.services.events import EventStream
 
 __all__ = [
+    "AfterToolCallResult",
+    "BeforeToolCallResult",
+    "CommandRunner",
+    "Feature",
+    "RunScope",
+    "SessionScope",
+    "ToolGate",
+    "Acceptance",
     "AgentEndEvent",
     "AgentEvent",
     "AgentStartEvent",
-    "ArgumentValidator",
-    "Acceptance",
+    "AgentTool",
+    "Attachment",
     "Board",
     "BoardStatus",
     "CUSTOM_ROLES",
@@ -103,19 +135,16 @@ __all__ = [
     "EntryDraft",
     "EntryType",
     "Event",
-    "Evidence",
     "EventConsumer",
-    "EventJournal",
-    "EventSink",
     "EventStream",
-    "ExecutableTool",
+    "Evidence",
     "ExecutionMode",
-    "HistoryJournal",
+    "FileLease",
     "MAX_BYTES",
     "MAX_LINES",
+    "MemoryEventJournal",
     "Message",
     "MessageEndEvent",
-    "MessageJournal",
     "MessageStartEvent",
     "MessageUpdateEvent",
     "ModelCapabilities",
@@ -128,6 +157,7 @@ __all__ = [
     "PreviewMode",
     "ProjectedContext",
     "ProjectedEntry",
+    "ProjectionContribution",
     "ProviderKind",
     "Purpose",
     "ResultEvent",
@@ -146,10 +176,10 @@ __all__ = [
     "StopReason",
     "StorageError",
     "SubagentEvent",
+    "SystemTiming",
     "TaskEvent",
     "TextBlock",
     "ThinkingBlock",
-    "Timing",
     "ToolCall",
     "ToolContext",
     "ToolError",
@@ -161,16 +191,19 @@ __all__ = [
     "TurnEndEvent",
     "TurnStartEvent",
     "UsageRecord",
+    "atomic_write",
     "clone_value",
     "convert_to_llm",
     "data_hash",
     "estimate_text",
+    "file_sha256",
+    "format_size",
     "freeze_value",
     "is_internal_component",
     "json_dumps",
     "line_count",
+    "owned_io",
     "plain_data",
     "truncate",
-    "format_size",
     "work_graph",
 ]

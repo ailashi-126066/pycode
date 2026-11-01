@@ -1,6 +1,6 @@
 """Public native contracts, policies and services for tools."""
 
-from pycode.kernel import ArgumentValidator
+from pycode.tools.adapters.schema import JsonSchemaValidator
 from pycode.tools.domain.approvals import validate_operation_answer
 from pycode.tools.domain.progress_guard import ProgressGuard, enter_tree, reset_repeats
 from pycode.tools.domain.questions import validate_question_answer
@@ -32,7 +32,7 @@ __all__ = [
     "NativeToolBinding",
     "repeated_tool_failure",
     "failure_update",
-    "ArgumentValidator",
+    "JsonSchemaValidator",
     "MemoryToolGate",
     "MessagePublisher",
     "OutputWriter",

@@ -7,8 +7,7 @@ import time
 from dataclasses import fields, replace
 from pathlib import Path
 
-from pycode.kernel import StorageError, UsageRecord, json_dumps, plain_data
-from pycode.kernel.adapters.path_io import owned_io
+from pycode.kernel import StorageError, UsageRecord, json_dumps, owned_io, plain_data
 from pycode.models.domain.requests import RequestRecord
 
 

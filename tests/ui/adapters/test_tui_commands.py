@@ -4,7 +4,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.errors import StorageError
+from pycode.kernel import StorageError
 from pycode.ui.adapters.tui import content_text
 from tests.context.adapters.test_summary_http import seed
 from tests.session.adapters.test_revert_http import command_reply

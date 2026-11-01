@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.kernel.domain.errors import StorageError
+from pycode.kernel import StorageError
 from tests.context.services.test_summary import Generator, setup
 
 

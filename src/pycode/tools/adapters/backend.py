@@ -26,8 +26,14 @@ from deepagents.backends.protocol import (
 )
 from deepagents.backends.utils import InvalidGlobPatternError, compile_grep_include_glob
 
-from pycode.kernel import MAX_BYTES, ToolError, is_internal_component
-from pycode.kernel.adapters.path_io import atomic_write, file_sha256, owned_io
+from pycode.kernel import (
+    MAX_BYTES,
+    ToolError,
+    atomic_write,
+    file_sha256,
+    is_internal_component,
+    owned_io,
+)
 from pycode.tools.adapters.rg_stream import RipgrepMatches
 
 

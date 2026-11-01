@@ -1,7 +1,7 @@
 """The task board follows the session branch; compaction checkpoints keep a copy of it."""
 
-from pycode.context.domain.projection import ProjectionContribution
 from pycode.context.domain.tasks import branch_task_board
+from pycode.kernel import ProjectionContribution
 
 
 class TaskProjection:

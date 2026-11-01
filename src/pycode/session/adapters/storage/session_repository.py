@@ -6,12 +6,12 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pycode.kernel import SessionHeader, SessionTree, StorageError, Timing
+from pycode.kernel import SessionHeader, SessionTree, StorageError, SystemTiming
 from pycode.session.adapters.storage.session import SqliteSessionStore, read_header
 
 
 class SqliteSessionRepository:
-    def __init__(self, directory: Path, workspace: str, timing: Timing) -> None:
+    def __init__(self, directory: Path, workspace: str, timing: SystemTiming) -> None:
         self._directory = directory
         self._workspace = workspace
         self._timing = timing

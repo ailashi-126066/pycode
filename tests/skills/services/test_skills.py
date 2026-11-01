@@ -5,10 +5,7 @@ import pytest
 
 from pycode.app.configuration.settings import AppConfig
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel import SessionTree
-from pycode.kernel.domain.errors import ToolError
-from pycode.kernel.domain.messages import Message, ToolCall
-from pycode.kernel.domain.tools import ToolSpec
+from pycode.kernel import Message, SessionTree, ToolCall, ToolError, ToolSpec
 from pycode.session import SessionCatalogWriteGuard
 from pycode.skills.api import Skills
 from pycode.skills.catalog import FileSkillCatalog

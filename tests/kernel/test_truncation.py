@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from pycode.kernel.domain.truncation import truncate
+from pycode.kernel import truncate
 
 VECTORS = json.loads(
-    (Path(__file__).parents[2] / "fixtures/tool-output-baselines.json").read_text()
+    (Path(__file__).parents[1] / "fixtures/tool-output-baselines.json").read_text()
 )
 
 

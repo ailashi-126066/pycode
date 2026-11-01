@@ -8,13 +8,7 @@ from langchain.agents.middleware import ExtendedModelResponse, ModelResponse
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.runnables import RunnableLambda
 
-from pycode.kernel import (
-    EventSink,
-    ModelError,
-    ModelSelection,
-    Purpose,
-    Timing,
-)
+from pycode.kernel import EventStream, ModelError, ModelSelection, Purpose, SystemTiming
 from pycode.models.adapters.messages import normalize_usage
 from pycode.models.domain.requests import ModelFailure, RequestRecord, RetryPolicy
 from pycode.models.ports.models import ModelFailureClassifier, ModelObservation, RequestStore
@@ -39,9 +33,9 @@ class ModelRequestRunner:
         self,
         store: RequestStore,
         classifier: ModelFailureClassifier,
-        timing: Timing,
+        timing: SystemTiming,
         policy: RetryPolicy,
-        events: EventSink,
+        events: EventStream,
         selection: ModelSelection,
         session_id: str,
         run_id: str,

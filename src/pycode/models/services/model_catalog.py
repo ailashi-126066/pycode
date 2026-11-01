@@ -4,7 +4,14 @@ import asyncio
 import hashlib
 from dataclasses import replace
 
-from pycode.kernel import ModelCapabilities, ModelError, Timing, clone_value, json_dumps, plain_data
+from pycode.kernel import (
+    ModelCapabilities,
+    ModelError,
+    SystemTiming,
+    clone_value,
+    json_dumps,
+    plain_data,
+)
 from pycode.models.domain.models import (
     CatalogSnapshot,
     DiscoveredModel,
@@ -20,7 +27,7 @@ class ModelCatalog:
         providers: tuple[ProviderConfig, ...],
         directory: ModelDirectory,
         store: CatalogStore,
-        timing: Timing,
+        timing: SystemTiming,
     ) -> None:
         self._providers = {provider.name: clone_value(provider) for provider in providers}
         self._directory = directory

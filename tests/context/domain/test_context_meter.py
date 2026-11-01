@@ -3,15 +3,16 @@ from dataclasses import replace
 from pycode.context.domain.context_budget import InputBudget
 from pycode.context.domain.context_meter import ContextMeter
 from pycode.context.domain.summaries import SummarySettings
-from pycode.kernel import ModelSelection
-from pycode.kernel.domain.history import (
+from pycode.kernel import (
+    Message,
+    ModelSelection,
     ProjectedContext,
     ProjectedEntry,
     SessionEntry,
     SessionHeader,
     SessionSnapshot,
+    UsageRecord,
 )
-from pycode.kernel.domain.messages import Message, UsageRecord
 
 
 def scenario():

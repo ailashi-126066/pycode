@@ -8,8 +8,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message, StorageError
 from pycode.models.adapters.storage.requests import SQLiteRequestStore
 from pycode.session.adapters.storage.layout import StorageLayout
 from tests.context.adapters.test_summary_http import seed

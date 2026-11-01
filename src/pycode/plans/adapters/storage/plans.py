@@ -18,8 +18,7 @@ from deepagents.backends.protocol import (
     WriteResult,
 )
 
-from pycode.kernel import ToolError
-from pycode.kernel.adapters.path_io import owned_io
+from pycode.kernel import ToolError, owned_io
 from pycode.plans.domain.plans import PlanDocument
 
 

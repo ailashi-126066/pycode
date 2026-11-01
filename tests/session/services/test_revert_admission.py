@@ -3,9 +3,7 @@ from dataclasses import asdict
 import pytest
 
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.history import EntryDraft, SessionHeader, SessionSnapshot
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import EntryDraft, Message, SessionHeader, SessionSnapshot, StorageError
 from pycode.session.domain.revert import RevertPlan
 from pycode.session.domain.revert_state import pending_revert
 from pycode.session.services.agent_session import AgentSession

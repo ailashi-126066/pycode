@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from pycode.kernel.domain.history import SessionHeader
+from pycode.kernel import SessionHeader
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from pycode.session.domain.revert_state import decode_plan
 from pycode.session.services.revert import RevertService

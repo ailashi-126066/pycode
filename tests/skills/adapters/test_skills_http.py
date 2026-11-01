@@ -4,7 +4,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from tests.context.adapters.test_summary_http import seed
 from tests.skills.services.test_skills import write_skill
 from tests.support.execution import provider

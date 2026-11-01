@@ -4,10 +4,7 @@ import pytest
 from langgraph.store.base import PutOp
 
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel import ModelSelection
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.history import EntryDraft, SessionHeader
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import EntryDraft, Message, ModelSelection, SessionHeader, StorageError
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from tests.support.requests import TestTiming
 

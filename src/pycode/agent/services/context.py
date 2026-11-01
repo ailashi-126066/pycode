@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from pycode.agent.domain.run_state import RunState
 from pycode.agent.ports import (
@@ -14,18 +15,12 @@ from pycode.agent.ports import (
 )
 from pycode.context import ProjectedContext, SummaryService, ToolEvictionService
 from pycode.hooks import Hooks
-from pycode.kernel import (
-    EventSink,
-    HistoryJournal,
-    Message,
-    MessageJournal,
-    ModelSelection,
-    ToolCall,
-    ToolResult,
-    ToolSpec,
-)
+from pycode.kernel import EventStream, Message, ModelSelection, ToolCall, ToolResult, ToolSpec
 from pycode.plans import PlanService
 from pycode.tools import ProgressGuard, ToolExecutor, ToolOutputStore, ToolRegistry
+
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
 
 
 @dataclass
@@ -34,8 +29,8 @@ class RunContext:
     run_id: str
     workspace: str
     selection: ModelSelection
-    events: EventSink
-    journal: MessageJournal
+    events: EventStream
+    journal: "SqliteSessionStore"
     executor: ToolExecutor
     registry: ToolRegistry
     inputs: InputQueue
@@ -47,7 +42,7 @@ class RunContext:
     initial_inputs: tuple[Message, ...] = ()
     one_at_a_time: bool = False
     completed: list[Message] = field(default_factory=list)
-    history_store: HistoryJournal | None = None
+    history_store: "SqliteSessionStore | None" = None
     projector: HistoryProjector | None = None
     outputs: ToolOutputStore | None = None
     eviction: ToolEvictionService | None = None

@@ -6,8 +6,14 @@ import pytest
 
 from pycode.context.domain.tool_eviction import EvictionBudget, select_old_results
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.history import SessionEntry, SessionHeader, SessionSnapshot
-from pycode.kernel.domain.messages import Message, ToolCall, ToolResult
+from pycode.kernel import (
+    Message,
+    SessionEntry,
+    SessionHeader,
+    SessionSnapshot,
+    ToolCall,
+    ToolResult,
+)
 
 VECTORS = json.loads(
     (Path(__file__).parents[2] / "fixtures/tool-output-baselines.json").read_text()

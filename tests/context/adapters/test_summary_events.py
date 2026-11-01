@@ -6,7 +6,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from tests.context.adapters.test_summary_http import seed
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
@@ -20,7 +20,7 @@ async def test_summary_can_publish_ready_while_main_runtime_is_closed_and_user_i
             self.ready = asyncio.Event()
             self.events = []
 
-        async def consume(self, event):
+        async def on_event(self, event):
             self.events.append(event)
             if event.kind == "compaction" and event.data.get("status") == "ready":
                 self.ready.set()

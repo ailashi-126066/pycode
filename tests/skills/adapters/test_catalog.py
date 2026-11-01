@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from pycode.kernel.domain.errors import ToolError
+from pycode.kernel import ToolError
 from pycode.skills.catalog import FileSkillCatalog, parse_skill
 
 VECTORS = json.loads(

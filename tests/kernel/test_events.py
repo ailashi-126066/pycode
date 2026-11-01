@@ -2,14 +2,14 @@ import asyncio
 
 import pytest
 
-from pycode.kernel.services.events import EventStream
+from pycode.kernel import EventStream
 
 
 class Recorder:
     def __init__(self):
         self.events = []
 
-    async def consume(self, event):
+    async def on_event(self, event):
         self.events.append(event)
 
 
@@ -39,7 +39,7 @@ async def test_consumer_error_fails_the_emit_and_the_consumer_keeps_receiving_ev
     class FailingConsumer:
         calls = 0
 
-        async def consume(self, event):
+        async def on_event(self, event):
             self.calls += 1
             if self.calls == 1:
                 raise ValueError("broken display")
@@ -66,7 +66,7 @@ async def test_envelope_carries_turn_and_agent_identity():
 
 async def test_broken_pipe_requests_controlled_cancellation():
     class ClosedConsole:
-        async def consume(self, event):
+        async def on_event(self, event):
             raise BrokenPipeError("closed")
 
     stream = EventStream("s1", "r1", (ClosedConsole(),))

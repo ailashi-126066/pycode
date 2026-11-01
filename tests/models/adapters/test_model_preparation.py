@@ -14,9 +14,7 @@ from pycode.agent.module import AgentModule
 from pycode.app.composition.bindings import build_runtime_bindings
 from pycode.context.domain.summaries import SummaryReport
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.errors import ModelError
-from pycode.kernel.domain.history import SessionHeader
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message, ModelError, SessionHeader
 from pycode.models.module import ModelsModule
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from pycode.tools.module import ToolsModule

@@ -1,10 +1,14 @@
 """Report request accounting independently of projected model context."""
 
-from pycode.kernel import HistoryJournal as SessionStore
+from typing import TYPE_CHECKING
+
 from pycode.kernel import SessionTree, plain_data
 from pycode.models.domain.usage import aggregate_requests, origin_purpose
 from pycode.models.ports.context import RunOwnership
 from pycode.models.ports.models import RequestStore
+
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
 
 
 class UsageService:
@@ -12,7 +16,9 @@ class UsageService:
         snapshot = await self._history.snapshot()
         return await self._records.list_requests(snapshot.header.session_id)
 
-    def __init__(self, history: SessionStore, records: RequestStore, *, ownership: RunOwnership):
+    def __init__(
+        self, history: "SqliteSessionStore", records: RequestStore, *, ownership: RunOwnership
+    ):
         self._history = history
         self._records = records
         self._ownership = ownership

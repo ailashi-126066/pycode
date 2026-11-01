@@ -4,6 +4,7 @@
 # SHA-256: 91e9d3162556ea54e9c1d211feb3ecf4126a302f50f7eb3e5f584194be9e9b29
 # Adaptation: Hooks await their action directly, like Pi extension handlers; no ledger.
 
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from pycode.hooks.contracts import HookActions, LifecycleContext
@@ -11,8 +12,7 @@ from pycode.hooks.types import Hook, HookContext
 from pycode.kernel import (
     DomainError,
     EntryDraft,
-    EventSink,
-    HistoryJournal,
+    EventStream,
     ToolCall,
     ToolContext,
     ToolResult,
@@ -20,14 +20,17 @@ from pycode.kernel import (
     clone_value,
 )
 
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
+
 
 class Hooks:
     def __init__(
         self,
         hooks: tuple[Hook, ...],
-        history: HistoryJournal,
+        history: "SqliteSessionStore",
         actions: HookActions,
-        events: EventSink,
+        events: EventStream,
     ) -> None:
         self._hooks = hooks
         self._history = history

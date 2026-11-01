@@ -3,9 +3,7 @@ from dataclasses import replace
 import pytest
 
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.errors import ModelError
-from pycode.kernel.domain.history import EntryDraft, SessionHeader
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import EntryDraft, Message, ModelError, SessionHeader
 from pycode.models.adapters.storage.catalog import FileCatalogStore
 from pycode.models.services.model_catalog import ModelCatalog
 from pycode.models.services.model_control import ModelControl

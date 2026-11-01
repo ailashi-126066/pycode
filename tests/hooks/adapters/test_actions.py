@@ -6,8 +6,7 @@ import pytest
 from pycode.hooks.actions import ConfiguredHookActions
 from pycode.hooks.config import parse_hooks
 from pycode.hooks.types import HookAction, HookContext
-from pycode.kernel.domain.errors import DomainError
-from pycode.kernel.domain.tools import ToolContext
+from pycode.kernel import DomainError, ToolContext
 from pycode.sandbox.adapters.seatbelt import UnavailableSandbox
 from pycode.sandbox.adapters.tools.bash import find_bash
 from pycode.sandbox.adapters.tools.process_runner import run_process

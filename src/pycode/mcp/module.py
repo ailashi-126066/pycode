@@ -3,8 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from pycode.kernel import ToolSpec
-from pycode.kernel.adapters.path_io import owned_io
+from pycode.kernel import ToolSpec, owned_io
 from pycode.mcp.api import MCP
 from pycode.mcp.config import load_servers
 from pycode.mcp.connection import MCPAdapterConnections

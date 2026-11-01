@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from langchain_core.messages import AIMessage
 
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.models.adapters.failures import ProviderFailureClassifier
 from pycode.models.adapters.model_requests import ModelRequestRunner
 from pycode.models.domain.requests import RetryPolicy

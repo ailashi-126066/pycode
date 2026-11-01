@@ -9,8 +9,7 @@ from pycode.context.adapters.summary import (
     turn_prefix_prompt,
 )
 from pycode.context.module import ContextModule
-from pycode.kernel.domain.errors import ModelError
-from pycode.kernel.services.events import EventStream
+from pycode.kernel import EventStream, ModelError
 from pycode.models.adapters.failures import ProviderFailureClassifier
 from pycode.models.adapters.model_requests import ModelRequestRunner
 from pycode.models.domain.requests import RetryPolicy

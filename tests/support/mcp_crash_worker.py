@@ -10,12 +10,12 @@ from pydantic import TypeAdapter
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.models.domain.models import ProviderConfig
 
 
 class CrashAfterFact:
-    async def consume(self, event):
+    async def on_event(self, event):
         if event.kind == "tool_execution_end" and event.data["tool_name"] == "mcp__srv__mutate":
             os._exit(85)
 

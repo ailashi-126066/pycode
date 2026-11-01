@@ -14,7 +14,7 @@ from pycode.app.configuration.settings import AppConfig
 from pycode.context import ProjectionContributor
 from pycode.context.module import ContextModule
 from pycode.hooks.module import HooksModule
-from pycode.kernel.adapters.timing import SystemTiming
+from pycode.kernel import SystemTiming
 from pycode.mcp import MCPProjection
 from pycode.mcp.module import MCPModule
 from pycode.memory.module import MemoryModule

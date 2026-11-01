@@ -9,7 +9,7 @@ session service、header reader、history backend、storage GC 和本地 applica
 
 ```python
 from pathlib import Path
-from pycode.kernel.adapters.timing import SystemTiming
+from pycode.kernel import SystemTiming
 from pycode.session.module import SessionsModule
 
 sessions = SessionsModule(Path("/project"), Path("/state"), SystemTiming())

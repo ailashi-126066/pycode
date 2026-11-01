@@ -3,10 +3,7 @@ import asyncio
 import pytest
 
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.completion import RunResult
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.history import EntryDraft
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import EntryDraft, Message, RunResult, StorageError
 from pycode.session.domain.execution_recovery import pending_run_entry
 from pycode.session.services.agent_session import AgentSession
 from tests.models.adapters.test_factory import configuration

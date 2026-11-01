@@ -1,7 +1,6 @@
 import pytest
 
-from pycode.kernel.domain.messages import ToolResult
-from pycode.kernel.domain.truncation import MAX_BYTES, MAX_LINES, line_count
+from pycode.kernel import MAX_BYTES, MAX_LINES, ToolResult, line_count
 from pycode.models.domain.tool_text import model_tool_text
 
 

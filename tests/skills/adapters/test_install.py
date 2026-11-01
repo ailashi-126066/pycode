@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 import pycode.skills.install as installation
-from pycode.kernel.domain.errors import ToolError
+from pycode.kernel import ToolError
 from pycode.skills.install import GitHubSkillInstaller, parse_skill_url
 
 VECTORS = json.loads(

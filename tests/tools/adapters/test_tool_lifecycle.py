@@ -8,9 +8,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.errors import ToolError
-from pycode.kernel.domain.history import SessionHeader
-from pycode.kernel.domain.messages import Message, ToolResult
+from pycode.kernel import Message, SessionHeader, ToolError, ToolResult
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from pycode.tools.adapters.permissions import InterruptToolGate
 from pycode.tools.adapters.tool_errors import execute_tool_errors

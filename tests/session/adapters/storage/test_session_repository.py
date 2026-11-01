@@ -1,8 +1,7 @@
 import pytest
 
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message, StorageError
 from pycode.session.adapters.storage.session_repository import SqliteSessionRepository
 from tests.support.requests import TestTiming
 

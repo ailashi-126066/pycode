@@ -5,8 +5,7 @@ from textual.widgets import Static
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.values import json_dumps
+from pycode.kernel import StorageError, json_dumps
 from pycode.ui.adapters.chat_input import ChatInput
 from pycode.ui.adapters.commands import COMMANDS
 from pycode.ui.adapters.completion import CompletionPopup

@@ -8,16 +8,16 @@ from uuid import uuid4
 from pycode.app.configuration.settings import AppConfig
 from pycode.context import ContextProjector, SummaryService
 from pycode.hooks import HookContext
+from pycode.kernel import AgentTool as Tool
 from pycode.kernel import (
     EventConsumer,
-    EventJournal,
+    MemoryEventJournal,
     Message,
     SessionTree,
     StorageError,
     ToolSpec,
     plain_data,
 )
-from pycode.kernel import ExecutableTool as Tool
 from pycode.models import ProviderConfig
 from pycode.session import SessionStore
 
@@ -28,7 +28,7 @@ class ConfiguredRuntimeLauncher:
         config: AppConfig,
         tools: tuple[Tool, ...],
         consumers: tuple[EventConsumer, ...],
-        event_journal: EventJournal,
+        event_journal: MemoryEventJournal,
         configured_hooks=(),
         resource_owners=(),
         projector_factory: Callable[[], ContextProjector] = ContextProjector,

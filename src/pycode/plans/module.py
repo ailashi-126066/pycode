@@ -4,8 +4,9 @@ from collections.abc import Callable
 from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from pycode.kernel import ExecutableTool, HistoryJournal
+from pycode.kernel import AgentTool
 from pycode.plans.adapters.plans import InterruptPlanPrompt
 from pycode.plans.adapters.storage.plans import BackendOperations, FilePlanStore
 from pycode.plans.adapters.tools.plans import ExitPlanMode
@@ -14,12 +15,15 @@ from pycode.plans.ports.plans import QuestionPrompt
 from pycode.plans.services.plans import PlanService
 from pycode.plans.services.projection import PlanProjection
 
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
+
 
 @dataclass(frozen=True)
 class PlanSession:
     service: PlanService
     files: FilePlanStore
-    tools: tuple[ExecutableTool, ...]
+    tools: tuple[AgentTool, ...]
 
 
 class PlansModule:
@@ -42,7 +46,7 @@ class PlansModule:
         return InterruptPlanPrompt()
 
     @staticmethod
-    def exit_tool(service: PlanService) -> ExecutableTool:
+    def exit_tool(service: PlanService) -> AgentTool:
         return ExitPlanMode(service)
 
     @staticmethod
@@ -54,7 +58,7 @@ class PlansModule:
         return ExitPlanMode.spec
 
     @staticmethod
-    def task_tools(history: HistoryJournal) -> tuple[ExecutableTool, ...]:
+    def task_tools(history: "SqliteSessionStore") -> tuple[AgentTool, ...]:
         return (TaskWrite(history), TaskUpdate(history))
 
     @staticmethod
@@ -62,7 +66,11 @@ class PlansModule:
         return (TaskWrite.spec, TaskUpdate.spec)
 
     def session(
-        self, session_id: str, history: HistoryJournal, *, prompt: QuestionPrompt | None = None
+        self,
+        session_id: str,
+        history: "SqliteSessionStore",
+        *,
+        prompt: QuestionPrompt | None = None,
     ) -> PlanSession:
         files = self.files(session_id)
         service = PlanService(history, files, prompt or self.prompt())

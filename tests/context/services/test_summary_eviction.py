@@ -6,10 +6,7 @@ from pycode.context.domain.tool_eviction import EvictionBudget
 from pycode.context.services.context_projector import ContextProjector
 from pycode.context.services.summary import SummaryService
 from pycode.context.services.tool_eviction import ToolEvictionService
-from pycode.kernel import ModelSelection
-from pycode.kernel.domain.history import SessionHeader
-from pycode.kernel.domain.messages import Message, ToolCall, ToolResult
-from pycode.kernel.services.events import EventStream
+from pycode.kernel import EventStream, Message, ModelSelection, SessionHeader, ToolCall, ToolResult
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from tests.context.services.test_summary import Generator
 from tests.support.requests import TestTiming

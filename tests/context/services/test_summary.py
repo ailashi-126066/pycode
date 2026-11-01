@@ -10,12 +10,21 @@ from pycode.context.domain.context_budget import InputBudget
 from pycode.context.domain.summaries import SummaryCompletion, SummarySettings
 from pycode.context.services.context_projector import ContextProjector
 from pycode.context.services.summary import SummaryService
-from pycode.kernel import Board, ModelSelection, Step, plain_data
-from pycode.kernel.domain.errors import ModelError
-from pycode.kernel.domain.history import EntryDraft, SessionHeader
-from pycode.kernel.domain.history_tree import SessionTree
-from pycode.kernel.domain.messages import Message, ToolCall, ToolResult, UsageRecord
-from pycode.kernel.services.events import EventStream
+from pycode.kernel import (
+    Board,
+    EntryDraft,
+    EventStream,
+    Message,
+    ModelError,
+    ModelSelection,
+    SessionHeader,
+    SessionTree,
+    Step,
+    ToolCall,
+    ToolResult,
+    UsageRecord,
+    plain_data,
+)
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from tests.support.requests import TestTiming
 

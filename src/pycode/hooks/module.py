@@ -3,15 +3,18 @@
 from collections.abc import Mapping
 from copy import copy
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pycode.hooks.actions import ConfiguredHookActions
 from pycode.hooks.api import Hooks
 from pycode.hooks.config import load_hooks
 from pycode.hooks.contracts import HookActions
 from pycode.hooks.types import Hook
-from pycode.kernel import EventSink, HistoryJournal
-from pycode.kernel.adapters.path_io import owned_io
+from pycode.kernel import EventStream, owned_io
 from pycode.sandbox import OutputSink, ProcessRunner, SandboxBackend, SandboxSettings
+
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
 
 
 class HooksModule:
@@ -71,8 +74,8 @@ class HooksModule:
     @staticmethod
     def engine(
         hooks: tuple[Hook, ...],
-        history: HistoryJournal,
+        history: "SqliteSessionStore",
         actions: HookActions,
-        events: EventSink,
+        events: EventStream,
     ) -> Hooks:
         return Hooks(hooks, history, actions, events)

@@ -3,8 +3,7 @@
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from pycode.context.domain.projection import ProjectionContribution
-from pycode.kernel import ProjectedEntry, SessionEntry, SessionSnapshot
+from pycode.kernel import ProjectedEntry, ProjectionContribution, SessionEntry, SessionSnapshot
 
 
 class ProjectionContributor(Protocol):

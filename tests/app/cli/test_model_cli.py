@@ -8,8 +8,7 @@ from tests.models.adapters.test_factory import configuration
 from pycode.app.bootstrap import compose_application
 from pycode.app.cli.main import main
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.history import EntryDraft
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import EntryDraft, Message
 
 
 def test_model_command_lists_all_providers_and_selects_existing_session(tmp_path, capsys):

@@ -6,7 +6,7 @@ from pycode.app.api import RunOptions, SessionResources
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.models.domain.models import ProviderConfig
 from tests.support.http_provider import chat_completion, protocol_server
 

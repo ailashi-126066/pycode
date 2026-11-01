@@ -8,8 +8,7 @@ from langchain_core.messages import AIMessage
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.messages import Message, ToolResult
+from pycode.kernel import Message, StorageError, ToolResult
 from pycode.tools.adapters.tool_errors import execute_tool_errors
 from pycode.tools.services.tool_executor import ToolExecutor
 from tests.agent.adapters.test_agent import assemble, tool_response

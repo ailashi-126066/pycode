@@ -1,17 +1,46 @@
-"""Task board shared by simple tasks and Plan mode (11.1 section 9).
+# Pi 没有，pycode 新增
+"""Task board shared by simple tasks and Plan mode (11.1 section 9), on a minimal state machine.
 
 The model decides the steps and their dependencies; this module only checks
 the graph and applies status transitions. Derived state is computed, never stored.
+StateMachine callers own the effects of a transition and run them in a fixed order:
+write the SessionEntry, emit the event, then fire the Hook.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from graphlib import CycleError, TopologicalSorter
 from types import MappingProxyType
-from typing import Literal
+from typing import Generic, Literal, TypeVar
 
-from pycode.kernel.domain.errors import DomainError
-from pycode.kernel.domain.state_machine import StateMachine
+from pycode.kernel.errors import DomainError
+
+Guard = Callable[..., bool]
+S = TypeVar("S", bound=str)
+T = TypeVar("T", bound=str)
+
+
+class StateMachine(Generic[S, T]):
+    def __init__(self, table: Mapping[tuple[S, T], tuple[S, Guard | None]]) -> None:
+        for (state, trigger), (target, _) in table.items():
+            if target == state:
+                # Borrowed from pi-durable: every transition must make progress.
+                raise DomainError(
+                    "invalid_transition", f"{trigger} keeps {state} unchanged (idle transition)"
+                )
+        self.table = dict(table)
+
+    def apply(self, state: S, trigger: T, **facts) -> S:
+        """Return the target state, or raise invalid_transition."""
+        if (state, trigger) not in self.table:
+            raise DomainError("invalid_transition", f"Cannot {trigger} from {state}")
+        target, guard = self.table[state, trigger]
+        if guard is not None and not guard(**facts):
+            raise DomainError(
+                "invalid_transition", f"Cannot {trigger} from {state}: {guard.__name__} failed"
+            )
+        return target
+
 
 StepStatus = Literal["pending", "in_progress", "completed", "blocked", "failed", "skipped"]
 BoardStatus = Literal["active", "blocked", "completed", "failed", "abandoned"]

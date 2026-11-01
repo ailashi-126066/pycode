@@ -1,7 +1,6 @@
 from dataclasses import replace
 
-from pycode.kernel.domain.history import EntryDraft
-from pycode.kernel.domain.messages import Message, UsageRecord
+from pycode.kernel import EntryDraft, Message, UsageRecord
 from pycode.models.adapters.storage.requests import SQLiteRequestStore
 from pycode.models.domain.requests import RequestRecord
 from pycode.models.services.usage import UsageService

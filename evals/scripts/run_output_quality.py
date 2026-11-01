@@ -15,8 +15,7 @@ from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.providers import load_providers
 from pycode.app.configuration.settings import AppConfig
 from pycode.context.domain.summaries import SummarySource
-from pycode.kernel.domain.messages import Message
-from pycode.kernel.domain.values import plain_data
+from pycode.kernel import Message, plain_data
 from pycode.models.adapters.storage.requests import SQLiteRequestStore
 from pycode.models.domain.requests import RetryPolicy
 from pycode.session.adapters.storage.layout import StorageLayout

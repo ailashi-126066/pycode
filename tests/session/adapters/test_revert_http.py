@@ -10,8 +10,7 @@ import pytest
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.errors import SnapshotError, StorageError
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message, SnapshotError, StorageError
 from pycode.session.adapters.storage.layout import StorageLayout
 from tests.snapshot.adapters.test_git_tree import git, repository
 from tests.support.execution import provider

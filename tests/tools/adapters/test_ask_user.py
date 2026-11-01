@@ -3,8 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from pycode.kernel.domain.errors import StorageError, ToolError
-from pycode.kernel.domain.tools import ToolContext
+from pycode.kernel import StorageError, ToolContext, ToolError
 from pycode.tools.adapters.ask_user import AskUserQuestion
 from pycode.tools.adapters.schema import JsonSchemaValidator
 

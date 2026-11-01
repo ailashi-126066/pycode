@@ -5,7 +5,7 @@ import pytest
 
 from pycode.hooks.config import parse_hooks
 from pycode.hooks.types import HOOK_EVENTS, HookContext, parse_condition
-from pycode.kernel.domain.errors import DomainError
+from pycode.kernel import DomainError
 
 VECTORS = json.loads(
     (Path(__file__).parents[2] / "fixtures/hook-baselines.json").read_text(encoding="utf-8")

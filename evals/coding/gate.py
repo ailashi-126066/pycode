@@ -3,7 +3,7 @@
 import posixpath
 import shlex
 
-from pycode.kernel.domain.errors import ToolError
+from pycode.kernel import ToolError
 
 
 class EvaluationToolGate:

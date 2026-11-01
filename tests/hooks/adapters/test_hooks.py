@@ -10,8 +10,7 @@ import pytest
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.hooks.types import HOOK_EVENTS
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message, StorageError
 from tests.context.adapters.test_summary_http import seed
 from tests.session.adapters.test_revert_http import command_reply
 from tests.skills.adapters.test_skills_http import skill_reply

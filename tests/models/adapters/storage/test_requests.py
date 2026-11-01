@@ -2,8 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.messages import UsageRecord
+from pycode.kernel import StorageError, UsageRecord
 from pycode.models.adapters.storage.requests import SQLiteRequestStore
 from pycode.models.domain.requests import RequestRecord
 

@@ -1,7 +1,6 @@
 """Reconstruct the system prompt independently of optional feature modules."""
 
-from pycode.context.domain.projection import ProjectionContribution
-from pycode.kernel import Message, ProjectedEntry, clone_value
+from pycode.kernel import Message, ProjectedEntry, ProjectionContribution, clone_value
 
 
 class SystemPromptProjection:

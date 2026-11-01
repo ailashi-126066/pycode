@@ -10,11 +10,19 @@ from langchain_core.messages import AIMessage, ToolMessage
 from pycode.agent import RunContext
 from pycode.context import task_board
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel import Board, EntryDraft, ModelSelection, SessionTree, Step, plain_data
-from pycode.kernel.domain.history import SessionHeader
-from pycode.kernel.domain.messages import Message, ToolResult
-from pycode.kernel.domain.tools import ToolSpec
-from pycode.kernel.services.events import EventStream
+from pycode.kernel import (
+    Board,
+    EntryDraft,
+    EventStream,
+    Message,
+    ModelSelection,
+    SessionHeader,
+    SessionTree,
+    Step,
+    ToolResult,
+    ToolSpec,
+    plain_data,
+)
 from pycode.models.adapters.failures import ProviderFailureClassifier
 from pycode.models.adapters.model_requests import ModelRequestRunner
 from pycode.models.domain.requests import RetryPolicy
@@ -46,7 +54,7 @@ class Recorder:
         self.events = []
         self.delta_seen = asyncio.Event()
 
-    async def consume(self, event):
+    async def on_event(self, event):
         self.events.append(event)
         if event.kind == "message_update":
             self.delta_seen.set()

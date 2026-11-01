@@ -15,10 +15,7 @@ from uuid import uuid4
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.providers import load_providers
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.errors import ToolError
-from pycode.kernel.domain.messages import Message, ToolResult
-from pycode.kernel.domain.tools import ToolSpec
-from pycode.kernel.domain.values import plain_data
+from pycode.kernel import Message, ToolError, ToolResult, ToolSpec, plain_data
 from pycode.models.domain.requests import RetryPolicy
 
 try:
@@ -53,7 +50,7 @@ class Events:
     def __init__(self):
         self.items = []
 
-    async def consume(self, event):
+    async def on_event(self, event):
         if event.kind not in {"message_delta", "thinking_delta"}:
             self.items.append(plain_data(event))
 

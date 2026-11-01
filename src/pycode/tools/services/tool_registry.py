@@ -1,11 +1,12 @@
 """Explicit registration; modules never self-register during import."""
 
-from pycode.kernel import ArgumentValidator, ToolError, ToolSpec, clone_value
-from pycode.kernel import ExecutableTool as Tool
+from pycode.kernel import AgentTool as Tool
+from pycode.kernel import ToolError, ToolSpec, clone_value
+from pycode.tools.adapters.schema import JsonSchemaValidator
 
 
 class ToolRegistry:
-    def __init__(self, validator: ArgumentValidator, tools: tuple[Tool, ...] = ()) -> None:
+    def __init__(self, validator: JsonSchemaValidator, tools: tuple[Tool, ...] = ()) -> None:
         self._validator = validator
         self._tools: dict[str, Tool] = {}
         self._specs: dict[str, ToolSpec] = {}

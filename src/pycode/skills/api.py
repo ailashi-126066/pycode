@@ -1,11 +1,15 @@
 """Skills api: component-owned implementation."""
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from pycode.kernel import EntryDraft, SessionTree, ToolError, data_hash, estimate_text, plain_data
-from pycode.kernel import HistoryJournal as SessionStore
 from pycode.skills.contracts import CatalogWriteGuard, SkillCatalog, SkillInstaller
 from pycode.skills.types import skill_entry
+
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
+
 
 CONTROL_TOOLS = frozenset({"SkillSearch"})
 
@@ -13,7 +17,7 @@ CONTROL_TOOLS = frozenset({"SkillSearch"})
 class Skills:
     def __init__(
         self,
-        history: SessionStore,
+        history: "SqliteSessionStore",
         catalog: SkillCatalog,
         *,
         catalog_write_guard: CatalogWriteGuard,

@@ -119,7 +119,7 @@ async def test_dead_stdio_server_reconnects_on_next_call_without_retrying_effect
         tool = next(tool for tool in catalog["tools"] if tool["original_name"] == "echo")
         die = next(tool for tool in catalog["tools"] if tool["original_name"] == "die")
         previous = await asyncio.to_thread((tmp_path / "server.pid").read_text)
-        from pycode.kernel.domain.errors import StorageError
+        from pycode.kernel import StorageError
 
         with pytest.raises(StorageError) as error:
             await manager.call(die, {})

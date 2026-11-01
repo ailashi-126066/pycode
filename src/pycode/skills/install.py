@@ -20,9 +20,7 @@ from uuid import uuid4
 import httpx
 
 from pycode import __version__
-from pycode.kernel import StorageError, ToolError, json_dumps, plain_data
-from pycode.kernel.adapters.file_lease import FileLease
-from pycode.kernel.adapters.path_io import owned_io
+from pycode.kernel import FileLease, StorageError, ToolError, json_dumps, owned_io, plain_data
 from pycode.skills.catalog import MAX_SKILL_BYTES, linked, parse_skill
 
 

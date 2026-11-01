@@ -9,8 +9,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message, StorageError
 from tests.context.adapters.test_summary_http import seed
 from tests.mcp.adapters.test_mcp import mcp_config
 from tests.skills.adapters.test_skills_http import skill_reply

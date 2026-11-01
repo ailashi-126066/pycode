@@ -15,7 +15,7 @@ from tests.support.http_provider import HTTPResponse, chat_completion, protocol_
 from pycode.app.bootstrap import compose_application
 from pycode.app.cli.main import main
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 
 VECTORS = json.loads(
     (Path(__file__).parents[2] / "fixtures/cli-baselines.json").read_text(encoding="utf-8")

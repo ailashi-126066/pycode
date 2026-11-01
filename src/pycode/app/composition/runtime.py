@@ -11,8 +11,7 @@ from pycode.app.configuration.settings import AppConfig
 from pycode.app.lifecycle.run import RunAssembly, RuntimeContainer
 from pycode.context import EvictionBudget, InputBudget, SummarySettings
 from pycode.hooks import ToolHookBridge
-from pycode.kernel import EventStream
-from pycode.kernel.adapters.event_journal import MemoryEventJournal
+from pycode.kernel import EventStream, MemoryEventJournal
 from pycode.session import (
     DurableInputs,
     PendingInputs,

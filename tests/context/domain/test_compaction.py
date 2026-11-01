@@ -5,8 +5,15 @@ import pytest
 
 from pycode.context.domain.compaction import find_cut_point
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.history import SessionEntry, SessionHeader, SessionSnapshot
-from pycode.kernel.domain.messages import Message, TextBlock, ToolCall, ToolResult
+from pycode.kernel import (
+    Message,
+    SessionEntry,
+    SessionHeader,
+    SessionSnapshot,
+    TextBlock,
+    ToolCall,
+    ToolResult,
+)
 
 VECTORS = json.loads((Path(__file__).parents[2] / "fixtures/compaction-baselines.json").read_text())
 

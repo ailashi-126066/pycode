@@ -1,4 +1,4 @@
-from pycode.kernel.domain.messages import (
+from pycode.kernel import (
     Message,
     TextBlock,
     ThinkingBlock,

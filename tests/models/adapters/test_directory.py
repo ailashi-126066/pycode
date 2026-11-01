@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.kernel.domain.errors import ModelError
+from pycode.kernel import ModelError
 from pycode.models.adapters.directory import SDKModelDirectory
 from pycode.models.adapters.failures import ProviderFailureClassifier
 from tests.models.adapters.test_factory import configuration

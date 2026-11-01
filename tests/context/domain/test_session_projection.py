@@ -4,10 +4,17 @@ from pathlib import Path
 import pytest
 
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel import ModelSelection
-from pycode.kernel.domain.history import SessionEntry, SessionHeader, SessionSnapshot
-from pycode.kernel.domain.history_tree import SessionTree
-from pycode.kernel.domain.messages import Message, ToolCall, ToolResult, UsageRecord
+from pycode.kernel import (
+    Message,
+    ModelSelection,
+    SessionEntry,
+    SessionHeader,
+    SessionSnapshot,
+    SessionTree,
+    ToolCall,
+    ToolResult,
+    UsageRecord,
+)
 
 VECTORS = json.loads((Path(__file__).parents[2] / "fixtures/pi-session.json").read_text())
 

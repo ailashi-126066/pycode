@@ -2,9 +2,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.errors import ToolError
-from pycode.kernel.domain.messages import Message, ToolCall
-from pycode.kernel.domain.tools import ToolContext
+from pycode.kernel import Message, ToolCall, ToolContext, ToolError
 from pycode.sandbox.adapters.tools.bash import Bash
 from pycode.sandbox.domain.sandbox import SandboxSettings, SandboxStatus
 from pycode.tools.adapters.permissions import InterruptToolGate

@@ -6,8 +6,7 @@ from pathlib import Path
 
 from deepagents.backends.protocol import FileDownloadResponse
 
-from pycode.kernel import StorageError
-from pycode.kernel.adapters.path_io import owned_io
+from pycode.kernel import StorageError, owned_io
 
 
 def project_instruction_file(workspace: Path) -> Path | None:

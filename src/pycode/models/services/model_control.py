@@ -1,20 +1,23 @@
 """Model list, selection and restoration share the same append-only branch history."""
 
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
 from pycode.kernel import (
     EntryDraft,
-    EventSink,
+    EventStream,
     ModelError,
     ModelSelection,
     SessionTree,
     clone_value,
     plain_data,
 )
-from pycode.kernel import HistoryJournal as SessionStore
 from pycode.models.domain.models import CatalogSnapshot, ProviderConfig, model_selection
 from pycode.models.ports.context import Projector
 from pycode.models.services.model_catalog import ModelCatalog
+
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
 
 
 class ModelControl:
@@ -22,8 +25,8 @@ class ModelControl:
         self,
         catalog: ModelCatalog,
         projector: Projector,
-        store: SessionStore | None = None,
-        events: EventSink | None = None,
+        store: "SqliteSessionStore | None" = None,
+        events: EventStream | None = None,
     ) -> None:
         self._catalog = catalog
         self._projector = projector

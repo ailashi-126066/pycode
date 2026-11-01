@@ -1,7 +1,6 @@
 """Reconstruct this feature's historical model context without opening resources."""
 
-from pycode.context import ProjectionContribution
-from pycode.kernel import Message, ProjectedEntry, clone_value
+from pycode.kernel import Message, ProjectedEntry, ProjectionContribution, clone_value
 
 
 class PlanProjection:

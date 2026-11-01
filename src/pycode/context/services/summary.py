@@ -8,6 +8,7 @@ import asyncio
 import contextvars
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from pycode.context.domain.context_meter import ContextMeter
@@ -23,7 +24,7 @@ from pycode.context.services.context_projector import ContextProjector
 from pycode.kernel import (
     DomainError,
     EntryDraft,
-    EventSink,
+    EventStream,
     ModelError,
     SessionEntry,
     SessionTree,
@@ -32,18 +33,20 @@ from pycode.kernel import (
     data_hash,
     plain_data,
 )
-from pycode.kernel import HistoryJournal as SessionStore
+
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
 
 
 class SummaryService:
     def __init__(
         self,
-        history: SessionStore,
+        history: "SqliteSessionStore",
         projector: ContextProjector,
         objects: SummaryStore,
         generator: SummaryGenerator,
         settings: SummarySettings,
-        events: EventSink,
+        events: EventStream,
         *,
         preparation: Callable[["SummaryService", SummaryCheck], Awaitable[SummaryReport]],
         on_compacted: Callable[[], Awaitable[None]] | None = None,
@@ -63,7 +66,9 @@ class SummaryService:
         self._lock = asyncio.Lock()
         self._closed = False
 
-    def configure(self, settings: SummarySettings, generator: SummaryGenerator, events: EventSink):
+    def configure(
+        self, settings: SummarySettings, generator: SummaryGenerator, events: EventStream
+    ):
         if self._closed:
             raise RuntimeError("Cannot reconfigure a closed summary service")
         self._settings = settings

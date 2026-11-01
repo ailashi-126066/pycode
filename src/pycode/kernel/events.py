@@ -1,9 +1,15 @@
 # Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/agent/src/types.ts
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/agent/src/agent.ts
 # Adaptation: an envelope with sequence, turn and agent identity around Pi's event payloads.
-"""Unified event envelope; deltas are distinct from completed messages."""
+"""Event envelope, ordered publisher and process-local event numbering."""
 
-from dataclasses import dataclass, field
-from typing import Any, Literal, NotRequired, TypedDict
+import asyncio
+from dataclasses import dataclass, field, replace
+from typing import Any, Literal, NotRequired, Protocol, TypedDict
+
+from pycode.kernel.errors import OutputClosed
+from pycode.kernel.messages import Message
+from pycode.kernel.values import freeze_value
 
 # 11.1 section 3.1: Pi's 10 AgentEvent types, then 8 pycode additions.
 EventKind = Literal[
@@ -199,3 +205,91 @@ AgentEvent = (
     | TaskEvent
     | NotificationEvent
 )
+
+
+@dataclass(frozen=True)
+class RunResult:
+    outcome: str
+    final_text: str
+    messages: tuple[Message, ...]
+    pending: tuple[dict[str, Any], ...] = ()
+    checkpoint_id: str | None = None
+    run_id: str | None = None
+
+
+class EventConsumer(Protocol):
+    async def on_event(self, event: Event) -> None: ...
+
+
+class MemoryEventJournal:
+    def __init__(self):
+        self.sequences: dict[tuple[str, str], int] = {}
+        self.lock = asyncio.Lock()
+
+    async def append_event(self, event: Event) -> Event:
+        """Number the event within its (session, run); several streams may share one run."""
+        async with self.lock:
+            key = (event.session_id, event.run_id)
+            sequence = self.sequences.get(key, 0) + 1
+            self.sequences[key] = sequence
+            return replace(event, sequence=sequence)
+
+    async def aclose(self):
+        self.sequences.clear()
+
+
+class EventStream:
+    def __init__(
+        self,
+        session_id: str,
+        run_id: str,
+        consumers: tuple[EventConsumer, ...],
+        initial_sequence: int = 0,
+        *,
+        journal: MemoryEventJournal | None = None,
+        agent_id: str = "lead",
+        parent_call_id: str | None = None,
+    ) -> None:
+        self._session_id = session_id
+        self._run_id = run_id
+        self._consumers = consumers
+        self._sequence = initial_sequence
+        self._lock = asyncio.Lock()
+        self._journal = journal
+        self._agent_id = agent_id
+        self._parent_call_id = parent_call_id
+        self._turn = 0
+        self._closed: set[int] = set()
+
+    # Pi: Agent.processEvents awaits every listener in order; a listener error fails the run.
+    async def emit(
+        self, kind: EventKind, data: dict[str, Any], *, operation_id: str | None = None
+    ) -> Event:
+        async with self._lock:
+            if kind == "turn_start":
+                self._turn = data["turn"]
+            event = Event(
+                sequence=self._sequence + 1,
+                session_id=self._session_id,
+                run_id=self._run_id,
+                kind=kind,
+                # Frozen once here; every consumer receives the same object.
+                data=freeze_value(data),
+                operation_id=operation_id,
+                turn=self._turn,
+                agent_id=self._agent_id,
+                parent_call_id=self._parent_call_id,
+            )
+            if self._journal is not None:
+                event = await self._journal.append_event(event)
+            self._sequence = event.sequence
+            for index, consumer in enumerate(self._consumers):
+                if index in self._closed:
+                    continue
+                try:
+                    await consumer.on_event(event)
+                except BrokenPipeError:
+                    # stdout is gone: stop writing to it and cancel the run.
+                    self._closed.add(index)
+                    raise OutputClosed("Console output closed") from None
+            return event

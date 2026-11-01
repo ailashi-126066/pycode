@@ -3,10 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.kernel.domain.errors import ToolError
-from pycode.kernel.domain.messages import ToolCall, ToolResult
-from pycode.kernel.domain.tools import ToolContext, ToolSpec
-from pycode.kernel.services.events import EventStream
+from pycode.kernel import EventStream, ToolCall, ToolContext, ToolError, ToolResult, ToolSpec
 from pycode.tools.adapters.schema import JsonSchemaValidator
 from pycode.tools.adapters.tool_errors import execute_tool_errors
 from pycode.tools.services.permissions import ReadOnlyToolGate
@@ -40,7 +37,7 @@ class Recorder:
     def __init__(self):
         self.events = []
 
-    async def consume(self, event):
+    async def on_event(self, event):
         self.events.append(event)
 
 

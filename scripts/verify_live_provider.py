@@ -11,8 +11,7 @@ from pathlib import Path
 from pycode.app.api import RunOptions, SessionResources
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message, ToolResult
-from pycode.kernel.domain.tools import ToolSpec
+from pycode.kernel import Message, ToolResult, ToolSpec
 from pycode.models.domain.models import ProviderConfig
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +30,7 @@ class AuditConsumer:
     def __init__(self):
         self.kinds = []
 
-    async def consume(self, event):
+    async def on_event(self, event):
         self.kinds.append(event.kind)
 
 

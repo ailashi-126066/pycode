@@ -15,7 +15,7 @@ class ConsoleOutput:
         self._stream.write(json_dumps(value, ensure_ascii=False, allow_nan=False) + "\n")
         self._stream.flush()
 
-    async def consume(self, event):
+    async def on_event(self, event):
         if self._format == "stream-json":
             self.write_json({"type": event.kind, **plain_data(event)})
         elif event.kind == "subagent":

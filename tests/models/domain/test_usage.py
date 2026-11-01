@@ -1,4 +1,4 @@
-from pycode.kernel.domain.messages import UsageRecord
+from pycode.kernel import UsageRecord
 from pycode.models.domain.requests import RequestRecord
 from pycode.models.domain.usage import aggregate_requests
 

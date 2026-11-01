@@ -1,8 +1,6 @@
 import pytest
 
-from pycode.kernel.domain.messages import Message, ToolCall, ToolResult
-from pycode.kernel.domain.tools import ToolContext
-from pycode.kernel.services.events import EventStream
+from pycode.kernel import EventStream, Message, ToolCall, ToolContext, ToolResult
 from pycode.mcp.api import MCP
 from pycode.mcp.tools import MCPTool
 from pycode.tools.adapters.schema import JsonSchemaValidator

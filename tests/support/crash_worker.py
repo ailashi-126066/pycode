@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.models.adapters.storage.requests import SQLiteRequestStore
 from pycode.models.domain.models import ProviderConfig
 from pycode.tools.adapters.output_store import TempOutputStore
@@ -18,7 +18,7 @@ class CrashConsumer:
     def __init__(self, boundary):
         self._boundary = boundary
 
-    async def consume(self, event):
+    async def on_event(self, event):
         fatal = (
             (
                 self._boundary == "model_saved"

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from pycode.kernel.domain.errors import ToolError
+from pycode.kernel import ToolError
 from pycode.sandbox.adapters.seatbelt import SeatbeltSandbox, UnavailableSandbox, build_profile
 from pycode.sandbox.domain.sandbox import SandboxSettings
 

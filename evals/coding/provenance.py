@@ -5,7 +5,7 @@ from importlib.metadata import distributions
 from pathlib import Path
 
 import pycode
-from pycode.kernel.domain.values import json_dumps
+from pycode.kernel import json_dumps
 
 
 def package_manifest():

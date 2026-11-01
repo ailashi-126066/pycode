@@ -3,8 +3,7 @@
 import pytest
 from langchain_core.messages import AIMessage
 
-from pycode.kernel.domain.errors import ToolError
-from pycode.kernel.domain.messages import Message, ToolResult
+from pycode.kernel import Message, ToolError, ToolResult
 from tests.agent.adapters.test_agent import assemble
 
 

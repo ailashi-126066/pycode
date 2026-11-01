@@ -18,8 +18,7 @@ from deepagents.backends.protocol import (
 )
 from deepagents.middleware.skills import SkillsMiddleware, SkillsState
 
-from pycode.kernel import SessionTree, ToolError
-from pycode.kernel.adapters.path_io import file_sha256, owned_io
+from pycode.kernel import SessionTree, ToolError, file_sha256, owned_io
 from pycode.skills.types import skill_scope
 
 

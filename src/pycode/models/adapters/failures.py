@@ -9,12 +9,12 @@ import httpx
 import httpx2
 import openai
 
-from pycode.kernel import Timing, clone_value
+from pycode.kernel import SystemTiming, clone_value
 from pycode.models.domain.requests import ModelFailure
 
 
 class ProviderFailureClassifier:
-    def __init__(self, timing: Timing) -> None:
+    def __init__(self, timing: SystemTiming) -> None:
         self._timing = timing
 
     def classify(self, error: Exception) -> ModelFailure | None:

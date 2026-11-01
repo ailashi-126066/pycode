@@ -9,7 +9,7 @@ from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.context.adapters.summary import SUMMARIZATION_SYSTEM_PROMPT
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.models.adapters.storage.requests import SQLiteRequestStore
 from pycode.session.adapters.storage.layout import StorageLayout
 from tests.support.execution import provider

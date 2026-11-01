@@ -13,19 +13,19 @@ from langgraph.store.sqlite.base import SqliteStore
 
 from pycode.kernel import (
     EntryDraft,
+    FileLease,
     Message,
     SessionEntry,
     SessionHeader,
     SessionSnapshot,
     SessionTree,
     StorageError,
-    Timing,
+    SystemTiming,
     clone_value,
     freeze_value,
+    owned_io,
     plain_data,
 )
-from pycode.kernel.adapters.file_lease import FileLease
-from pycode.kernel.adapters.path_io import owned_io
 from pycode.session.adapters.storage.session_codec import (
     decode_entries,
     decode_entry,
@@ -80,7 +80,7 @@ def read_header(path):
 
 
 class SqliteSessionStore:
-    def __init__(self, directory: Path, header: SessionHeader, timing: Timing):
+    def __init__(self, directory: Path, header: SessionHeader, timing: SystemTiming):
         self._directory = directory
         self._log = directory / "session.sqlite"
         self._header, self._timing = header, timing

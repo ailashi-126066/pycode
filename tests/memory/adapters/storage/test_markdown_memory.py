@@ -2,7 +2,7 @@
 
 import pytest
 
-from pycode.kernel.domain.errors import StorageError, ToolError
+from pycode.kernel import StorageError, ToolError
 from pycode.memory.adapters.storage.markdown_memory import MarkdownMemoryStore
 from pycode.memory.domain.memory import NAMESPACES
 

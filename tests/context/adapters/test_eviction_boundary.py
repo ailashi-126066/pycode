@@ -4,8 +4,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from pycode.context.domain.tool_eviction import EvictionBudget
 from pycode.context.services.context_projector import ContextProjector
 from pycode.context.services.tool_eviction import ToolEvictionService
-from pycode.kernel.domain.history import SessionHeader
-from pycode.kernel.domain.messages import Message, ToolCall, ToolResult
+from pycode.kernel import Message, SessionHeader, ToolCall, ToolResult
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from tests.agent.adapters.test_agent import assemble
 from tests.support.model import ScriptedChatModel

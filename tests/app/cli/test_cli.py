@@ -12,7 +12,7 @@ from pycode.app.bootstrap import compose_application
 from pycode.app.cli.commands import command
 from pycode.app.cli.main import main
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.completion import RunResult
+from pycode.kernel import RunResult
 
 
 def test_diagnostics_use_shared_application(tmp_path, capsys):

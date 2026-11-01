@@ -7,8 +7,7 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message, StorageError
 from tests.support.execution import provider, session_at
 from tests.support.http_provider import chat_completion, protocol_server
 from tests.support.recovery_tools import WritingEcho
@@ -76,7 +75,7 @@ async def test_input_accepted_at_graph_end_is_processed_before_application_settl
         session = None
         queued = False
 
-        async def consume(self, event):
+        async def on_event(self, event):
             if event.kind == "turn_end" and not self.queued:
                 self.queued = True
                 assert await self.session.submit_input(

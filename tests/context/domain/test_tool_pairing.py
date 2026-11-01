@@ -4,7 +4,7 @@ from copy import deepcopy
 import pytest
 
 from pycode.context.domain.tool_pairing import repair_tool_pairing
-from pycode.kernel.domain.messages import Message, ToolCall, ToolResult
+from pycode.kernel import Message, ToolCall, ToolResult
 
 
 def test_source_pairing_repairs_send_copy_preserving_real_results_and_history():

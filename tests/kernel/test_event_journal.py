@@ -2,8 +2,7 @@
 
 import asyncio
 
-from pycode.kernel.adapters.event_journal import MemoryEventJournal
-from pycode.kernel.services.events import EventStream
+from pycode.kernel import EventStream, MemoryEventJournal
 
 
 async def test_shared_publishers_are_ordered_but_restart_starts_empty(tmp_path):

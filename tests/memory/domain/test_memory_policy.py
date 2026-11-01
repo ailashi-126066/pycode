@@ -2,7 +2,7 @@
 
 import pytest
 
-from pycode.kernel.domain.errors import StorageError, ToolError
+from pycode.kernel import StorageError, ToolError
 from pycode.memory.domain.memory import (
     MAX_ENTRIES,
     MAX_ENTRY_CHARS,

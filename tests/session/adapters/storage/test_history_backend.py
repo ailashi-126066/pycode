@@ -1,7 +1,7 @@
 import pytest
 from deepagents.backends import CompositeBackend
 
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.session.adapters.storage.history_backend import ConversationHistoryBackend
 from pycode.tools.adapters.backend import PycodeBackend
 from tests.models.services.test_model_control import store_for

@@ -1,23 +1,23 @@
-"""Immutable stored values and explicit conversion at serialization boundaries."""
+# Pi 没有，pycode 新增
+"""Immutable values, canonical hashing, credential patterns and model identity."""
 
 import copy
+import hashlib
 import json
 from collections.abc import Mapping
-from dataclasses import Field, fields, is_dataclass, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from types import MappingProxyType
-from typing import Any, ClassVar, Protocol, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, overload
 
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
-class _DataclassValue(Protocol):
-    __dataclass_fields__: ClassVar[dict[str, Field[Any]]]
-
-
-_Record = TypeVar("_Record", bound=_DataclassValue)
+_Record = TypeVar("_Record", bound="DataclassInstance")
 _Key = TypeVar("_Key")
 
 
 @overload
-def plain_data(value: _DataclassValue) -> dict[str, Any]: ...
+def plain_data(value: "DataclassInstance") -> dict[str, Any]: ...
 
 
 @overload
@@ -146,3 +146,39 @@ def clone_value(value: Any) -> Any:
 
 def json_dumps(value, **options):
     return json.dumps(plain_data(value), **options)
+
+
+def data_hash(value) -> str:
+    encoded = json_dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+SECRET_PATTERNS = (
+    r"\bsk-[A-Za-z0-9_-]{16,}\b",
+    r"(?i)(api[_ -]?key|password|secret|access[_ -]?token)\s*[:=]\s*\S{6,}",
+    r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
+)
+
+
+ProviderKind = Literal["deepseek", "openai", "anthropic"]
+
+
+@dataclass(frozen=True)
+class ModelCapabilities:
+    context_window: int | None = None
+    max_output_tokens: int | None = None
+    supports_tools: bool = False
+    supports_thinking: bool = False
+    supports_images: bool = False
+
+
+@dataclass(frozen=True)
+class ModelSelection:
+    provider: str
+    model_id: str
+    implementation: ProviderKind
+    thinking: str = "off"
+    capabilities: ModelCapabilities = field(default_factory=ModelCapabilities)
+    thinking_parameters: dict[str, Any] = field(default_factory=dict)
+    reasoning_effort: str | None = None
+    api_mode: Literal["chat_completions", "responses"] | None = None

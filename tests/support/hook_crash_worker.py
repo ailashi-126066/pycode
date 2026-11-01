@@ -10,7 +10,7 @@ from pydantic import TypeAdapter
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import Message
 from pycode.models.domain.models import ProviderConfig
 
 
@@ -25,7 +25,7 @@ async def main():
     request = json.load(sys.stdin)
 
     class CrashConsumer:
-        async def consume(self, event):
+        async def on_event(self, event):
             if event.kind == "notification" and event.data.get("hook_id") == "mark":
                 os._exit(81)
 

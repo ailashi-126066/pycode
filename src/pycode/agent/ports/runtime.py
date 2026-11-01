@@ -2,13 +2,7 @@
 
 from typing import Literal, Protocol, TypeVar
 
-from pycode.kernel import (
-    Message,
-    ModelSelection,
-    ProjectedContext,
-    RunResult,
-    SessionSnapshot,
-)
+from pycode.kernel import Message, ModelSelection, ProjectedContext, RunResult, SessionSnapshot
 
 InputKind = Literal["steer", "follow_up"]
 

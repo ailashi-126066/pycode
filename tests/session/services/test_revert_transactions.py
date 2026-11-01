@@ -7,10 +7,7 @@ from dataclasses import asdict, replace
 
 import pytest
 
-from pycode.kernel.domain.errors import StorageError
-from pycode.kernel.domain.history import EntryDraft, SessionHeader
-from pycode.kernel.domain.history_tree import SessionTree
-from pycode.kernel.domain.messages import Message
+from pycode.kernel import EntryDraft, Message, SessionHeader, SessionTree, StorageError
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from pycode.session.domain.revert_state import pending_revert
 from pycode.session.services.revert import RevertService

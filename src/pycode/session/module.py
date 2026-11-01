@@ -3,7 +3,7 @@
 from copy import copy
 from pathlib import Path
 
-from pycode.kernel import Timing
+from pycode.kernel import SystemTiming
 from pycode.session.adapters.storage.history_backend import ConversationHistoryBackend
 from pycode.session.adapters.storage.layout import StorageLayout
 from pycode.session.adapters.storage.objects import FileStorageObjects
@@ -24,7 +24,7 @@ class SessionsModule:
         scoped.layout = StorageLayout(workspace, user_data)
         return scoped
 
-    def __init__(self, workspace: Path, user_data: Path, timing: Timing):
+    def __init__(self, workspace: Path, user_data: Path, timing: SystemTiming):
         self.workspace = workspace
         self.user_data = user_data
         self.timing = timing

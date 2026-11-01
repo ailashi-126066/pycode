@@ -1,10 +1,12 @@
-# Source: https://github.com/earendil-works/pi/blob/42a3497d03ad17e308a2299fa824727894f2c0ec/packages/agent/src/types.ts
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/agent/src/types.ts
 # Adaptation: explicit tool classification and workspace execution identifiers.
-"""Tool declarations and pure execution barrier selection."""
+"""Tool declarations and the executable tool interface."""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
+
+from pycode.kernel.messages import ToolResult
 
 ExecutionMode = Literal["parallel", "sequential"]
 ToolCategory = Literal["read", "write", "command", "external"]
@@ -62,3 +64,9 @@ class ToolContext:
     progress: Callable[[str], Awaitable[None]] | None = field(
         default=None, compare=False, repr=False, metadata={"serialize": False}
     )
+
+
+class AgentTool(Protocol):
+    @property
+    def spec(self) -> ToolSpec: ...
+    async def execute(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult: ...

@@ -7,11 +7,13 @@ from pycode.context.adapters.summary import (
 from pycode.context.domain.compaction import find_cut_point
 from pycode.context.domain.summary_source import capture_source
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel import ModelSelection
-from pycode.kernel.domain.history import SessionEntry, SessionHeader, SessionSnapshot
-from pycode.kernel.domain.messages import (
+from pycode.kernel import (
     Attachment,
     Message,
+    ModelSelection,
+    SessionEntry,
+    SessionHeader,
+    SessionSnapshot,
     TextBlock,
     ThinkingBlock,
     ToolCall,

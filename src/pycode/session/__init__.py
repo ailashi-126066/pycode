@@ -1,5 +1,6 @@
 """Public native contracts, policies and services for session."""
 
+from pycode.session.adapters.storage.session import SqliteSessionStore
 from pycode.session.domain.execution_recovery import pending_run_entry
 from pycode.session.domain.guards import SessionCatalogWriteGuard, SessionRunOwnership
 from pycode.session.domain.revert import RevertPlan
@@ -32,6 +33,7 @@ __all__ = [
     "SessionRunOwnership",
     "SessionService",
     "SessionStore",
+    "SqliteSessionStore",
     "SessionView",
     "StorageGC",
     "StorageObjects",

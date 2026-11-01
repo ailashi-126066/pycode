@@ -7,7 +7,7 @@ from textual.widgets import Static
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.events import Event
+from pycode.kernel import Event
 from pycode.ui.adapters.tui import content_text
 from tests.session.adapters.test_revert_http import command_reply
 from tests.support.execution import provider

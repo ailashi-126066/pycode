@@ -11,8 +11,7 @@ from evals.coding.assembly import build_evaluation_runner
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.providers import load_providers
 from pycode.app.configuration.settings import load_config
-from pycode.kernel.domain.errors import DomainError
-from pycode.kernel.domain.values import json_dumps
+from pycode.kernel import DomainError, json_dumps
 
 QUALITY_SCRIPTS = """quality evaluations (run from the repository root; each accepts --help):
   python evals/scripts/run_output_quality.py

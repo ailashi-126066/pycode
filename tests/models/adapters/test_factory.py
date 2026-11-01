@@ -6,7 +6,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_deepseek import ChatDeepSeek
 from langchain_openai import ChatOpenAI
 
-from pycode.kernel.domain.errors import ModelError
+from pycode.kernel import ModelError
 from pycode.models.adapters.factory import ModelFactory
 from pycode.models.domain.models import ProviderConfig
 

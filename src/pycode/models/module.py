@@ -6,14 +6,18 @@ from copy import copy
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.language_models import BaseChatModel
 
-from pycode.kernel import EventConsumer, EventSink, EventStream, Purpose, Timing, estimate_text
-from pycode.kernel import HistoryJournal as SessionStore
-from pycode.kernel.adapters.event_journal import MemoryEventJournal
-from pycode.kernel.adapters.timing import SystemTiming
+from pycode.kernel import (
+    EventConsumer,
+    EventStream,
+    MemoryEventJournal,
+    Purpose,
+    SystemTiming,
+    estimate_text,
+)
 from pycode.models.adapters.calibration import calibrate_model_request
 from pycode.models.adapters.directory import SDKModelDirectory
 from pycode.models.adapters.factory import ModelFactory
@@ -34,6 +38,9 @@ from pycode.models.domain.requests import RetryPolicy
 from pycode.models.ports.context import Projector
 from pycode.models.services.model_catalog import ModelCatalog
 from pycode.models.services.model_control import ModelControl
+
+if TYPE_CHECKING:
+    from pycode.session import SqliteSessionStore
 
 
 async def _close_resources(
@@ -103,7 +110,7 @@ class ModelsModule:
         request_database: Path,
         environment: Mapping[str, str] | Callable[[tuple[ProviderConfig, ...]], Mapping[str, str]],
         *,
-        timing: Timing | None = None,
+        timing: SystemTiming | None = None,
     ) -> None:
         self.catalog_path = catalog_path
         self.request_database = request_database
@@ -124,8 +131,8 @@ class ModelsModule:
     def control(
         catalog: ModelCatalog,
         projector: Projector,
-        store: SessionStore | None = None,
-        events: EventSink | None = None,
+        store: "SqliteSessionStore | None" = None,
+        events: EventStream | None = None,
     ) -> ModelControl:
         return ModelControl(catalog, projector, store, events)
 
@@ -142,7 +149,7 @@ class ModelsModule:
         *,
         retry_policy: RetryPolicy | None = None,
         agent_id: str = "lead",
-        events: EventSink | None = None,
+        events: EventStream | None = None,
     ) -> MeteredModelOwner:
         observation = ProviderObservation(provider.implementation)
         factory = ModelFactory(self.credentials((provider,)), observation)

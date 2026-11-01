@@ -6,7 +6,7 @@
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
-from pycode.kernel.domain.model_identity import ModelSelection
+from pycode.kernel.values import ModelSelection
 
 # LLM roles plus Pi's AgentMessage custom roles, which convert_to_llm turns into user text.
 Role = Literal[

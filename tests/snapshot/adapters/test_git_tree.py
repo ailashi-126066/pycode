@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from pycode.kernel.domain.errors import SnapshotError
+from pycode.kernel import SnapshotError
 from pycode.snapshot.adapters.git_tree import GitSnapshotStore
 
 VECTORS = json.loads(

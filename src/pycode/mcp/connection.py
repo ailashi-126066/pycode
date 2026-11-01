@@ -16,15 +16,9 @@ from fastmcp.exceptions import McpError as MCPError
 from langchain.mcp import MCPAdapter
 from langchain.mcp.tools import as_langchain_tool
 
-from pycode.kernel import (
-    ArgumentValidator,
-    DomainError,
-    StorageError,
-    ToolError,
-    data_hash,
-    plain_data,
-)
+from pycode.kernel import DomainError, StorageError, ToolError, data_hash, plain_data
 from pycode.mcp.types import result_from_mcp, tool_name
+from pycode.tools import JsonSchemaValidator
 
 
 async def reject_elicitation(*args, **kwargs):
@@ -185,7 +179,7 @@ class MCPAdapterConnection:
 
 
 class MCPAdapterConnections:
-    def __init__(self, servers, environment, *, validator: ArgumentValidator):
+    def __init__(self, servers, environment, *, validator: JsonSchemaValidator):
         self._validator = validator
         self._configs = {server.name: server for server in servers if server.enabled}
         self._clients = {}

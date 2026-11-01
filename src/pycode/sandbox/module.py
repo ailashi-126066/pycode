@@ -5,7 +5,7 @@ import sys
 from copy import copy
 from pathlib import Path
 
-from pycode.kernel import ExecutableTool, ToolSpec
+from pycode.kernel import AgentTool, ToolSpec
 from pycode.sandbox.adapters.seatbelt import RequiredSandbox, SeatbeltSandbox, UnavailableSandbox
 from pycode.sandbox.adapters.tools.bash import Bash, find_bash
 from pycode.sandbox.adapters.tools.process_runner import run_process
@@ -65,7 +65,7 @@ class SandboxModule:
 
     def bash(
         self, outputs: OutputSink, *, executable: str | None = None, skill_roots=()
-    ) -> ExecutableTool:
+    ) -> AgentTool:
         environment = None
         if self.path_prefix:
             environment = dict(os.environ)

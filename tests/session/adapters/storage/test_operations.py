@@ -2,8 +2,7 @@
 
 import pytest
 
-from pycode.kernel.domain.history import EntryDraft, SessionHeader
-from pycode.kernel.domain.messages import Message, ToolCall, ToolResult
+from pycode.kernel import EntryDraft, Message, SessionHeader, ToolCall, ToolResult
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from pycode.session.services.restart import recover_conversation
 from tests.support.requests import TestTiming

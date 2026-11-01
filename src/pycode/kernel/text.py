@@ -1,7 +1,10 @@
-# Source: https://github.com/earendil-works/pi/blob/42a3497d03ad17e308a2299fa824727894f2c0ec/packages/coding-agent/src/core/tools/truncate.ts
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/tools/truncate.ts
 # Adaptation: UTF-8 bytes, Python dataclasses, whole-line head and partial tail semantics.
-"""Pure line/byte output truncation. Byte, character and token units stay distinct."""
+# 参照 https://github.com/anomalyco/opencode/blob/055d95bb7e278c94baf06235a52cac79dd13ba67/packages/core/src/util/token.ts
+# Adaptation: explicit approximate token units; provider-reported usage is kept separately.
+"""Pure line/byte truncation and conservative token estimates."""
 
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -96,3 +99,8 @@ def truncate(
         partial,
         truncated_by=truncated_by,
     )
+
+
+def estimate_text(text: str) -> int:
+    units = len(text) + sum(1 for character in text if ord(character) > 0xFFFF)
+    return max(0, math.floor(units / 4 + 0.5))

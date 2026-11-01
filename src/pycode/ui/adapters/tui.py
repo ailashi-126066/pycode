@@ -15,7 +15,7 @@ from textual.message import Message as UIMessage
 from textual.widgets import Button, Collapsible, Markdown, Static
 
 from pycode import __version__
-from pycode.kernel import DomainError, Message, RunResult, StorageError, json_dumps
+from pycode.kernel import DomainError, Event, Message, RunResult, StorageError, json_dumps
 from pycode.ui.adapters.agents import AgentsPanel
 from pycode.ui.adapters.approval import ApprovalPanel
 from pycode.ui.adapters.chat_input import ChatInput
@@ -244,7 +244,10 @@ class PyApp(App):
         finally:
             self.ready.set()
 
-    async def consume(self, event):
+    async def on_event(self, event):
+        # Textual delivers its own events through App.on_event as well.
+        if not isinstance(event, Event):
+            return await super().on_event(event)
         # Summary tasks intentionally run in a clean Context. UI updates occur in
         # the App's message pump, never inside model/summary execution callbacks.
         self.post_message(self.RuntimeEvent(event))
