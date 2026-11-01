@@ -51,7 +51,7 @@ async def test_every_default_is_a_no_op(tmp_path):
     assert feature.transform_context(run, messages) is messages
     assert feature.select_tools(run, specs) is specs
     assert await feature.before_tool_call(run, SPEC, CALL) is None
-    assert feature.after_tool_call(run, CALL, ToolResult("c1", "read", "ok")) is None
+    assert await feature.after_tool_call(run, CALL, ToolResult("c1", "read", "ok")) is None
     assert await feature.on_event(await run.events.emit("agent_start", {})) is None
     assert await feature.aclose() is None
     assert Bare.checkpoint_keys == frozenset()

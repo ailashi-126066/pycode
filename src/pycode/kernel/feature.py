@@ -119,7 +119,7 @@ class Feature:
     ) -> BeforeToolCallResult | None:
         return None
 
-    def after_tool_call(
+    async def after_tool_call(
         self, run: RunScope, call: ToolCall, result: ToolResult
     ) -> AfterToolCallResult | None:
         return None
