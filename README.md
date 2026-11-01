@@ -69,7 +69,7 @@ PowerShell 中用 `Copy-Item` 复制示例，用 `$env:DEEPSEEK_API_KEY = '自�
 | 机器可读流 | `run '任务' --providers providers.json --output-format stream-json` |
 | 会话列表/打开 | `session list`、`session open ID-or-name` |
 | 进入计划 | TUI `/plan`，审阅后选择执行方式 |
-| 查看/撤销记忆 | TUI `/memory`、`/memory undo` |
+| 查看/编辑记忆 | TUI `/memory`（edit/delete/clear/extract/mode） |
 | 查看团队/取消成员 | TUI `/agents`、`/agents cancel AGENT_ID` |
 | 压缩上下文 | TUI `/compact` |
 | 文件与对话回退 | TUI `/revert ENTRY_ID both`，先预览后确认 |

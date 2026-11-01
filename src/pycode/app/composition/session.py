@@ -109,7 +109,7 @@ async def open_agent_session(
             memory=memory,
             team_member=team_member,
             prompt_factory=lambda history: modules.context.prompt(
-                history, config.workspace, suffix=prompt_suffix
+                history, config.workspace, suffix=prompt_suffix, sections=(memory.prompt_index,)
             ),
         )
         view = await build_session_view(

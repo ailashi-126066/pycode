@@ -24,6 +24,7 @@ EntryType = Literal[
     "input_queued",
     "input_expired",
     "mcp_catalog",
+    # memory_load/memory_recall_error: read-only, written before 11.1 section 29.
     "memory_load",
     "memory_recall_error",
     "model_change",

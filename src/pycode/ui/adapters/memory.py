@@ -1,4 +1,4 @@
-"""Memory inspection reads the same JSON records as recall and management tools."""
+"""Memory inspection lists the saved memory files the system prompt indexes."""
 
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
@@ -17,13 +17,15 @@ class MemoryPanel(VerticalScroll):
     def compose(self) -> ComposeResult:
         yield Static(
             "Memory mode: " + self.report["mode"] + "  ·  /memory edit ID TEXT · "
-            "/memory delete ID · /memory undo · append --scope user|project for duplicate IDs",
+            "/memory delete ID · /memory clear · /memory extract · "
+            "append --scope user|project for duplicate IDs",
             markup=False,
         )
         if not self.report["records"]:
             yield Static("No saved memories.", markup=False)
         for record in self.report["records"]:
             yield Static(
-                f"[{record['scope']}] {record['memory_id']}\n" + record["content"],
+                f"[{record['scope']}] {record['memory_id']} — {record['description']}\n"
+                + record["content"],
                 markup=False,
             )

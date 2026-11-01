@@ -42,8 +42,8 @@ TeamState 的 agents/tasks/mailboxes 业务变化继续通过 team_transition �
 
 ## 其他存储
 
-模型请求与计费使用 runtime.sqlite。长期记忆的 JSON 文件及 changes.jsonl、存储/worktree 清理审计日志属于独立用途，未改为 Agent 执行 State。评测结果仍可使用 results.jsonl；会话证据导出改为 .session.sqlite.gz，不把数据库按文本行截断。
+模型请求与计费使用 runtime.sqlite。长期记忆的 Markdown 文件（每条一个 `<id>.md`，另有 settings.json）、存储/worktree 清理审计日志属于独立用途，未改为 Agent 执行 State。评测结果仍可使用 results.jsonl；会话证据导出改为 .session.sqlite.gz，不把数据库按文本行截断。
 
 ## 任务范围内的记忆参考
 
-memory_load 保存 task_id、input_id、records 和 loaded_at；同任务复用，切换重新筛选并替换，完成或取消后追加空批次。记忆投影也会根据已保存的任务变更撤下过期批次。压缩保留 memories 与 memory_task_id，长期 JSON 记忆库不随任务结束删除。
+memory_load/memory_recall_error 只出现在旧会话里（只读），不再写入也不进入投影。旧的 memory.json 不迁移。

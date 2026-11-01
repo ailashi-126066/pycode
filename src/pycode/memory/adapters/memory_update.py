@@ -3,6 +3,8 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langmem import create_memory_store_manager
 
+from pycode.memory.domain.memory import MemoryNote
+
 INSTRUCTIONS = (
     "Maintain durable long-term memory for a coding assistant. Save lasting user preferences, "
     "explicit corrections of the assistant's behavior and stable project knowledge. Merge "
@@ -10,8 +12,8 @@ INSTRUCTIONS = (
     "requests, temporary state, guesses and anything the user did not state or confirm. "
     "Never save credentials, tokens, passwords or keys. Keep each memory short and factual."
 )
-# Store Manager searches the store with dilated windows of the dialogue (query_limit // 4).
-QUERY_LIMIT = 20
+# Store Manager searches with dilated windows of the dialogue; a scope holds at most 50.
+QUERY_LIMIT = 50
 
 
 def framework_messages(summary, messages):
@@ -31,6 +33,7 @@ class MemoryConsolidator:
     async def __call__(self, store, namespace, summary, messages):
         manager = create_memory_store_manager(
             self.model,
+            schemas=[MemoryNote],
             instructions=INSTRUCTIONS,
             namespace=tuple(namespace),
             store=store,

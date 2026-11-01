@@ -148,8 +148,6 @@ async def local_memory_command(args, config, output):
             value = {"removed": args.memory_id}
         elif args.memory_command == "edit":
             value = {"memory_id": await memory.edit(args.memory_id, args.content, scope=args.scope)}
-        elif args.memory_command == "undo":
-            value = await memory.undo()
         elif args.memory_command == "clear":
             await memory.clear()
             value = {"cleared": True}
@@ -237,8 +235,6 @@ async def execute_memory(args, session, output):
         value = {
             "memory_id": await session.memory_edit(args.memory_id, args.content, scope=args.scope)
         }
-    elif args.memory_command == "undo":
-        value = await session.memory_undo()
     elif args.memory_command == "clear":
         await session.memory_clear()
         value = {"cleared": True}

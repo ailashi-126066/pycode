@@ -123,7 +123,7 @@ def build_parser():
         if operation == "update":
             author.add_argument("--revision", required=True, help="Current SHA-256 revision")
     memory = commands.add_parser(
-        "memory", aliases=["/memory"], help="Inspect and edit durable JSON memory"
+        "memory", aliases=["/memory"], help="Inspect and edit saved memory files"
     )
     execution_options(memory, suppress=True)
     memory_actions = memory.add_subparsers(dest="memory_command", required=True)
@@ -140,7 +140,6 @@ def build_parser():
     remove = memory_actions.add_parser("remove", aliases=["delete"])
     remove.add_argument("memory_id")
     remove.add_argument("--scope", choices=["user", "project"])
-    memory_actions.add_parser("undo", help="Undo the latest automatic memory update")
     revert = commands.add_parser("revert", help="Preview, apply or recover an explicit revert")
     execution_options(revert, suppress=True)
     revert_commands = revert.add_subparsers(dest="revert_command", required=True)

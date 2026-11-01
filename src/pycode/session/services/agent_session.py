@@ -583,12 +583,6 @@ class AgentSession:
                 raise StorageError("memory_unavailable", "This session has no memory service")
             return await self._memory.edit(memory_id, content, scope=scope)
 
-    async def memory_undo(self):
-        async with self.execution():
-            if self._memory is None:
-                raise StorageError("memory_unavailable", "This session has no memory service")
-            return await self._memory.undo()
-
     async def memory_clear(self):
         async with self.execution():
             if self._memory is None:
@@ -600,8 +594,8 @@ class AgentSession:
             self.require_settled(await self._store.snapshot())
             if self._memory is None or self._memory.updater is None:
                 raise StorageError("memory_unavailable", "No memory updater is configured")
-            change_id = await self._memory.consolidate("manual-memory-" + uuid4().hex, "manual")
-            return {"change_id": change_id}
+            await self._memory.consolidate("manual-memory-" + uuid4().hex)
+            return {"extracted": True}
 
     async def publish_result(self, result, *, collect_background=False):
         if self._view is None or result.run_id is None:

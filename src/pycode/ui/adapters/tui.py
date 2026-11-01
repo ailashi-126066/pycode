@@ -801,8 +801,6 @@ class PyApp(App):
             self.start_operation(self.edit_memory, args[1], " ".join(args[2:]), scope)
         elif len(args) == 2 and args[0] in {"remove", "delete"}:
             self.start_operation(self.remove_memory, args[1], scope)
-        elif args == ["undo"]:
-            self.start_operation(self.undo_memory)
         elif args == ["clear"]:
             self.start_operation(self.active_session.memory_clear)
         elif args == ["extract"]:
@@ -910,11 +908,6 @@ class PyApp(App):
     async def remove_memory(self, memory_id, scope=None):
         await self.active_session.memory_remove(memory_id, scope=scope)
         self.notice("Memory deleted: " + memory_id)
-        await self.show_memory()
-
-    async def undo_memory(self):
-        result = await self.active_session.memory_undo()
-        self.notice("Undid automatic memory update: " + ", ".join(result["memory_ids"]))
         await self.show_memory()
 
     async def show_storage(self):

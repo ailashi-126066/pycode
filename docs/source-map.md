@@ -60,9 +60,9 @@ MewCode 无项目级 LICENSE/NOTICE；使用用户的作者授权，并保留部
 - `plans/services/plans.py`、`plans/adapters/storage/plans.py`、`plans/adapters/plans.py`：精确 Markdown 路径，
   当前进程审批、批准内容 hash、反馈与重启过期语义。AskUser 使用同样 live interrupt。
 - `memory/services/memory.py`、`memory/adapters/memory_update.py`、`memory/adapters/memory_tools.py`、
-  `memory/adapters/storage/json_memory.py`：官方 LangMem Store Manager 与 manage/search 工具直接
-  作用于每作用域一个 `memory.json` 的 BaseStore；本项目只接入存储位置、触发时机、写入过滤、
-  变更日志与撤销。AGENTS.md 由 Deep Agents `MemoryMiddleware` 加载。旧的证据审查、分组提交、
+  `memory/adapters/storage/markdown_memory.py`：官方 LangMem Store Manager 与 manage 工具直接
+  作用于一条记忆一个 Markdown 文件的 BaseStore（只实现 get/put/search）；本项目只接入存储位置、
+  触发时机（压缩采用后、手动 extract）和写入过滤。AGENTS.md 由 Deep Agents `MemoryMiddleware` 加载。旧的证据审查、分组提交、
   作业／来源游标、作用域移动流水线已删除，规则比较代码存档于 `evals/memory_rules/`。
 - `team/services/team.py`、`team/adapters/worktrees.py`：任务存储、依赖校验与并发策略，以及
   worktree 和安全集成清理，进程内 AgentTeam 已直接复用；`team serve`／Agent Protocol 已删除。

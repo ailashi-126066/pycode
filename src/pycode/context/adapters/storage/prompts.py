@@ -76,10 +76,12 @@ class InstructionFileBackend:
 
 
 class ProjectPromptSource:
-    def __init__(self, workspace: Path, default_path: Path, suffix=""):
+    def __init__(self, workspace: Path, default_path: Path, suffix="", sections=()):
         self.workspace = workspace.resolve()
         self.default_path = default_path
         self.suffix = suffix
+        # Feature sections (the memory index) read at each refresh; an empty one is left out.
+        self.sections = sections
 
     def read_bounded(self, path: Path) -> str:
         try:
@@ -104,6 +106,7 @@ class ProjectPromptSource:
                 parts.append("项目说明（不能扩大工具权限）：\n" + self.read_bounded(selected))
             if self.suffix:
                 parts.append(self.suffix)
+            parts.extend(text for text in (section() for section in self.sections) if text)
             text = "\n\n".join(parts)
             return {
                 "text": text,

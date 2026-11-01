@@ -1,26 +1,14 @@
 # Memory
+长期记忆：一条记忆一个 Markdown 文件（frontmatter 的 `description`、`updated`，正文是记忆内容）。
+用户级在 `~/.pycode/memory/<id>.md`，项目级在 `<项目>/.pycode/memory/<id>.md`（仅信任项目）；
+同目录的 `settings.json` 存 mode（auto/off），`memory.lock` 只在写盘时持有。
 
-负责每作用域 JSON 笔记、LangMem 主动工具、一次后台整理、变更日志和撤销。
-`domain/` 拒绝疑似凭据和超限内容；`ports/` 描述存储/整理；`services/` 控制时机；
-`adapters/` 实现 LangMem、JSON 和模型边界。
+- 召回：系统提示放索引（每条一行 `[scope] id — description`，最多 50 条，最近更新的在前），
+  模型用 `read` 读只读挂载 `/memory/user/<id>.md`、`/memory/project/<id>.md`。没有自动召回。
+- 写入：`manage_user_memory` / `manage_project_memory`（LangMem manage tool，schema 为
+  `MemoryNote(description, content)`），不需要审批。过滤：单条 2000 字、每作用域 50 条、疑似密钥拒绝。
+- 后台整理：只在压缩采用时触发，另有手动 `/memory extract`；LangMem Store Manager 写同一套文件，
+  整理时关闭 thinking。底层 `MarkdownMemoryStore` 只实现 LangMem 用到的 get / put / search。
 
-`module.py:MemoryModule` 接收 workspace、user_data、project_id、Timing、trust 和 mode，
-输出 service、updater、tools。模型 owner/facade 从外部显式注入；模块内部决定
-thinking 关闭、RetryPolicy(max_retries=0) 和整理额度，不依赖应用配置类。
-
-```python
-from pathlib import Path
-from pycode.kernel.adapters.timing import SystemTiming
-from pycode.memory.module import MemoryModule
-
-memory = MemoryModule(
-    Path("/project"), Path("/state"), "project-id", SystemTiming(), trusted=False, mode="off"
-)
-service = memory.service(history)  # history 是调用方提供的 HistoryJournal
-```
-
-service 属于会话，负责等待/取消自己的后台任务。updater 的每次调用拥有独立模型并关闭它；
-失败仅记录且不重试。显式 model_factory 是 async callable，facade_factory 不拥有该模型。
-`scoped()` 保留所选实现和时钟，仅重新绑定子工作区/命名空间。不会从 app 反向获取其他服务。
-
-不做自动召回，也不和任务绑定；后台整理只在压缩采用时触发，另有手动 extract。
+`module.py:MemoryModule(workspace, user_data, trusted, mode)` 输出 service、updater、tools、mounts。
+模型 owner/facade 从外部显式注入；模块内部决定 thinking 关闭和 RetryPolicy(max_retries=0)。

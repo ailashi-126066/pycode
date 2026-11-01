@@ -1,7 +1,6 @@
 """Public native contracts, policies and services for memory."""
 
-from pycode.memory.domain.namespaces import automatic_namespaces, scoped_memory_namespaces
 from pycode.memory.ports.memory import MemoryUpdater
 from pycode.memory.services.memory import MemoryService
 
-__all__ = ["MemoryUpdater", "MemoryService", "automatic_namespaces", "scoped_memory_namespaces"]
+__all__ = ["MemoryUpdater", "MemoryService"]

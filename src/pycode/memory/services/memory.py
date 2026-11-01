@@ -1,4 +1,4 @@
-"""Memory lifecycle: background consolidation, change log, undo and user edits."""
+"""Memory lifecycle: the prompt index, consolidation after compaction and user edits."""
 
 import asyncio
 import contextvars
@@ -6,14 +6,8 @@ import logging
 from uuid import uuid4
 
 from pycode.context import retained_context_entries
-from pycode.kernel import (
-    Message,
-    SessionTree,
-    StorageError,
-    ToolError,
-    plain_data,
-)
-from pycode.memory.domain.memory import memory_record
+from pycode.kernel import Message, SessionTree, StorageError, ToolError, plain_data
+from pycode.memory.domain.memory import memory_index
 from pycode.memory.ports.memory import MemoryUpdater
 
 logger = logging.getLogger(__name__)
@@ -34,7 +28,7 @@ def consolidation_source(snapshot):
     start = 0
     for index, entry in enumerate(path):
         if entry.type == "compaction":
-            summary = str(entry.data.get("summary", ""))[:SUMMARY_CHARS]
+            summary = entry.data["summary"][:SUMMARY_CHARS]
             start = index + 1
     messages = []
     budget = DIALOGUE_CHARS
@@ -52,34 +46,18 @@ def consolidation_source(snapshot):
 
 
 class MemoryService:
-    def __init__(
-        self,
-        history,
-        store,
-        scopes,
-        timing,
-        changes,
-        *,
-        updater: MemoryUpdater | None = None,
-        mode=None,
-        auto_namespaces=None,
-    ):
-        self.history, self.store, self.scopes, self.timing = history, store, scopes, timing
-        self.changes = changes
+    def __init__(self, history, store, scopes, *, updater: MemoryUpdater | None = None, mode=None):
+        # scopes: {namespace: "user" | "project"}; the project scope exists only when trusted.
+        self.history, self.store, self.scopes = history, store, scopes
         self.updater = updater
         self.mode = mode
         self.user_namespace = next(ns for ns, scope in scopes.items() if scope == "user")
-        # Automatic consolidation writes the user scope and, only when trusted, the project.
-        self.auto_namespaces = tuple(auto_namespaces or (self.user_namespace,))
-        self.tasks = {}
-        self.lock = asyncio.Lock()
+        self.task: asyncio.Task | None = None
         self.closed = False
 
     async def initialize(self):
         if self.mode is None:
             self.mode = await self.store.get_mode(self.user_namespace)
-        if self.mode not in {"auto", "off"}:
-            raise StorageError("invalid_memory_mode", "Choose auto or off")
 
     async def set_mode(self, mode):
         if mode not in {"auto", "off"}:
@@ -90,204 +68,89 @@ class MemoryService:
         self.mode = mode
 
     async def records(self):
-        found = []
-        for namespace, scope in self.scopes.items():
-            snapshot = await self.store.snapshot(namespace)
-            for key, record in snapshot["records"].items():
-                found.append(memory_record(namespace, key, record, scope))
-        return found
+        return await self.store.arecords(self.scopes)
 
     async def list(self):
         return {"mode": self.mode, "records": plain_data(await self.records())}
 
-    async def settled(self, run_id, reason="session_end"):
-        """Schedule one background consolidation; at most one runs at a time."""
+    def prompt_index(self):
+        """The system prompt section; empty when memory is off or nothing is saved."""
+        if self.mode == "off":
+            return ""
+        return memory_index(self.store.records(self.scopes))
+
+    async def compacted(self):
+        """Consolidate in the background after a compaction; at most one runs at a time."""
         if self.closed or self.mode == "off" or self.updater is None:
             return
-        if any(not task.done() for task in self.tasks.values()):
+        if self.task is not None and not self.task.done():
             return
-        self.tasks = {key: task for key, task in self.tasks.items() if not task.done()}
-        self.tasks[run_id] = asyncio.create_task(
-            self.consolidate(run_id, reason),
+        self.task = asyncio.create_task(
+            self.background("memory-compaction-" + uuid4().hex),
             name="pycode-memory-consolidate",
             context=contextvars.Context(),
         )
 
-    async def compacted(self):
-        await self.settled("memory-compaction-" + uuid4().hex, "compaction")
-
-    async def consolidate(self, run_id, reason="manual"):
-        """Run LangMem Store Manager once per automatic scope; failures are only logged."""
+    async def background(self, run_id):
         try:
-            return await self._consolidate(run_id, reason)
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:  # noqa: BLE001 - even storage/log failures stay background
+            await self.consolidate(run_id)
+        except Exception as error:  # noqa: BLE001 - background work must not affect chat
             logger.warning(
-                "Memory consolidation failed (%s): %s",
-                reason,
-                getattr(error, "code", type(error).__name__),
+                "Memory consolidation failed: %s", getattr(error, "code", type(error).__name__)
             )
-            return None
 
-    async def _consolidate(self, run_id, reason):
+    async def consolidate(self, run_id):
+        """One LangMem Store Manager pass per scope; filtered entries are skipped."""
         if self.updater is None:
             raise StorageError("memory_unavailable", "No memory updater is configured")
-        async with self.lock:
-            snapshot = await self.history.snapshot()
-            summary, messages = consolidation_source(snapshot)
-            if not summary and not messages:
-                return None
-            # Filtered entries (secrets, too long, scope full) are skipped, not fatal.
-            view = self.store.recording(skip_rejected=True)
-            error_code = None
-            try:
-                for namespace in self.auto_namespaces:
-                    await self.updater.consolidate(
-                        view, namespace, summary, messages, snapshot.header.session_id, run_id
-                    )
-            except asyncio.CancelledError:
-                raise
-            except Exception as error:  # noqa: BLE001 - background work must not affect chat
-                error_code = getattr(error, "code", type(error).__name__)
-                logger.warning("Memory consolidation failed (%s): %s", reason, error_code)
-            finally:
-                if view.rejected:
-                    logger.info(
-                        "Memory consolidation skipped %d filtered entries", len(view.rejected)
-                    )
-                # Partial writes from a failed run are still logged so they can be undone.
-                change_id = await self.log(
-                    view.changes,
-                    "consolidate",
-                    session_id=snapshot.header.session_id,
-                    run_id=run_id,
-                    reason=reason,
-                    error_code=error_code,
-                    rejected=view.rejected or None,
-                )
-            return change_id
-
-    async def log(self, changes, origin, **details):
-        if not changes:
-            return None
-        change_id = uuid4().hex
-        # A manager may update/delete the same entry repeatedly. Undo needs its state
-        # before this pass and its final state, rather than intermediate writes.
-        merged = {}
-        for change in changes:
-            namespace = tuple(change["namespace"])
-            identity = namespace, change["key"]
-            if identity in merged:
-                merged[identity]["after"] = change["after"]
-            else:
-                merged[identity] = {**change, "scope": self.scopes.get(namespace)}
-        entries = [change for change in merged.values() if change["before"] != change["after"]]
-        if not entries:
-            return None
-        record = {"id": change_id, "at": self.timing.now(), "origin": origin, "changes": entries}
-        record.update({key: value for key, value in details.items() if value is not None})
-        await self.changes.append(record)
-        return change_id
-
-    async def undo(self):
-        """Restore the entries changed by the latest automatic consolidation in these scopes."""
-        async with self.lock:
-            history = await self.changes.read()
-            undone = {item.get("undoes") for item in history if item.get("origin") == "undo"}
-            target = next(
-                (
-                    item
-                    for item in reversed(history)
-                    if item.get("origin") == "consolidate"
-                    and item.get("id") not in undone
-                    and item.get("changes")
-                    and all(tuple(c["namespace"]) in self.scopes for c in item["changes"])
-                ),
-                None,
+        snapshot = await self.history.snapshot()
+        summary, messages = consolidation_source(snapshot)
+        if not summary and not messages:
+            return
+        view = self.store.lenient()
+        for namespace in self.scopes:
+            await self.updater.consolidate(
+                view, namespace, summary, messages, snapshot.header.session_id, run_id
             )
-            if target is None:
-                raise StorageError("memory_undo_empty", "No automatic memory update to undo")
-            view = self.store.recording()
-            try:
-                await view.restore(target["changes"])
-            finally:
-                complete = len(view.changes) == len(target["changes"])
-                await self.log(
-                    view.changes,
-                    "undo",
-                    undoes=target["id"] if complete else None,
-                    attempted_undo=target["id"] if not complete else None,
-                )
-            return {
-                "undone": target["id"],
-                "memory_ids": [change["key"] for change in target["changes"]],
-            }
+        if view.rejected:
+            logger.info("Memory consolidation skipped %d filtered entries", len(view.rejected))
 
     async def collect(self, *, cancel=False):
-        tasks = tuple(self.tasks.values())
+        task, self.task = self.task, None
+        if task is None:
+            return
         if cancel:
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        self.tasks.clear()
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
     async def aclose(self):
         self.closed = True
         await self.collect(cancel=True)
 
     async def target(self, memory_id, scope=None):
-        found = []
-        for namespace, bound_scope in self.scopes.items():
-            if scope is not None and scope != bound_scope:
-                continue
-            snapshot = await self.store.snapshot(namespace)
-            if memory_id in snapshot["records"]:
-                found.append((namespace, memory_id))
+        found = [
+            record
+            for record in await self.records()
+            if record.memory_id == memory_id and scope in {None, record.scope}
+        ]
         if len(found) != 1:
             raise ToolError("memory_target_ambiguous", "Choose one existing scoped memory")
         return found[0]
 
-    async def write(self, origin, namespace, changes):
-        async with self.lock:
-            view = self.store.recording()
-            try:
-                await view.apply(namespace, changes)
-            finally:
-                await self.log(view.changes, origin)
+    def namespace(self, scope):
+        return next(ns for ns, bound in self.scopes.items() if bound == scope)
 
     async def edit(self, memory_id, content, *, scope=None):
-        namespace, key = await self.target(memory_id, scope)
-        await self.write(
-            "edit", namespace, {key: {"kind": "Memory", "content": {"content": content}}}
-        )
-        return key
+        record = await self.target(memory_id, scope)
+        value = {"content": {"description": record.description, "content": content}}
+        await self.store.awrite(self.namespace(record.scope), memory_id, value)
+        return memory_id
 
     async def remove(self, memory_id, *, scope=None):
-        namespace, key = await self.target(memory_id, scope)
-        await self.write("delete", namespace, {key: None})
-        return key
+        record = await self.target(memory_id, scope)
+        await self.store.awrite(self.namespace(record.scope), memory_id, None)
+        return memory_id
 
     async def clear(self):
-        for namespace in self.scopes:
-            snapshot = await self.store.snapshot(namespace)
-            if snapshot["records"]:
-                await self.write("clear", namespace, {key: None for key in snapshot["records"]})
-
-    async def tool_operation(self, context, namespace, operate):
-        """Run a LangMem tool against a recording view and log what it changed."""
-        if self.closed or self.mode == "off" or context.agent_id != "lead":
-            raise ToolError("memory_disabled", "Memory tools are disabled for this execution")
-        if namespace not in self.scopes:
-            raise ToolError("memory_scope_denied", "Memory tool namespace is outside this session")
-        async with self.lock:
-            view = self.store.recording()
-            try:
-                result = await operate(view)
-            finally:
-                # Cancellation may arrive after an owned disk write finishes.
-                await self.log(
-                    view.changes, "tool", session_id=context.session_id, run_id=context.run_id
-                )
-            return result, view.changes
+        for record in await self.records():
+            await self.store.awrite(self.namespace(record.scope), record.memory_id, None)

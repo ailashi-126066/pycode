@@ -46,13 +46,14 @@ class ContextModule:
     def eviction(self, history, projector, budget, events):
         return ToolEvictionService(history, projector, budget, events)
 
-    def prompt(self, history, workspace, *, suffix=""):
+    def prompt(self, history, workspace, *, suffix="", sections=()):
         return PromptService(
             history,
             ProjectPromptSource(
                 workspace,
                 Path(__file__).parent / "resources/system-prompt.txt",
                 suffix=suffix,
+                sections=sections,
             ),
         )
 

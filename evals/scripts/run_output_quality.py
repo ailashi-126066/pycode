@@ -39,10 +39,10 @@ async def generate(case, config, provider, run_id, *, reuse=False, retry_memory=
             if not reuse:
                 await history.append_message(Message("source-user", "user", case["input"]))
                 await memory.initialize()
-                await memory.consolidate(run_id, "manual")
+                await memory.consolidate(run_id)
             elif retry_memory:
                 await memory.initialize()
-                await memory.consolidate(run_id, "manual")
+                await memory.consolidate(run_id)
             output = await memory.list()
             return {"output": output, "pending_jobs": [], "session_id": run_id}
         finally:

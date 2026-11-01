@@ -75,7 +75,6 @@ class MeteredChatModel(BaseChatModel):
     logical_prefix: str
     input_limit: int
     max_calls: int = 32
-    supports_forced_tool_choice: bool = True
     sequence: RequestSequence = Field(default_factory=RequestSequence, exclude=True)
     schemas: list = Field(default_factory=list, exclude=True)
     response_schema: dict | None = Field(default=None, exclude=True)
@@ -88,13 +87,6 @@ class MeteredChatModel(BaseChatModel):
         return "pycode-metered-component"
 
     def bind_tools(self, tools, **options):
-        if not self.supports_forced_tool_choice and options.get("tool_choice") not in (
-            None,
-            "auto",
-            "none",
-            False,
-        ):
-            options["tool_choice"] = "auto"
         schemas = [convert_to_openai_tool(tool) for tool in tools]
         component = self.model_copy(
             update={
@@ -108,17 +100,15 @@ class MeteredChatModel(BaseChatModel):
 
     def with_structured_output(self, schema=None, *, include_raw=False, **options):
         if "method" not in options:
-            if self.supports_forced_tool_choice:
-                if schema is None:
-                    raise ValueError("Structured output requires a schema")
-                native = super().with_structured_output(schema, include_raw=include_raw, **options)
-                return transform_parsed_output(
-                    validate_typed_output(native, schema, include_raw),
-                    schema,
-                    include_raw,
-                    self.parsed_response_transform,
-                )
-            options["method"] = "json_mode"
+            if schema is None:
+                raise ValueError("Structured output requires a schema")
+            native = super().with_structured_output(schema, include_raw=include_raw, **options)
+            return transform_parsed_output(
+                validate_typed_output(native, schema, include_raw),
+                schema,
+                include_raw,
+                self.parsed_response_transform,
+            )
         native = self.model.with_structured_output(schema, include_raw=include_raw, **options)
         if not isinstance(native, RunnableSequence):
             raise ModelError(
@@ -139,8 +129,6 @@ class MeteredChatModel(BaseChatModel):
                 "component_protocol_unsupported", "SDK structured binding is unsupported"
             )
         tools = [convert_to_openai_tool(tool) for tool in bound.kwargs.get("tools", [])]
-        if tools and not self.supports_forced_tool_choice:
-            bound = bound.bind(tool_choice="auto")
         component = self.model_copy(
             update={
                 "model": bound,

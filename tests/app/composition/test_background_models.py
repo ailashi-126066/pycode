@@ -34,7 +34,7 @@ def test_memory_updater_forces_thinking_off_for_forced_tool_choice():
     assert updater.provider.max_output_tokens == 4096
     owner = SimpleNamespace(model=object(), requests=object())
     model = updater.facade(owner, "memory_manager")
-    assert model.supports_forced_tool_choice and model.logical_prefix == "memory_manager"
+    assert model.logical_prefix == "memory_manager"
 
 
 async def test_memory_model_factory_disables_request_retries(tmp_path, monkeypatch):

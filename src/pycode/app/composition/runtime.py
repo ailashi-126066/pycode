@@ -63,6 +63,9 @@ async def build_runtime(
                 session.history_store
             )
         # Feature mounts are read-only for the builtin tools unless listed in path_utils.WRITABLE.
+        if session.memory is not None:
+            for prefix, root in modules.memory.mounts().items():
+                routes[prefix] = modules.tools.read_only_mount(root)
         if skills_run:
             routes.update(skills_run.routes)
         # One backend serves the builtin file tools and the framework's SkillsMiddleware.

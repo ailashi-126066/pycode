@@ -1,18 +1,21 @@
-"""MemoryService: one-shot consolidation, change log, undo and explicit edits."""
+"""MemoryService: the prompt index, consolidation after compaction, tools and explicit edits."""
 
 import asyncio
+import logging
 
 import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.adapters.path_io import atomic_write
-from pycode.kernel.domain.errors import ModelError, StorageError, ToolError
-from pycode.kernel.domain.history import EntryDraft
-from pycode.kernel.domain.messages import Message
-from pycode.kernel.domain.tools import ToolContext
-from pycode.memory.adapters.memory_tools import ScopedMemoryTool, memory_tools
-from pycode.memory.services.memory import MemoryService, consolidation_source
+from pycode.kernel import EntryDraft, Message, ModelError, ToolContext, ToolError
+from pycode.memory.adapters.memory_tools import memory_tools
+from pycode.memory.domain.memory import NAMESPACES, format_note
+from pycode.memory.services.memory import consolidation_source
+from tests.skills.adapters.test_skills_http import skill_reply
+from tests.support.execution import provider
+from tests.support.http_provider import chat_completion, protocol_server
+
+USER, PROJECT = NAMESPACES["user"], NAMESPACES["project"]
 
 
 class FakeUpdater:
@@ -29,8 +32,8 @@ class FakeUpdater:
             raise self.fail
 
 
-def text(content):
-    return {"kind": "Memory", "content": {"content": content}}
+def note(description, content):
+    return {"kind": "MemoryNote", "content": {"description": description, "content": content}}
 
 
 async def service_at(tmp_path, updater=None, *, trusted=False):
@@ -45,68 +48,42 @@ async def service_at(tmp_path, updater=None, *, trusted=False):
     return config, history, service
 
 
-async def test_consolidation_logs_changes_and_undo_restores_previous_state(tmp_path):
-    updater = FakeUpdater([("auto1", text("Prefers pytest."))])
-    config, history, service = await service_at(tmp_path, updater)
-    try:
-        assert isinstance(service, MemoryService) and service.mode == "auto"
-        user_ns = service.user_namespace
-        await service.store.aput(user_ns, "kept", text("Explain argument flow."))
-        await service.settled("run-1")
-        await service.collect()
-        assert updater.calls[0][2] == ("Always use pytest, please.", "Understood.")
-        records = {r["memory_id"]: r for r in (await service.list())["records"]}
-        assert records["auto1"]["content"] == "Prefers pytest."
-        log = await service.changes.read()
-        assert log[-1]["origin"] == "consolidate" and log[-1]["reason"] == "session_end"
-        change = log[-1]["changes"][0]
-        assert change["key"] == "auto1" and change["scope"] == "user"
-        assert change["before"] is None and change["after"]["value"] == text("Prefers pytest.")
-        assert (config.user_data / "memory" / "changes.jsonl").is_file()
-        result = await service.undo()
-        assert result == {"undone": log[-1]["id"], "memory_ids": ["auto1"]}
-        remaining = {r["memory_id"] for r in (await service.list())["records"]}
-        assert remaining == {"kept"}
-        assert (await service.changes.read())[-1]["origin"] == "undo"
-        with pytest.raises(StorageError) as error:
-            await service.undo()
-        assert error.value.code == "memory_undo_empty"
-    finally:
-        await service.aclose()
-        await history.aclose()
-
-
-async def test_undo_refuses_when_entry_changed_after_consolidation(tmp_path):
-    updater = FakeUpdater([("auto1", text("Prefers pytest."))])
-    _, history, service = await service_at(tmp_path, updater)
-    try:
-        await service.consolidate("run-1")
-        await service.edit("auto1", "Prefers pytest with -x.")
-        with pytest.raises(StorageError) as error:
-            await service.undo()
-        assert error.value.code == "memory_undo_conflict"
-        assert (await service.list())["records"][0]["content"] == "Prefers pytest with -x."
-    finally:
-        await service.aclose()
-        await history.aclose()
-
-
-async def test_failures_and_filtered_entries_never_reach_the_conversation(tmp_path):
+async def test_consolidation_after_compaction_writes_one_file_per_memory(tmp_path, caplog):
     updater = FakeUpdater(
-        [("auto1", text("Prefers pytest.")), ("leak", text("api_key: abcdef123456"))],
-        fail=ModelError("provider_unavailable", "down"),
+        [
+            ("prefers-pytest", note("Testing preference", "Prefers pytest.")),
+            ("leak", note("Credentials", "api_key: abcdef123456")),
+        ]
     )
+    config, history, service = await service_at(tmp_path, updater)
+    caplog.set_level(logging.INFO)
+    try:
+        await service.compacted()
+        await service.collect()
+        assert updater.calls == [(USER, "", ("Always use pytest, please.", "Understood."))]
+        # The secret is filtered out; consolidation itself still succeeds.
+        assert sorted(path.name for path in (config.user_data / "memory").glob("*.md")) == [
+            "prefers-pytest.md"
+        ]
+        text = (config.user_data / "memory" / "prefers-pytest.md").read_text()
+        assert text.startswith("---\ndescription: Testing preference\nupdated: ")
+        assert text.endswith("---\nPrefers pytest.\n")
+        assert "skipped 1 filtered" in caplog.text
+        assert not (config.user_data / "memory" / "memory.json").exists()
+    finally:
+        await service.aclose()
+        await history.aclose()
+
+
+async def test_background_failure_is_logged_and_manual_extract_raises(tmp_path, caplog):
+    updater = FakeUpdater(fail=ModelError("provider_unavailable", "down"))
     _, history, service = await service_at(tmp_path, updater)
     try:
-        change_id = await service.consolidate("run-1", "manual")
-        assert change_id is not None
-        log = (await service.changes.read())[-1]
-        assert log["error_code"] == "provider_unavailable"
-        assert log["rejected"][0]["reason"] == "memory_secret_rejected"
-        assert {r["memory_id"] for r in (await service.list())["records"]} == {"auto1"}
-        await service.settled("run-2")
+        await service.compacted()
         await service.collect()
-        assert len(updater.calls) == 2
+        assert "provider_unavailable" in caplog.text
+        with pytest.raises(ModelError):
+            await service.consolidate("manual")
     finally:
         await service.aclose()
         await history.aclose()
@@ -123,44 +100,61 @@ async def test_only_one_background_consolidation_runs_at_a_time(tmp_path):
     updater = SlowUpdater()
     _, history, service = await service_at(tmp_path, updater)
     try:
-        await service.settled("run-1")
-        await service.settled("run-2")
-        assert len(service.tasks) == 1
+        await service.compacted()
+        first = service.task
+        await service.compacted()
+        assert service.task is first
         release.set()
         await service.collect()
         assert len(updater.calls) == 1
         await service.set_mode("off")
-        await service.settled("run-3")
-        assert not service.tasks
+        await service.compacted()
+        assert service.task is None
     finally:
         await service.aclose()
         await history.aclose()
 
 
-async def test_automatic_scopes_include_project_only_when_trusted(tmp_path):
+async def test_project_memory_exists_only_in_a_trusted_project(tmp_path):
     _, history, service = await service_at(tmp_path / "a", FakeUpdater())
     try:
-        assert service.auto_namespaces == (service.user_namespace,)
-        assert set(service.scopes.values()) == {"user", "project"}
+        assert set(service.scopes.values()) == {"user"}
     finally:
         await service.aclose()
         await history.aclose()
     _, history, service = await service_at(tmp_path / "b", FakeUpdater(), trusted=True)
     try:
-        assert len(service.auto_namespaces) == 2
         await service.consolidate("run")
-        assert {call[0] for call in service.updater.calls} == set(service.scopes)
+        assert [call[0] for call in service.updater.calls] == [USER, PROJECT]
+    finally:
+        await service.aclose()
+        await history.aclose()
+
+
+async def test_index_lists_newest_fifty_and_is_empty_without_memories(tmp_path):
+    config, history, service = await service_at(tmp_path)
+    try:
+        assert service.prompt_index() == ""
+        root = config.user_data / "memory"
+        root.mkdir(parents=True)
+        for index in range(52):
+            updated = f"2026-01-01T00:00:{index:02d}+00:00"
+            (root / f"m{index}.md").write_text(format_note(f"note {index}", updated, "body"))
+        lines = service.prompt_index().splitlines()
+        assert len(lines) == 51 and "/memory/<scope>/<id>.md" in lines[0]
+        assert lines[1] == "[user] m51 — note 51" and lines[-1] == "[user] m2 — note 2"
+        await service.set_mode("off")
+        assert service.prompt_index() == ""
     finally:
         await service.aclose()
         await history.aclose()
 
 
 async def test_explicit_edit_remove_clear_and_scope_selection(tmp_path):
-    _, history, service = await service_at(tmp_path)
+    _, history, service = await service_at(tmp_path, trusted=True)
     try:
-        project_ns = next(ns for ns, scope in service.scopes.items() if scope == "project")
-        await service.store.aput(service.user_namespace, "same", text("user copy"))
-        await service.store.aput(project_ns, "same", text("project copy"))
+        await service.store.aput(USER, "same", note("User copy", "user copy"))
+        await service.store.aput(PROJECT, "same", note("Project copy", "project copy"))
         with pytest.raises(ToolError) as error:
             await service.edit("same", "changed")
         assert error.value.code == "memory_target_ambiguous"
@@ -170,52 +164,83 @@ async def test_explicit_edit_remove_clear_and_scope_selection(tmp_path):
         assert error.value.code == "memory_secret_rejected"
         await service.remove("same", scope="user")
         records = (await service.list())["records"]
-        assert [(r["scope"], r["content"]) for r in records] == [("project", "project changed")]
+        assert [(r["scope"], r["description"], r["content"]) for r in records] == [
+            ("project", "Project copy", "project changed")
+        ]
         await service.clear()
         assert not (await service.list())["records"]
-        origins = [item["origin"] for item in await service.changes.read()]
-        assert origins == ["edit", "delete", "clear"]
     finally:
         await service.aclose()
         await history.aclose()
 
 
-async def test_langmem_tools_write_through_the_filter_and_log(tmp_path):
-    _, history, service = await service_at(tmp_path)
+async def test_manage_tool_creates_updates_and_deletes_files_through_the_filter(tmp_path):
+    config, history, service = await service_at(tmp_path)
     try:
-        tools = {tool.spec.name: tool for tool in memory_tools(service)}
-        assert set(tools) == {
-            "search_user_memory",
-            "manage_user_memory",
-            "search_project_memory",
-            "manage_project_memory",
-        }
-        assert {t.spec.name for t in memory_tools(service, read_only=True)} == {
-            "search_user_memory",
-            "search_project_memory",
-        }
-        context = ToolContext("s", "r1", "op1", str(tmp_path), "c1", "manage_user_memory")
-        created = await tools["manage_user_memory"].execute(
-            context, {"content": "Prefers pytest fixtures.", "action": "create"}
+        assert memory_tools(service, read_only=True) == ()
+        (tool,) = memory_tools(service)
+        assert tool.spec.name == "manage_user_memory"
+        context = ToolContext("s", "r1", "op1", str(tmp_path), "c1", tool.spec.name)
+        created = await tool.execute(
+            context,
+            {
+                "action": "create",
+                "content": {"description": "Fixtures", "content": "Use fixtures."},
+            },
         )
-        (memory_id,) = created.details["memory_ids"]
-        found = await tools["search_user_memory"].execute(context, {"query": "pytest"})
-        assert [r["memory_id"] for r in found.details["memory_records"]] == [memory_id]
+        (path,) = (config.user_data / "memory").glob("*.md")
+        assert path.stem in created.text
+        await tool.execute(
+            context,
+            {
+                "action": "update",
+                "id": path.stem,
+                "content": {"description": "Fixtures", "content": "Use pytest fixtures."},
+            },
+        )
+        assert path.read_text().endswith("---\nUse pytest fixtures.\n")
         with pytest.raises(ToolError) as error:
-            await tools["manage_user_memory"].execute(
-                context, {"content": "password = hunter2", "action": "create"}
+            await tool.execute(
+                context,
+                {"action": "create", "content": {"description": "x", "content": "password = x"}},
             )
         assert error.value.code == "memory_secret_rejected"
-        assert (await service.changes.read())[-1]["origin"] == "tool"
+        await tool.execute(context, {"action": "delete", "id": path.stem})
+        assert not path.exists()
         worker = ToolContext("s", "r1", "op2", str(tmp_path), "c2", "x", agent_id="worker")
         with pytest.raises(ToolError) as error:
-            await ScopedMemoryTool(service, service.user_namespace, manage=False).execute(
-                worker, {"query": "pytest"}
-            )
+            await tool.execute(worker, {"action": "delete", "id": path.stem})
         assert error.value.code == "memory_disabled"
     finally:
         await service.aclose()
         await history.aclose()
+
+
+async def test_model_reads_an_indexed_memory_through_the_read_only_mount(tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
+    config = AppConfig(tmp_path, tmp_path / "data", allow_delegation=False)
+    root = config.user_data / "memory"
+    root.mkdir(parents=True)
+    (root / "prefers-pytest.md").write_text(
+        format_note("Testing preference", "2026-01-01T00:00:00+00:00", "Run pytest -x.")
+    )
+    replies = [
+        skill_reply("read", {"path": "/memory/user/prefers-pytest.md"}, "read-1"),
+        chat_completion(),
+    ]
+    with protocol_server(replies) as (url, requests):
+        session = await compose_application(config, (provider(url),)).open_session(
+            "s1", create=True, refresh_models=False
+        )
+        try:
+            result = await session.run(Message("u1", "user", "How do I run tests?"))
+            assert result.outcome == "completed" and len(requests) == 2
+            assert "[user] prefers-pytest — Testing preference" in str(
+                [m for m in requests[0]["body"]["messages"] if m["role"] == "system"]
+            )
+            assert "Run pytest -x." in str(requests[1]["body"]["messages"])
+        finally:
+            await session.aclose()
 
 
 async def test_consolidation_source_uses_latest_summary_and_bounded_recent_dialogue(tmp_path):
@@ -237,61 +262,6 @@ async def test_consolidation_source_uses_latest_summary_and_bounded_recent_dialo
         summary, messages = consolidation_source(await history.snapshot())
         assert summary == "Earlier: user prefers pytest."
         assert len(messages) == 40 and messages[-1].text == "message 59"
-    finally:
-        await service.aclose()
-        await history.aclose()
-
-
-async def test_undo_coalesces_repeated_updates_to_one_entry(tmp_path):
-    updater = FakeUpdater([("same", text("middle")), ("same", text("final"))])
-    _, history, service = await service_at(tmp_path, updater)
-    try:
-        await service.store.aput(service.user_namespace, "same", text("original"))
-        await service.consolidate("run")
-        change = (await service.changes.read())[-1]["changes"]
-        assert len(change) == 1
-        assert change[0]["before"]["value"] == text("original")
-        assert change[0]["after"]["value"] == text("final")
-        await service.undo()
-        assert (await service.list())["records"][0]["content"] == "original"
-    finally:
-        await service.aclose()
-        await history.aclose()
-
-
-async def test_compaction_can_consolidate_a_summary_without_new_messages(tmp_path):
-    updater = FakeUpdater()
-    _, history, service = await service_at(tmp_path, updater)
-    try:
-        await history.append_entry(EntryDraft("custom", id="retained-marker"))
-        await history.append_entry(
-            EntryDraft(
-                "compaction",
-                data={
-                    "summary": "User prefers pytest.",
-                    "first_kept_entry_id": "retained-marker",
-                    "checkpoint": {},
-                },
-            )
-        )
-        await service.compacted()
-        await service.collect()
-        assert updater.calls[0][1:] == ("User prefers pytest.", ())
-    finally:
-        await service.aclose()
-        await history.aclose()
-
-
-async def test_consolidation_storage_failure_is_logged_without_retry(tmp_path, caplog):
-    _, history, service = await service_at(tmp_path, FakeUpdater())
-    try:
-        (service.store.roots[service.user_namespace]).mkdir(parents=True)
-        (service.store.roots[service.user_namespace] / "memory.json").write_text("{bad")
-        service.updater.writes = [("new", text("test preference"))]
-        await service.settled("run")
-        await service.collect()
-        assert len(service.updater.calls) == 1
-        assert "memory_corrupt" in caplog.text
     finally:
         await service.aclose()
         await history.aclose()
@@ -320,97 +290,3 @@ async def test_consolidation_source_keeps_messages_before_the_compaction_node(tm
     finally:
         await service.aclose()
         await history.aclose()
-
-
-async def test_langmem_updates_current_canonical_uuid_ids(tmp_path):
-    _, history, service = await service_at(tmp_path)
-    try:
-        key = "01234567-89ab-cdef-0123-456789abcdef"
-        await service.store.aput(service.user_namespace, key, text("original preference"))
-        tool = ScopedMemoryTool(service, service.user_namespace, manage=True)
-        context = ToolContext("s", "r1", "op1", str(tmp_path), "c1", tool.spec.name)
-        result = await tool.execute(
-            context, {"action": "update", "id": key, "content": "updated preference"}
-        )
-        assert result.details["memory_ids"] == [key]
-        assert set((await service.store.snapshot(service.user_namespace))["records"]) == {key}
-        assert (await service.store.aget(service.user_namespace, key)).value == text(
-            "updated preference"
-        )
-        result = await tool.execute(context, {"action": "delete", "id": key})
-        assert result.details["memory_deleted"] == [key]
-        assert not (await service.store.snapshot(service.user_namespace))["records"]
-    finally:
-        await service.aclose()
-        await history.aclose()
-
-
-@pytest.mark.parametrize("operation", ["edit", "undo"])
-async def test_cancellation_after_disk_write_keeps_the_change_log(tmp_path, monkeypatch, operation):
-    updater = FakeUpdater([("auto", text("automatic preference"))])
-    _, history, service = await service_at(tmp_path, updater)
-    try:
-        await service.consolidate("run")
-        original_recording = service.store.recording
-
-        def recording(**kwargs):
-            view = original_recording(**kwargs)
-            method = "apply" if operation == "edit" else "restore"
-            original = getattr(view, method)
-
-            async def write_then_cancel(*args, **options):
-                await original(*args, **options)
-                raise asyncio.CancelledError
-
-            setattr(view, method, write_then_cancel)
-            return view
-
-        monkeypatch.setattr(service.store, "recording", recording)
-        with pytest.raises(asyncio.CancelledError):
-            if operation == "edit":
-                await service.edit("auto", "explicit preference")
-            else:
-                await service.undo()
-        log = await service.changes.read()
-        assert log[-1]["origin"] == operation
-        if operation == "undo":
-            assert log[-1]["undoes"] == log[0]["id"]
-            assert not (await service.list())["records"]
-        else:
-            assert (await service.list())["records"][0]["content"] == "explicit preference"
-    finally:
-        await service.aclose()
-        await history.aclose()
-
-
-async def test_partial_undo_disk_failure_logs_published_scopes(tmp_path, monkeypatch):
-    updater = FakeUpdater([("auto", text("automatic preference"))])
-    _, history, service = await service_at(tmp_path, updater, trusted=True)
-    try:
-        await service.consolidate("run")
-        target = (await service.changes.read())[-1]["id"]
-        user_root = service.store.roots[service.user_namespace]
-
-        def fail_user_write(path, content):
-            if path == user_root / "memory.json":
-                raise OSError("disk failure")
-            atomic_write(path, content)
-
-        monkeypatch.setattr(
-            "pycode.memory.adapters.storage.json_memory.atomic_write", fail_user_write
-        )
-        with pytest.raises(StorageError) as error:
-            await service.undo()
-        assert error.value.code == "memory_io_error"
-        log = (await service.changes.read())[-1]
-        assert log["origin"] == "undo" and log["attempted_undo"] == target
-        assert "undoes" not in log
-        assert [change["scope"] for change in log["changes"]] == ["project"]
-        assert [record["scope"] for record in (await service.list())["records"]] == ["user"]
-    finally:
-        await service.aclose()
-        await history.aclose()
-
-
-# This suite tests execution with tool definitions already disclosed.
-pytestmark = pytest.mark.usefixtures("disclosed_tools")

@@ -109,17 +109,17 @@ backend. They are read once per run into private graph state and appended to eve
 system message, so they never enter JSONL history and compaction/summaries cannot drop them;
 the harness system footprint recorded for capacity includes them.
 
-Long-term memory uses LangMem directly; pycode owns only storage location, trigger timing,
-viewing/editing and undo. `memory/services/memory.py` (MemoryService) recalls entries before a task
-(all of them up to 20, otherwise a metered selector picks up to 10), schedules one background
-`create_memory_store_manager` pass when a run completes or after manual/automatic compaction, logs every
-change and undoes the latest automatic pass. The model also gets LangMem
-`manage_*_memory`/`search_*_memory` tools through ordinary settlement and MemoryToolGate.
+Long-term memory is one Markdown file per memory (frontmatter `description`/`updated`), in
+`~/.pycode/memory/` and, for a trusted project, `<project>/.pycode/memory/`. The system prompt
+carries an index (one line per memory, at most 50, newest first); the model reads
+`/memory/<scope>/<id>.md` with `read` through a read-only mount. There is no automatic recall.
+The model writes with LangMem `manage_*_memory` tools through ordinary settlement and
+MemoryToolGate. `memory/services/memory.py` (MemoryService) runs one background
+`create_memory_store_manager` pass after a compaction is adopted, plus manual `/memory extract`.
 Background memory models always run with thinking disabled (forced tool choice conflicts with
 DeepSeek thinking); failures are logged, never retried and never reach the conversation.
-Automatic passes write the user scope and, for a trusted project, the project scope. The write
-filter (`memory/domain/memory.py`: length, per-scope count, credential patterns) applies to every write.
-JsonMemoryStore keeps one atomic `memory.json` per scope with prefix and simple text search.
+The write filter (`memory/domain/memory.py`: 2000 characters, 50 per scope, credential patterns)
+applies to every write. MarkdownMemoryStore implements only the get/put/search LangMem uses.
 
 GC marks all durable references and
 live/uncertain writers before 30-day quarantine/purge; memory directories are explicitly

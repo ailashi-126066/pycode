@@ -77,7 +77,6 @@ class ApplicationModules:
             memory=self.memory.scoped(
                 config.workspace,
                 config.user_data,
-                sessions.layout.project.name,
                 trusted=config.project_trusted,
                 mode=config.memory_mode,
             ),
@@ -105,8 +104,6 @@ def default_modules(config: AppConfig) -> ApplicationModules:
     memory = MemoryModule(
         config.workspace,
         config.user_data,
-        sessions.layout.project.name,
-        timing,
         trusted=config.project_trusted,
         mode=config.memory_mode,
     )

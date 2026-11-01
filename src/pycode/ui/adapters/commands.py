@@ -35,7 +35,7 @@ COMMANDS = (
         "/memory",
         "View and manage memory",
         "command_memory",
-        "[mode|edit|delete|undo|clear|extract]",
+        "[mode|edit|delete|clear|extract]",
     ),
     Command(
         "/storage",

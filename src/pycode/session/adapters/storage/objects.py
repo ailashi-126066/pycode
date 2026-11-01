@@ -53,7 +53,7 @@ class FileStorageObjects:
         self.project = StorageLayout(workspace, user_data).project.resolve()
         self.quarantine = self.root / "quarantine" / "objects"
         self.allowed_roots = [self.root, self.workspace / ".pycode" / "plans"]
-        # Memory (memory.json, settings.json, changes.jsonl) is never a managed object.
+        # Memory (<id>.md files, settings.json) is never a managed object.
         self.memory_roots = [self.root / "memory", self.workspace / ".pycode" / "memory"]
         self.lease = FileLease(self.root / "storage.lock")
         self.owned_session_id = owned_session_id
