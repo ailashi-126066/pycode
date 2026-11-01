@@ -28,7 +28,7 @@ TUI 把 `/plan` 交给 `AgentSession.enter_plan`。服务先确认没有另一�
 
 随后 `InterruptPlanPrompt.ask` 调用原生 LangGraph task，task 内的 `interrupt(payload)` 把问题交给界面并暂停当前图。用户可以反馈、批准后逐项审阅，或批准普通读写命令自动执行。反馈会保存为用户消息，让模型继续修同一份方案，例如补上空输入测试，然后再次请求审阅；它不会顺手获得项目写入权限。
 
-用户最终选择批准时，框架恢复到等待处，服务先核答案对应的方案和操作，再重读 Markdown。只有内容与审阅时完全一致，才保存 `approved_hash` 与当前 `run_id`。如果审批期间有人从编辑器改了方案，就要求重新看过新内容。界面发送的答案不能直接替换服务里的批准状态。
+用户最终选择批准时，框架恢复到等待处。服务把这次审阅的正文和 SHA-256 写进 `plan_decision` 记录，Plan 状态里只保存当前 `run_id`。批准之后，Plan Markdown 在执行期间不能再写。界面发送的答案不能直接替换服务里的批准状态。
 
 {{chain:14-plans:review}}
 
@@ -102,7 +102,7 @@ Plan 服务没有继承 `AgentMiddleware`。框架负责的第一件事是文件
 | 字段、文件或记录 | 保存什么 | 对后续动作意味着什么 |
 |---|---|---|
 | `planning` | 尚无有效`approved_run_id` | 项目只读，仅当前方案Markdown可写 |
-| `auto` | `approved_hash`与`approved_run_id` | 普通读写命令跳过Plan门的普通父审批；外层强制检查仍有效 |
+| `auto` | `approved_run_id` | 普通读写命令跳过Plan门的普通父审批；外层强制检查仍有效 |
 | `review` | 同样绑定已批正文和当前运行 | 普通动作继续交原权限检查逐次处理 |
 | `completed` | 清除批准所绑定的运行ID | 不再给后续任务放行 |
 | 方案Markdown | `workspace/.pycode/plans/SESSION_ID/PLAN_ID.md` | 用户实际阅读的完整正文 |

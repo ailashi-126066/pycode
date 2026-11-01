@@ -861,7 +861,7 @@
           {
             "file": "src/pycode/plans/services/plans.py",
             "name": "PlanService.guard",
-            "purpose": "逐次检查模式、run_id和approved_hash",
+            "purpose": "逐次检查模式和run_id",
             "notes": [
               "检查本轮批准与文件内容；旧运行、不再可读或正文改变都撤回到规划。",
               "规划只允许读与写当前方案，已批正文禁止再写；auto只放行普通读写命令，其它仍交原权限链。"

@@ -62,7 +62,6 @@ class PlanState:
     session_id: str
     original_mode: str = "default"
     mode: Literal["planning", "auto", "review", "completed"] = "planning"
-    approved_hash: str | None = None
     approved_run_id: str | None = None
     document_exists: bool = False
 

@@ -94,6 +94,9 @@ def upgrade_entry(payload: dict) -> dict:
     # Compactions written before file tracking (11.1 section 8.3) have no details.
     if payload.get("type") == "compaction" and isinstance(data, dict):
         data.setdefault("details", {"read_files": [], "modified_files": []})
+    # PlanState.approved_hash was dropped; the approved sha256 is in the plan_decision record.
+    if payload.get("type") == "plan_state" and isinstance(data, dict):
+        data.pop("approved_hash", None)
     # 11.1 section 31: output_id gave way to details["full_output_path"].
     if isinstance(message, dict) and message["tool_result"] is not None:
         message["tool_result"].pop("output_id", None)

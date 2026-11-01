@@ -38,9 +38,7 @@ class PlanService:
             self.files.configure(self.state.plan_id)
             await self.update_exists()
             if self.state.mode in {"auto", "review"}:
-                await self.save(
-                    replace(self.state, mode="planning", approved_run_id=None, approved_hash=None)
-                )
+                await self.save(replace(self.state, mode="planning", approved_run_id=None))
         else:
             self.files.deactivate()
 
@@ -143,7 +141,6 @@ class PlanService:
             replace(
                 self.state,
                 mode=mode,
-                approved_hash=document.sha256,
                 approved_run_id=context.run_id,
             )
         )
