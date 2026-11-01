@@ -4,8 +4,10 @@ The model decides the steps and their dependencies; this module only checks
 the graph and applies status transitions. Derived state is computed, never stored.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from graphlib import CycleError, TopologicalSorter
+from types import MappingProxyType
 from typing import Literal
 
 from pycode.kernel.domain.errors import DomainError
@@ -21,15 +23,36 @@ MAX_DECISIONS = 10
 
 
 @dataclass(frozen=True)
+class Acceptance:
+    text: str
+    # A bash command; completing the step needs a successful run of it after the step started.
+    check: str | None = None
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """A record on the current branch; the tool fields are set when it is a tool result."""
+
+    ref: str
+    position: int
+    tool: str | None = None
+    command: str | None = None
+    exit_code: int | None = None
+    is_error: bool = False
+
+
+@dataclass(frozen=True)
 class Step:
     id: str
     title: str
     depends_on: tuple[str, ...]
     status: StepStatus = "pending"
-    acceptance: tuple[str, ...] = ()
-    evidence: tuple[str, ...] = ()
+    acceptance: tuple[Acceptance, ...] = ()
+    evidence: tuple[Evidence, ...] = ()
     note: str = ""
     owner: str | None = None
+    # The TaskUpdate call id that moved the step to in_progress.
+    started_by: str = ""
 
 
 @dataclass(frozen=True)
@@ -39,7 +62,7 @@ class Board:
     done_when: tuple[str, ...]
     steps: tuple[Step, ...]
     status: BoardStatus = "active"
-    evidence: tuple[str, ...] = ()
+    evidence: tuple[Evidence, ...] = ()
     outcome: str = ""
     decisions: tuple[str, ...] = ()
     revision: int = 0
@@ -95,6 +118,50 @@ BOARD_TRANSITIONS = StateMachine[BoardStatus, str](
 )
 
 
+def succeeded(evidence: Evidence) -> bool:
+    return not evidence.is_error and evidence.exit_code in (None, 0)
+
+
+def step_evidence(
+    step: Step, cited: tuple[Evidence, ...], branch: Mapping[str, Evidence]
+) -> tuple[Evidence, ...]:
+    """Cited evidence plus the run of each check; all must succeed after the step started."""
+    checks = [item.check.strip() for item in step.acceptance if item.check is not None]
+    if not cited and not checks:
+        return ()
+    start = branch[step.started_by].position
+    found = list(cited)
+    for check in checks:
+        run = next(
+            (
+                item
+                for item in branch.values()
+                if item.command is not None
+                and item.command.strip() == check
+                and item.position > start
+                and succeeded(item)
+            ),
+            None,
+        )
+        if run is None:
+            raise DomainError("check_not_run", f"`{check}` has not run successfully since start")
+        found.append(run)
+    for item in found:
+        if item.position <= start:
+            raise DomainError("stale_evidence", f"{item.ref} was recorded before {step.id} started")
+        if not succeeded(item):
+            raise DomainError("failed_evidence", f"{item.ref} did not succeed")
+    return tuple(found)
+
+
+def evidence_text(evidence: Evidence) -> str:
+    if evidence.tool is None:
+        return evidence.ref
+    command = f" `{evidence.command}`" if evidence.command is not None else ""
+    exit_code = f" exit {evidence.exit_code}" if evidence.exit_code is not None else ""
+    return f"{evidence.ref} {evidence.tool}{command}{exit_code}"
+
+
 def graph(board: Board) -> dict[str, tuple[str, ...]]:
     return {step.id: step.depends_on for step in board.steps}
 
@@ -127,9 +194,15 @@ def apply(
     trigger: str,
     *,
     note: str = "",
-    evidence: tuple[str, ...] = (),
+    evidence: tuple[Evidence, ...] = (),
+    call_id: str = "",
+    branch: Mapping[str, Evidence] = MappingProxyType({}),
 ) -> Board:
-    """Move the board (target="board") or one step; the result is validated."""
+    """Move the board (target="board") or one step; the result is validated.
+
+    call_id is the TaskUpdate call making the change; branch indexes the current branch's
+    records by id, so step completion can check where and how its evidence was produced.
+    """
     if target == "board":
         status = BOARD_TRANSITIONS.apply(
             board.status, trigger, board=board, note=note, evidence=evidence
@@ -140,10 +213,14 @@ def apply(
         if target not in steps:
             raise DomainError("unknown_step", f"No step {target}")
         step = steps[target]
+        if trigger == "complete":
+            evidence = step_evidence(step, evidence, branch)
         status = STEP_TRANSITIONS.apply(
             step.status, trigger, board=board, step=step, note=note, evidence=evidence
         )
         moved = replace(step, status=status, note=note, evidence=step.evidence + evidence)
+        if trigger == "start":
+            moved = replace(moved, started_by=call_id)
         updated = replace(
             board, steps=tuple(moved if item.id == target else item for item in board.steps)
         )
@@ -215,7 +292,7 @@ def full_view(board: Board) -> str:
         lines.append("Outcome: " + board.outcome)
     lines.append("Done when:")
     lines.extend(f"- {criterion}" for criterion in board.done_when)
-    lines.extend(f"  evidence: {item}" for item in board.evidence)
+    lines.extend(f"  evidence: {evidence_text(item)}" for item in board.evidence)
     lines.append("Steps:")
     for step in board.steps:
         lines.append(f"- {step.id} [{states.get(step.id, step.status)}] {step.title}")
@@ -223,8 +300,10 @@ def full_view(board: Board) -> str:
             lines.append("  depends on: " + ", ".join(step.depends_on))
         if step.owner is not None:
             lines.append("  owner: " + step.owner)
-        lines.extend(f"  acceptance: {item}" for item in step.acceptance)
-        lines.extend(f"  evidence: {item}" for item in step.evidence)
+        for item in step.acceptance:
+            check = f" (check: {item.check})" if item.check is not None else ""
+            lines.append(f"  acceptance: {item.text}{check}")
+        lines.extend(f"  evidence: {evidence_text(item)}" for item in step.evidence)
         if step.note:
             lines.append("  note: " + step.note)
     lines.append("Critical path: " + " -> ".join(critical_path(board)))
