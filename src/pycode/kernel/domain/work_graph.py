@@ -50,7 +50,6 @@ class Step:
     acceptance: tuple[Acceptance, ...] = ()
     evidence: tuple[Evidence, ...] = ()
     note: str = ""
-    owner: str | None = None
     # The TaskUpdate call id that moved the step to in_progress.
     started_by: str = ""
 
@@ -298,8 +297,6 @@ def full_view(board: Board) -> str:
         lines.append(f"- {step.id} [{states.get(step.id, step.status)}] {step.title}")
         if step.depends_on:
             lines.append("  depends on: " + ", ".join(step.depends_on))
-        if step.owner is not None:
-            lines.append("  owner: " + step.owner)
         for item in step.acceptance:
             check = f" (check: {item.check})" if item.check is not None else ""
             lines.append(f"  acceptance: {item.text}{check}")
