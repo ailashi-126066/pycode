@@ -1,12 +1,9 @@
 """Optional context contributions cannot mutate facts or disappear behind incremental caches."""
 
-from dataclasses import replace
-
 import pytest
 
 from pycode.context import ContextProjector, ProjectionContribution
 from pycode.kernel import Message, ProjectedEntry, SessionEntry, SessionHeader, SessionSnapshot
-from tests.context.domain.test_context_meter import scenario
 
 
 def snapshot(*entries):
@@ -54,33 +51,6 @@ def test_contributor_cannot_claim_another_feature_checkpoint():
         ContextProjector((Invalid(),)).transform_context(snapshot(entry))
     with pytest.raises(ValueError, match="unique"):
         ContextProjector((MessageCount(), MessageCount()))
-
-
-def test_usage_invalidation_must_reference_the_active_history():
-    class Invalid(MessageCount):
-        def contribute(self, *args):
-            return ProjectionContribution(usage_invalidating_entry_ids=("another-branch",))
-
-    entry = SessionEntry("u", None, "message", "t", message=Message("u", "user", "x"))
-    with pytest.raises(ValueError, match="outside the active history"):
-        ContextProjector((Invalid(),)).transform_context(snapshot(entry))
-
-
-def test_meter_uses_generic_contribution_metadata_without_feature_event_names():
-    meter, state, projection = scenario()
-    marker = Message(
-        "extension",
-        "system",
-        "Already fingerprinted separately",
-        provider_metadata={"context_config_system_prompt": False},
-    )
-    with_marker = replace(projection, messages=(marker, *projection.messages))
-    assert meter.config_hash(with_marker) == meter.config_hash(projection)
-    assert meter.report(state, with_marker)["source"] == "provider_usage"
-    event = SessionEntry("arbitrary", state.leaf_id, "custom_extension_fact", "t")
-    state = replace(state, entries=(*state.entries, event), leaf_id=event.id)
-    with_marker = replace(with_marker, usage_invalidating_entry_ids=(event.id,))
-    assert meter.report(state, with_marker)["source"] == "estimate"
 
 
 def test_completed_plan_clears_active_plan_in_an_older_compaction():

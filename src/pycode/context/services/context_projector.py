@@ -139,7 +139,6 @@ class ContextProjector:
             self._cached.selection,
             self._cached.thinking,
             self._cached.checkpoint,
-            self._cached.usage_invalidating_entry_ids,
         )
 
     # Pi: transformContext — compaction, eviction, injected context and orphan-call results.
@@ -162,8 +161,6 @@ class ContextProjector:
         contributions, checkpoint, raw_messages = self.projected_entries(path)
         messages = repair_tool_pairing(raw_messages)
         pinned = []
-        invalidating = []
-        path_ids = {entry.id for entry in path}
         frozen_snapshot = freeze_value(snapshot)
         frozen_path = freeze_value(path)
         for contributor in self._contributors:
@@ -173,11 +170,6 @@ class ContextProjector:
                 freeze_value(tuple((*pinned, *contributions))),
                 freeze_value(checkpoint),
             )
-            if not set(contribution.usage_invalidating_entry_ids) <= path_ids:
-                raise ValueError(
-                    "Projection contributor referenced facts outside the active history"
-                )
-            invalidating.extend(contribution.usage_invalidating_entry_ids)
             written = set(contribution.checkpoint_updates) | contribution.checkpoint_removals
             if not written <= contributor.checkpoint_keys:
                 raise ValueError("Projection contributor wrote another feature's checkpoint keys")
@@ -195,7 +187,6 @@ class ContextProjector:
             messages,
             raw_messages,
             pinned,
-            tuple(dict.fromkeys(invalidating)),
         )
 
     def model_context(self, path):
@@ -257,7 +248,6 @@ class ContextProjector:
         messages,
         raw_messages,
         pinned,
-        invalidating,
     ):
         pinned_by_id = {}
         for item in pinned:
@@ -280,7 +270,6 @@ class ContextProjector:
             selection,
             thinking,
             checkpoint,
-            invalidating,
         )
         self._cached = freeze_value(projected)
         self._key = key

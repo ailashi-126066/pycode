@@ -12,7 +12,6 @@ class TaskProjection:
 
     def contribute(self, snapshot, path, entries, checkpoint):
         state = empty_tasks()
-        changed = []
         for entry in path:
             if entry.type == "compaction" and "task_state" in entry.data.get("checkpoint", {}):
                 state = clone_value(entry.data["checkpoint"]["task_state"])
@@ -20,8 +19,4 @@ class TaskProjection:
                 change = entry.message.provider_metadata.get("pycode_task_change")
                 if change is not None:
                     state = apply_task_change(state, change)
-                    changed.append(entry.id)
-        return ProjectionContribution(
-            checkpoint_updates={"task_state": state},
-            usage_invalidating_entry_ids=tuple(changed),
-        )
+        return ProjectionContribution(checkpoint_updates={"task_state": state})

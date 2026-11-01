@@ -270,10 +270,6 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 "pycode_run_id": context.run_id,
                 "pycode_turn": state["turn"],
                 "pycode_source_leaf_id": context.model_source_leaf_id,
-                "pycode_task_context_tokens": context.task_context_tokens,
-                "pycode_summary_config_hash": context.summary.config_hash(projection)
-                if context.summary is not None and projection is not None
-                else None,
             },
         )
         await save_message(context, message)

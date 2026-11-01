@@ -238,9 +238,6 @@ async def test_tail_outgrowing_capacity_preserves_original_context(tmp_path):
 async def test_usage_anchor_includes_cache_and_is_discarded_after_context_edit(tmp_path):
     history, _, _, _, service = await setup(tmp_path, Generator())
     try:
-        snapshot = await history.snapshot()
-        projection = ContextProjector().transform_context(snapshot)
-        fingerprint = service.config_hash(projection)
         await history.append_message(
             Message(
                 "anchored",
@@ -256,7 +253,6 @@ async def test_usage_anchor_includes_cache_and_is_discarded_after_context_edit(t
                     cache_miss_tokens=5000,
                     total_tokens=17300,
                 ),
-                provider_metadata={"pycode_summary_config_hash": fingerprint},
             )
         )
         snapshot = await history.snapshot()

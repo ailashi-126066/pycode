@@ -21,13 +21,7 @@ def scenario():
     meter = ContextMeter(settings)
     projection = ProjectedContext("a", (), (), settings.selection, "off", {})
     usage = UsageRecord("p", "m", "req", input_tokens=100, output_tokens=10, cache_read_tokens=70)
-    message = Message(
-        "a",
-        "assistant",
-        "answer",
-        usage=usage,
-        provider_metadata={"pycode_summary_config_hash": meter.config_hash(projection)},
-    )
+    message = Message("a", "assistant", "answer", usage=usage)
     entry = SessionEntry("a", None, "message", "t", message=message)
     snapshot = SessionSnapshot(SessionHeader("s", "/project", "t"), (entry,), "a", 1, 1)
     projection = replace(
@@ -60,7 +54,7 @@ def test_appended_tail_is_estimated_but_context_edit_invalidates_reported_anchor
     assert meter.report(snapshot, projection)["source"] == "estimate"
 
 
-def test_unchanged_memory_recall_keeps_the_provider_usage_anchor():
+def test_memory_recall_keeps_the_provider_usage_anchor():
     meter, snapshot, projection = scenario()
     recalled = SessionEntry("recall", "a", "memory_load", "t", data={"records": []})
     snapshot = replace(snapshot, entries=(*snapshot.entries, recalled), leaf_id="recall")
@@ -75,9 +69,10 @@ def test_unchanged_memory_recall_keeps_the_provider_usage_anchor():
     assert report["anchor_request_id"] == "req"
 
 
-def test_changed_memory_snapshot_still_invalidates_the_provider_usage_anchor():
+def test_only_edit_compaction_and_model_change_invalidate_the_provider_usage_anchor():
     meter, snapshot, projection = scenario()
-    projection = replace(
-        projection, checkpoint={"memories": [{"memory_id": "changed", "content": "new preference"}]}
-    )
-    assert meter.report(snapshot, projection)["source"] == "estimate"
+    for kind in ("tool_set_change", "prompt_change", "thinking_level_change", "model_change"):
+        changed = SessionEntry(kind, "a", kind, "t")
+        state = replace(snapshot, entries=(*snapshot.entries, changed), leaf_id=kind)
+        expected = "estimate" if kind == "model_change" else "provider_usage"
+        assert meter.report(state, projection)["source"] == expected

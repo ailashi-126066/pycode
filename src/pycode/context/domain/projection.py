@@ -12,12 +12,8 @@ class ProjectionContribution:
     entries: tuple[ProjectedEntry, ...] = ()
     checkpoint_updates: Mapping[str, Any] = field(default_factory=dict)
     checkpoint_removals: frozenset[str] = frozenset()
-    usage_invalidating_entry_ids: tuple[str, ...] = ()
 
     def __post_init__(self):
-        object.__setattr__(
-            self, "usage_invalidating_entry_ids", tuple(self.usage_invalidating_entry_ids)
-        )
         object.__setattr__(self, "entries", freeze_value(self.entries))
         object.__setattr__(self, "checkpoint_updates", freeze_value(self.checkpoint_updates))
         object.__setattr__(self, "checkpoint_removals", frozenset(self.checkpoint_removals))

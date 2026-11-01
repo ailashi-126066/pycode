@@ -141,4 +141,3 @@ class ProjectedContext:
     selection: ModelSelection | None
     thinking: str
     checkpoint: dict[str, Any] = field(default_factory=dict)
-    usage_invalidating_entry_ids: tuple[str, ...] = ()

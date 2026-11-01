@@ -108,5 +108,4 @@ class SkillsProjection:
             tuple(pinned),
             {"skills": list(loaded)} if loaded else {},
             frozenset() if loaded else self.checkpoint_keys,
-            tuple(entry.id for entry in path if entry.type == "skill_load"),
         )
