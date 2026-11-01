@@ -101,7 +101,13 @@ def test_settings_come_from_entire_branch_even_after_compaction():
 
 def test_custom_state_is_not_sent_but_custom_message_is():
     entries = [
-        SessionEntry("1", None, "custom", "t", data={"secret_state": "not a model message"}),
+        SessionEntry(
+            "1",
+            None,
+            "custom",
+            "t",
+            data={"kind": "subagent_start", "secret_state": "not a model message"},
+        ),
         SessionEntry("2", "1", "custom_message", "t", data={"text": "visible", "display": False}),
     ]
     assert [message.text for message in project(entries, "2").messages] == ["visible"]

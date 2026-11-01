@@ -9,8 +9,9 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from pycode.agent import RunContext
 from pycode.app.composition.bindings import build_agent_runtime
+from pycode.context import task_board
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel import ModelSelection
+from pycode.kernel import Board, EntryDraft, ModelSelection, SessionTree, Step, plain_data
 from pycode.kernel.domain.history import SessionHeader
 from pycode.kernel.domain.messages import Message, ToolResult
 from pycode.kernel.domain.tools import ToolSpec
@@ -394,6 +395,37 @@ async def test_repeated_action_on_unchanged_workspace_is_reminded_then_loop_dete
     assert [len(found) for found in reminders] == [0, 0, 1]
     assert "`echo` ran 2 times" in reminders[2][0] and "tree-a" in reminders[2][0]
     assert payloads(recorder, "agent_end") == [{"reason": "loop_detected"}]
+
+
+async def test_loop_detected_fails_the_active_task_board(tmp_path):
+    runtime, context, _, _, journal, _ = assemble(
+        [same_echo(1), same_echo(2), same_echo(3), AIMessage(id="unused", content="unused")]
+    )
+    store = SqliteSessionStore(
+        tmp_path / "session", SessionHeader(context.session_id, "/workspace", "t"), TestTiming()
+    )
+    board = Board("b1", "Echo", ("echoed",), (Step("s1", "Echo once", ()),))
+    await store.append_entry(
+        EntryDraft("custom", data={"kind": "task_board", "task_board": plain_data(board)})
+    )
+
+    class Mirror:
+        async def append_message(self, message):
+            journal.messages.append(message)
+            return await store.append_message(message)
+
+    context.journal, context.history_store = Mirror(), store
+    context.projector = ContextProjector()
+    context.executor.snapshots = UnchangedWorkspace()
+    try:
+        result = await runtime.run((Message("u1", "user", "echo"),), context)
+        snapshot = await store.snapshot()
+        current = task_board(SessionTree(snapshot.index).path(snapshot.leaf_id))
+    finally:
+        await store.aclose()
+    assert result.outcome == "loop_detected"
+    assert current is not None and current.status == "failed"
+    assert current.outcome.startswith("loop_detected: ") and "`echo` ran" in current.outcome
 
 
 async def test_each_run_writes_one_run_end_before_agent_end(tmp_path):

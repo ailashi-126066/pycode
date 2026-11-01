@@ -24,7 +24,16 @@ from pycode.agent.adapters.boundaries import (
 from pycode.agent.adapters.state import PycodeState
 from pycode.agent.domain.turn_policy import next_turn
 from pycode.agent.services.context import RunContext
-from pycode.kernel import EntryDraft, Message, ModelError, SnapshotError, TextBlock, plain_data
+from pycode.context import board_from_data
+from pycode.kernel import (
+    EntryDraft,
+    Message,
+    ModelError,
+    SnapshotError,
+    TextBlock,
+    plain_data,
+    work_graph,
+)
 from pycode.tools import ProgressGuard, enter_tree
 
 BOARD_EXIT_REMINDER = (
@@ -168,6 +177,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         if context.progress_guard.evidence is not None and context.progress_guard.reminded:
             # Detected again after the reminder: end the run instead of another request.
             run.reason = "loop_detected"
+            await self.fail_board(context, context.progress_guard.evidence)
             return {"jump_to": "end"}
         ended = run.apply("model")
         if ended:
@@ -389,6 +399,24 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             await deliver_input(context, message, kind)
             framework.append(self.bindings.to_framework(message, context.selection))
         return {"messages": framework, "jump_to": "model"}
+
+    async def fail_board(self, context, evidence):
+        """11.1 section 9: loop_detected also fails an active board, as a custom record."""
+        if context.history_store is None:
+            return
+        board = (await self.current_projection(context)).checkpoint["task_board"]
+        if board is None or board["status"] != "active":
+            return
+        failed = work_graph.apply(
+            board_from_data(board), "board", "fail", note=f"loop_detected: {evidence}"
+        )
+        await context.history_store.append_entry(
+            EntryDraft(
+                "custom",
+                data={"kind": "task_board", "task_board": plain_data(failed)},
+                run_id=context.run_id,
+            )
+        )
 
     async def board_exit_reminder(self, context):
         """The end-of-run check: an active board must choose an exit, reminded once per run."""

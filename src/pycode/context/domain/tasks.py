@@ -43,9 +43,12 @@ def board_from_data(data) -> Board:
 
 
 # Pi: reconstructState — the last task tool result on the current branch holds the board.
+# A change made by the user or the system is a custom{kind:"task_board"} record instead.
 def branch_task_board(path):
     """The plain board snapshot, or None when this branch never wrote one."""
     for entry in reversed(path):
+        if entry.type == "custom" and entry.data["kind"] == "task_board":
+            return entry.data["task_board"]
         message = entry.message
         if message is not None and message.tool_result is not None:
             details = message.tool_result.details

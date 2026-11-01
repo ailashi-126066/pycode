@@ -61,6 +61,7 @@ CustomKind = Literal[
     "skill_created",
     "skill_updated",
     "subagent_start",
+    "task_board",
 ]
 
 
