@@ -5,8 +5,6 @@ from .agent_session import AgentSession
 from .history_backend import ConversationHistoryBackend
 from .inputs import DurableInputs, PendingInputs
 from .restart import (
-    SessionCatalogWriteGuard,
-    SessionRunOwnership,
     pending_run_entry,
     recover_conversation,
 )
@@ -33,8 +31,6 @@ __all__ = [
     "FileStorageObjects",
     "FileWorkspaceInspector",
     "PendingInputs",
-    "SessionCatalogWriteGuard",
-    "SessionRunOwnership",
     "SessionService",
     "SessionView",
     "SqliteSessionRepository",

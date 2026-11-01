@@ -14,7 +14,9 @@ async def test_immutable_summary_objects_verify_source_checksums_and_survive_inv
         await service.prepare()
         await service.collect(cancel=False)
         source = generator.sources[0]
-        _, result = await objects.load(source.job_id)
+        restored_source, result = await objects.load(source.job_id)
+        with pytest.raises(TypeError):
+            restored_source.selection.thinking_parameters["injected"] = True
         await objects.save_result(result)
         with pytest.raises(StorageError) as error:
             await objects.save_result(replace(result, text="changed"))

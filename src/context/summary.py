@@ -138,12 +138,12 @@ def capture_source(
         data_hash([plain_data(item) for item in visible]),
         config_hash,
         previous_summary,
-        clone_value(messages),
-        clone_value(turn_prefix),
+        messages,
+        turn_prefix,
         tuple(read_files),
         tuple(modified_files),
         tokens_before,
-        clone_value(selection),
+        selection,
     )
 
 
@@ -628,7 +628,7 @@ class SummaryService:
     async def produce(self, source, generator):
         source_hash = data_hash(plain_data(source))
         try:
-            completion = await generator.generate(clone_value(source))
+            completion = await generator.generate(source)
             if not completion.text.strip():
                 raise ModelError("empty_summary", "Summary model returned empty text")
             result = SummaryObject(

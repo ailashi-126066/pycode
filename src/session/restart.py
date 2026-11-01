@@ -6,9 +6,6 @@ from dataclasses import replace
 from ..kernel import (
     EntryDraft,
     Message,
-    SessionEntry,
-    SessionHeader,
-    SessionSnapshot,
     SessionTree,
 )
 from ..tools import abandoned_result, interrupted_result
@@ -35,18 +32,6 @@ def pending_run_entry(snapshot):
         ):
             return entry
     return None
-
-
-class SessionRunOwnership:
-    @staticmethod
-    def owns(header: SessionHeader, entry: SessionEntry) -> bool:
-        return run_belongs_to_session(header, entry)
-
-
-class SessionCatalogWriteGuard:
-    @staticmethod
-    def can_initialize(snapshot: SessionSnapshot) -> bool:
-        return pending_run_entry(snapshot) is None
 
 
 async def recover_conversation(

@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增；参照 OpenCode snapshot，原出处见下
 # Source: https://github.com/anomalyco/opencode/blob/055d95bb7e278c94baf06235a52cac79dd13ba67/packages/opencode/src/snapshot/index.ts
 # Source: https://github.com/anomalyco/opencode/blob/055d95bb7e278c94baf06235a52cac79dd13ba67/packages/core/src/snapshot.ts
 # Adaptation: owned git-dir/index, no filters/hooks, checked records and selective restores.

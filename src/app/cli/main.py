@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 """pycode command entry point."""
 
 import asyncio

@@ -8,6 +8,8 @@
 
 TaskProjection 沿当前分支取最后一份任务板快照（TaskWrite/TaskUpdate 结果的 details.task_board，或 custom{kind: task_board}），放进 checkpoint["task_board"]。只有 active 的任务板才由 History 的 task_board_messages 追加在消息投影之后：每轮一份精简视图，压缩被采用后的下一次请求注入一次完整视图；没有任务板时零注入。注入内容标明是数据，单独计量，不混入固定系统配置。完整字段见 [上下文组成](../context-request.md)。
 
+后台摘要使用的 SummarySource 在构造和读盘时冻结嵌套消息与模型选型。生成器直接读取同一份不可变摘要源，因此不会在捕获消息、构造摘要任务和交给生成器三个步骤里重复复制历史。
+
 ## 第一步：从当前历史，整理出这次要发送的消息
 
 程序已经有了上一章说的`SessionSnapshot`。但这个快照包含的是原始记录：用户可能切过分支，某段旧工具输出可能已经有了缩短显示的编辑，之前也可能追加过一次摘要。所以不能直接把全部历史记录转换成SDK消息。

@@ -129,6 +129,9 @@ async def test_source_append_during_generation_keeps_tail_and_adopts_once(tmp_pa
         await service.prepare()
         await generator.started.wait()
         source = generator.sources[0]
+        assert source is service._source
+        with pytest.raises(TypeError):
+            source.selection.thinking_parameters["injected"] = True
         original = (await history.snapshot()).entries
         await history.append_message(Message("appended", "user", "new message while summary runs"))
         applying = asyncio.create_task(service.prepare(manual=True))

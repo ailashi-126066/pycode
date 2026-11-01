@@ -21,7 +21,7 @@ from ..kernel import (
     StorageError,
     SystemTiming,
     atomic_write,
-    clone_value,
+    freeze_value,
     json_dumps,
     owned_io,
     plain_data,
@@ -131,7 +131,7 @@ class ModelCatalog:
         store: FileCatalogStore,
         timing: SystemTiming,
     ) -> None:
-        self._providers = {provider.name: clone_value(provider) for provider in providers}
+        self._providers = {provider.name: freeze_value(provider) for provider in providers}
         self._directory = directory
         self._store = store
         self._timing = timing
@@ -139,7 +139,7 @@ class ModelCatalog:
             plain_data(provider) for provider in sorted(providers, key=lambda item: item.name)
         ]
         config_hash = hashlib.sha256(json_dumps(definitions, sort_keys=True).encode()).hexdigest()
-        self._snapshot = CatalogSnapshot(config_hash=config_hash, refreshed_at=0)
+        self._snapshot = freeze_value(CatalogSnapshot(config_hash=config_hash, refreshed_at=0))
         self._lock = asyncio.Lock()
 
     async def initialize(self) -> CatalogSnapshot:
@@ -148,11 +148,11 @@ class ModelCatalog:
             models = tuple(
                 replace(model, source="cache", availability="unknown") for model in cached.models
             )
-            self._snapshot = replace(cached, models=models)
+            self._snapshot = freeze_value(replace(cached, models=models))
         else:
             models = self.descriptors({})
-            self._snapshot = replace(self._snapshot, models=models)
-        return clone_value(self._snapshot)
+            self._snapshot = freeze_value(replace(self._snapshot, models=models))
+        return self._snapshot
 
     async def refresh(self) -> CatalogSnapshot:
         async with self._lock:
@@ -170,15 +170,17 @@ class ModelCatalog:
             async with asyncio.TaskGroup() as group:
                 for provider in self._providers.values():
                     group.create_task(fetch(provider))
-            snapshot = replace(
-                self._snapshot,
-                refreshed_at=self._timing.now(),
-                models=self.descriptors(results),
-                errors=dict(sorted(errors.items())),
+            snapshot = freeze_value(
+                replace(
+                    self._snapshot,
+                    refreshed_at=self._timing.now(),
+                    models=self.descriptors(results),
+                    errors=dict(sorted(errors.items())),
+                )
             )
             await self._store.save(snapshot)
             self._snapshot = snapshot
-            return clone_value(snapshot)
+            return snapshot
 
     def descriptors(
         self, results: dict[str, tuple[DiscoveredModel, ...]]
@@ -233,7 +235,7 @@ class ModelCatalog:
         return tuple(sorted(models, key=lambda item: (item.provider, item.model_id)))
 
     def snapshot(self) -> CatalogSnapshot:
-        return clone_value(self._snapshot)
+        return self._snapshot
 
     def resolve(self, provider_name: str, model_id: str) -> ProviderConfig:
         provider = self._providers.get(provider_name)
@@ -259,7 +261,7 @@ class ModelCatalog:
         )
         if window <= output:
             raise ModelError("invalid_model_capacity", "Selected model leaves no input capacity")
-        return clone_value(
+        return freeze_value(
             replace(
                 provider,
                 model_id=model_id,

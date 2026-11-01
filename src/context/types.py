@@ -11,6 +11,7 @@ from ..kernel import (
     SessionSnapshot,
     ToolSpec,
     UsageRecord,
+    freeze_value,
 )
 from .budget import InputBudget
 
@@ -34,6 +35,12 @@ class SummarySource:
     modified_files: tuple[str, ...]
     tokens_before: int
     selection: ModelSelection
+
+    def __post_init__(self):
+        # Freeze at construction/read hydration; generation shares this immutable source.
+        object.__setattr__(self, "messages", freeze_value(self.messages))
+        object.__setattr__(self, "turn_prefix_messages", freeze_value(self.turn_prefix_messages))
+        object.__setattr__(self, "selection", freeze_value(self.selection))
 
 
 @dataclass(frozen=True)

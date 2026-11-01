@@ -13,6 +13,8 @@
 
 {{chain:12-session:recover}}
 
+当前程序生成的 SessionEntry 在写入时冻结并持久化，输入身份、分支和 run 归属检查仍在存储边界。磁盘记录读取时由 decode_entry 校验结构；旧记录的升级或删除决定统一在 upgrade_entry，decode_entries 负责将被删除记录的子节点接回有效父节点。
+
 ## 第二步：这句话先保存，再交给真正的模型循环
 
 用户提交请求后，`AgentSession.run` 先确认消息来自用户、带有唯一 ID，而且同一会话没有另一项操作占着执行位置。随后 `_run_locked` 保存这条用户消息，再选择模型、更新 Skill 列表。这样即使下一步连不上模型，用户说过什么仍有记录。

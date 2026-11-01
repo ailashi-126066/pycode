@@ -98,8 +98,12 @@ def decode_header(data: bytes) -> SessionHeader:
 CONTENT_BLOCKS = {"text": TextBlock, "thinking": ThinkingBlock, "tool_call": ToolCall}
 
 
-def upgrade_entry(payload: dict) -> dict:
+def upgrade_entry(payload: dict) -> dict | None:
     """One-way read upgrade of records written before 11.1; writes use only the new format."""
+    if payload["type"] in REMOVED_ENTRY_TYPES or (
+        payload["type"] == "custom" and payload["data"].get("kind") in REMOVED_CUSTOM_KINDS
+    ):
+        return None
     message = payload.get("message")
     if isinstance(message, dict) and "text" in message:
         thinking = [{**block, "type": "thinking"} for block in message.pop("thinking")]
@@ -159,29 +163,29 @@ REMOVED_CUSTOM_KINDS = frozenset(
 
 
 def decode_entries(records) -> tuple[tuple[SessionEntry, ...], dict[str, str | None]]:
-    """Decode stored records in order; children of a skipped record move to its parent."""
+    """Decode stored records; upgrade_entry alone decides which legacy records to discard."""
     skipped: dict[str, str | None] = {}
     entries = []
     for record in records:
         try:
             parent = skipped.get(record["parent_id"], record["parent_id"])
-            removed = record["type"] in REMOVED_ENTRY_TYPES or (
-                record["type"] == "custom" and record["data"].get("kind") in REMOVED_CUSTOM_KINDS
-            )
+            entry = decode_entry(encode({**record, "parent_id": parent}))
+            if entry is None:
+                skipped[record["id"]] = parent
+            else:
+                entries.append(entry)
         except (KeyError, TypeError) as error:
             raise StorageError("invalid_session_entry", "Invalid native session entry") from error
-        if removed:
-            skipped[record["id"]] = parent
-            continue
-        entries.append(decode_entry(encode({**record, "parent_id": parent})))
     return tuple(entries), skipped
 
 
-def decode_entry(data: bytes) -> SessionEntry:
+def decode_entry(data: bytes) -> SessionEntry | None:
     try:
         payload = json.loads(data)
-        reject_unknown_fields(payload, SessionEntry)
         payload = upgrade_entry(payload)
+        if payload is None:
+            return None
+        reject_unknown_fields(payload, SessionEntry)
         if payload.get("selection") is not None:
             validate_selection_fields(payload["selection"])
         message = payload.get("message")
@@ -477,7 +481,6 @@ class SqliteSessionStore:
                 draft.run_id,
                 draft.operation_id,
             )
-            validate_entry(entry)
             entry = freeze_value(entry)
             if entry.id in self._entries_by_id:
                 raise StorageError("entry_id_conflict", "Entry ID already exists")

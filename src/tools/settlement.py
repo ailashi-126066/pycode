@@ -244,19 +244,18 @@ class ToolSettlementMiddleware(AgentMiddleware):
         return result
 
     async def record_approval(self, context, tool_context, spec, decision):
-        if context.history_store is not None:
-            await context.history_store.append_entry(
-                EntryDraft(
-                    "custom",
-                    data={
-                        "kind": "tool_approval",
-                        "decision": decision,
-                        "spec_hash": data_hash(plain_data(spec)),
-                    },
-                    run_id=context.run_id,
-                    operation_id=tool_context.operation_id,
-                )
+        await context.history_store.append_entry(
+            EntryDraft(
+                "custom",
+                data={
+                    "kind": "tool_approval",
+                    "decision": decision,
+                    "spec_hash": data_hash(plain_data(spec)),
+                },
+                run_id=context.run_id,
+                operation_id=tool_context.operation_id,
             )
+        )
 
     async def finalize_result(self, context, call, tool_context, result):
         result = replace(
@@ -415,15 +414,14 @@ class ToolSettlementMiddleware(AgentMiddleware):
         current_spec,
     ):
         # Intent before effects (pi-durable): restart recovery tells interrupted from abandoned.
-        if context.history_store is not None:
-            await context.history_store.append_entry(
-                EntryDraft(
-                    "custom",
-                    data={"kind": "tool_started", "replay": current_spec.replay},
-                    run_id=context.run_id,
-                    operation_id=current_context.operation_id,
-                )
+        await context.history_store.append_entry(
+            EntryDraft(
+                "custom",
+                data={"kind": "tool_started", "replay": current_spec.replay},
+                run_id=context.run_id,
+                operation_id=current_context.operation_id,
             )
+        )
         current_request = self.domain_request(
             request, context, current_context, current_call, current_spec
         )

@@ -28,7 +28,7 @@ class ModelControl:
         self,
         catalog: ModelCatalog,
         projector: "ContextProjector",
-        store: "SqliteSessionStore | None",
+        store: "SqliteSessionStore",
         events: EventStream,
     ) -> None:
         self._catalog = catalog
@@ -43,8 +43,6 @@ class ModelControl:
         return self._catalog.snapshot()
 
     async def current(self) -> ModelSelection | None:
-        if self._store is None:
-            return None
         snapshot = await self._store.snapshot()
         projection = self._projector.transform_context(snapshot)
         path = SessionTree(snapshot.index).path(projection.leaf_id)
@@ -59,8 +57,6 @@ class ModelControl:
         return selection
 
     async def select(self, provider: str, model_id: str) -> ModelSelection:
-        if self._store is None:
-            raise ModelError("session_required", "Selecting a model requires an active session")
         configured = self._catalog.resolve(provider, model_id)
         selected = model_selection(configured)
         snapshot = await self._store.snapshot()

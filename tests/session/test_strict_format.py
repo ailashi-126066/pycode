@@ -21,6 +21,7 @@ from pycode.session.store import (
     decode_header,
     encode_entry,
     encode_header,
+    upgrade_entry,
 )
 
 
@@ -137,6 +138,8 @@ def test_removed_revert_and_snapshot_records_are_skipped_on_read(kind):
         {**asdict(SessionEntry("b", "a", "custom", "now")), "data": {"kind": kind}},
         asdict(SessionEntry("c", "b", "session_metadata", "now", data={"title": "t"})),
     ]
+    assert upgrade_entry(dict(records[1])) is None
+    assert decode_entry(json.dumps(records[1]).encode()) is None
     entries, skipped = decode_entries(records)
     assert [entry.id for entry in entries] == ["a", "c"]
     assert entries[1].parent_id == "a" and skipped == {"b": "a"}

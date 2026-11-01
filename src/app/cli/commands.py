@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 """Non-interactive commands invoke the same public services as the UI."""
 
 import asyncio

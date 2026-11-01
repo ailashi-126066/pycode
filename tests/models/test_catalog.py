@@ -1,4 +1,3 @@
-from copy import deepcopy
 from dataclasses import replace
 
 import pytest
@@ -110,6 +109,24 @@ async def test_all_providers_have_stable_grouped_model_order(tmp_path):
     snapshot = await catalog.refresh()
     identities = [(model.provider, model.model_id) for model in snapshot.models]
     assert identities == sorted(identities)
-    exposed = deepcopy(snapshot)
-    exposed.errors["injected"] = "changed"
+    assert catalog.snapshot() is snapshot
+    with pytest.raises(TypeError):
+        snapshot.errors["injected"] = "changed"
     assert catalog.snapshot().errors == {}
+
+
+async def test_registered_provider_configuration_is_immutable_and_detached(tmp_path):
+    thinking = {"type": "enabled", "options": {"budget": 1024}}
+    overrides = {"new-model": CapabilityOverride(supports_thinking=True)}
+    provider = replace(configuration("deepseek"), thinking=thinking, model_overrides=overrides)
+    catalog, _ = assemble_catalog(
+        tmp_path, (provider,), {provider.name: (DiscoveredModel("new-model"),)}
+    )
+    thinking["options"]["budget"] = 1
+    overrides.clear()
+    await catalog.initialize()
+    selected = catalog.resolve(provider.name, "new-model")
+    assert selected.thinking["options"]["budget"] == 1024
+    with pytest.raises(TypeError):
+        selected.thinking["options"]["budget"] = 2
+    assert catalog.resolve(provider.name, "new-model").thinking is selected.thinking
