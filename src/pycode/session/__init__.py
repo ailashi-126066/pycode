@@ -1,45 +1,42 @@
-"""Public native contracts, policies and services for session."""
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/session-manager.ts
+"""Concrete session storage, execution, presentation and input services."""
 
-from pycode.session.adapters.storage.session import SqliteSessionStore
-from pycode.session.domain.execution_recovery import pending_run_entry
-from pycode.session.domain.guards import SessionCatalogWriteGuard, SessionRunOwnership
-from pycode.session.domain.revert import RevertPlan
-from pycode.session.domain.revert_state import pending_revert
-from pycode.session.ports.history import SessionStore
-from pycode.session.ports.runtime import RuntimeLauncher
-from pycode.session.ports.sessions import SessionRepository
-from pycode.session.ports.storage import StorageObjects
-from pycode.session.ports.workspace import WorkspaceInspector
-from pycode.session.services.agent_session import AgentSession
-from pycode.session.services.application import ApplicationService
-from pycode.session.services.durable_inputs import DurableInputs
-from pycode.session.services.input_queue import PendingInputs
-from pycode.session.services.restart import recover_conversation
-from pycode.session.services.revert import RevertService
-from pycode.session.services.session_view import SessionView
-from pycode.session.services.sessions import SessionService, assign_initial_title
-from pycode.session.services.storage_gc import StorageGC
+from pycode.session.agent_session import AgentSession
+from pycode.session.history_backend import ConversationHistoryBackend
+from pycode.session.inputs import DurableInputs, PendingInputs
+from pycode.session.restart import (
+    SessionCatalogWriteGuard,
+    SessionRunOwnership,
+    pending_run_entry,
+    recover_conversation,
+)
+from pycode.session.sessions import (
+    ApplicationService,
+    FileWorkspaceInspector,
+    SessionService,
+    assign_initial_title,
+)
+from pycode.session.storage_gc import FileStorageObjects, StorageGC
+from pycode.session.store import SqliteSessionRepository, SqliteSessionStore, StorageLayout
+from pycode.session.view import SessionView
 
 __all__ = [
     "AgentSession",
     "ApplicationService",
+    "ConversationHistoryBackend",
     "DurableInputs",
+    "FileStorageObjects",
+    "FileWorkspaceInspector",
     "PendingInputs",
-    "RevertPlan",
-    "RevertService",
-    "RuntimeLauncher",
     "SessionCatalogWriteGuard",
-    "SessionRepository",
     "SessionRunOwnership",
     "SessionService",
-    "SessionStore",
-    "SqliteSessionStore",
     "SessionView",
+    "SqliteSessionRepository",
+    "SqliteSessionStore",
     "StorageGC",
-    "StorageObjects",
-    "WorkspaceInspector",
+    "StorageLayout",
     "assign_initial_title",
-    "pending_revert",
     "pending_run_entry",
     "recover_conversation",
 ]
