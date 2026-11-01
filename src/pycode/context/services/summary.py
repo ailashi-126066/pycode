@@ -300,8 +300,6 @@ class SummaryService:
         source, result = self._source, self._result
         if source is None or result is None:
             raise ModelError("summary_not_ready", "No completed summary is available to adopt")
-        if not valid_source(source, snapshot, projection, self.config_hash()):
-            raise ModelError("summary_source_changed", "Summary source changed; history preserved")
         identifier = "compaction_" + source.job_id
         data = {
             "summary": result.text,
