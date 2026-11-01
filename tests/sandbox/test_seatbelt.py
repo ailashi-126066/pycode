@@ -258,3 +258,15 @@ async def test_physical_seatbelt_starts_bash_python_and_git(fake_layout):
     assert code == 0, stderr
     assert "bash-ok" in stdout and "python-ok" in stdout and "Sandbox Test" in stdout
     assert "readme.txt" in stdout
+
+
+def test_python_read_paths_use_package_root_not_checkout_depth(tmp_path, monkeypatch):
+    import pycode.sandbox.sandbox as implementation
+
+    package = tmp_path / "src"
+    monkeypatch.setattr(implementation, "__file__", str(package / "sandbox" / "sandbox.py"))
+    monkeypatch.setattr(implementation.sys, "path", [])
+    paths = implementation.python_read_paths()
+    assert str(package) in paths
+    assert str(tmp_path) not in paths
+    assert str(tmp_path.parent) not in paths

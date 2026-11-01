@@ -86,8 +86,8 @@ def python_read_paths():
         sys.exec_prefix,
         sys.base_exec_prefix,
         str(Path(sys.executable).resolve().parent),
-        # Import root of pycode itself, used by the Python Skill worker.
-        str(Path(__file__).resolve().parents[3]),
+        # Package files used by the Python Skill worker, independent of checkout layout.
+        str(Path(__file__).resolve().parents[1]),
         *site.getsitepackages(),
     }
     if site.ENABLE_USER_SITE:
