@@ -26,6 +26,15 @@ class PlanPanel(Vertical):
         yield Static("计划审批 · " + self.payload["virtual_path"], markup=False)
         with VerticalScroll():
             yield Markdown(self.payload["content"])
+        layers = "  ".join(
+            f"{index}) {', '.join(layer)}" for index, layer in enumerate(self.payload["layers"], 1)
+        )
+        yield Static("分层：" + layers, id="plan-layers", markup=False)
+        yield Static(
+            "关键路径：" + " → ".join(self.payload["critical_path"]),
+            id="plan-critical-path",
+            markup=False,
+        )
         yield Button("自动批准执行", id="plan-auto", variant="primary")
         yield Button("执行但逐项审批", id="plan-review")
         yield Input(placeholder="反馈：继续修改当前计划", id="plan-feedback-text")

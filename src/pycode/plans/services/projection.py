@@ -31,12 +31,13 @@ class PlanProjection:
             if plan_state["mode"] == "planning":
                 reminder += (
                     "The project is read only. Only write the exact active Plan Markdown. "
-                    "Call ExitPlanMode after writing it to request approval."
+                    "End it with a ```pycode-tasks block holding TaskWrite arguments as JSON, "
+                    "then call ExitPlanMode to request approval."
                 )
             else:
                 reminder += (
-                    "Execute only the approved Plan snapshot within this run. "
-                    "External changes require fresh approval."
+                    "Execute the approved Plan within this run by following its task board; "
+                    "the Plan Markdown is read only."
                 )
             pinned.append(
                 ProjectedEntry(

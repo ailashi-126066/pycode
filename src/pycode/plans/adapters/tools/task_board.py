@@ -2,19 +2,10 @@
 """TaskWrite / TaskUpdate: work_graph checks the board; the result details keep the snapshot."""
 
 from dataclasses import replace
-from uuid import uuid4
 
 from pycode.context import task_board, task_evidence
-from pycode.kernel import (
-    Board,
-    SessionTree,
-    Step,
-    ToolError,
-    ToolResult,
-    ToolSpec,
-    plain_data,
-    work_graph,
-)
+from pycode.kernel import SessionTree, ToolError, ToolResult, ToolSpec, plain_data, work_graph
+from pycode.plans.domain.plans import TASK_WRITE_SCHEMA, TEXT, new_board, written_steps
 
 OPEN = frozenset({"active", "blocked"})
 STEP_TRIGGERS = {
@@ -32,7 +23,6 @@ BOARD_TRIGGERS = {
     "abandoned": "abandon",
     "active": "resume",
 }
-TEXT = {"type": "string", "minLength": 1}
 
 
 async def branch_path(history):
@@ -50,56 +40,14 @@ def board_result(context, name, board, summary):
     )
 
 
-def written_steps(items, previous):
-    """Steps keep their status, evidence and note; listed ones are revised, new ones appended."""
-    steps = {step.id: step for step in previous}
-    for item in items:
-        identifier = item.get("id", f"s{len(steps) + 1}")
-        fields = {
-            "title": item["title"],
-            "depends_on": tuple(item["depends_on"]),
-            "acceptance": tuple(item.get("acceptance", ())),
-        }
-        steps[identifier] = (
-            replace(steps[identifier], **fields)
-            if identifier in steps
-            else Step(identifier, **fields)
-        )
-    return tuple(steps.values())
-
-
 class TaskWrite:
     spec = ToolSpec(
         "TaskWrite",
         "Create the task board, or revise the open one: goal, done_when criteria and steps. "
         "Every step lists depends_on (ids of steps it waits for; [] when none). Steps not "
         "listed are kept; a listed id revises that step. A different goal needs replace=true, "
-        "which abandons the open board.",
-        {
-            "type": "object",
-            "properties": {
-                "goal": TEXT,
-                "done_when": {"type": "array", "items": TEXT, "minItems": 1},
-                "steps": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": TEXT,
-                            "title": TEXT,
-                            "depends_on": {"type": "array", "items": TEXT},
-                            "acceptance": {"type": "array", "items": TEXT},
-                        },
-                        "required": ["title", "depends_on"],
-                        "additionalProperties": False,
-                    },
-                },
-                "replace": {"type": "boolean"},
-            },
-            "required": ["goal", "done_when", "steps"],
-            "additionalProperties": False,
-        },
+        "which abandons the open board. A board from an approved Plan only accepts new steps.",
+        TASK_WRITE_SCHEMA,
         category="read",
         execution_mode="sequential",
         source="plans",
@@ -116,18 +64,16 @@ class TaskWrite:
 
     async def execute(self, context, arguments):
         current = task_board(await branch_path(self.history))
-        done_when = tuple(arguments["done_when"])
-        if current is None or current.status not in OPEN or arguments.get("replace", False):
-            board = Board(
-                uuid4().hex[:8],
-                arguments["goal"],
-                done_when,
-                written_steps(arguments["steps"], ()),
-                revision=1,
-            )
+        if current is not None and current.status not in OPEN:
+            current = None
+        replacing = arguments.get("replace", False)
+        if current is not None and current.plan_id is not None and replacing:
+            raise ToolError("plan_board_fixed", "A board from an approved Plan cannot be replaced")
+        if current is None or replacing:
+            board = new_board(arguments)
             summary = (
                 f"Task board created (replaces {current.id})."
-                if current is not None and current.status in OPEN
+                if current is not None
                 else "Task board created."
             )
         elif arguments["goal"] != current.goal:
@@ -135,11 +81,18 @@ class TaskWrite:
                 "task_goal_changed", "The goal changed; pass replace=true to start a new board"
             )
         else:
+            done_when = tuple(arguments["done_when"])
+            steps = written_steps(arguments["steps"], current.steps)
+            if current.plan_id is not None and (
+                done_when != current.done_when or steps[: len(current.steps)] != current.steps
+            ):
+                raise ToolError(
+                    "plan_board_fixed",
+                    "A board from an approved Plan only accepts new steps; "
+                    "skip unwanted ones with TaskUpdate",
+                )
             board = replace(
-                current,
-                done_when=done_when,
-                steps=written_steps(arguments["steps"], current.steps),
-                revision=current.revision + 1,
+                current, done_when=done_when, steps=steps, revision=current.revision + 1
             )
             summary = "Task board revised."
         work_graph.validate(board)

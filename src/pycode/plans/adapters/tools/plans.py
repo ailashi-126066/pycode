@@ -6,7 +6,8 @@ from pycode.kernel import ToolSpec
 class ExitPlanMode:
     spec = ToolSpec(
         "ExitPlanMode",
-        "Review the current Plan Markdown and ask for execution approval",
+        "Check the Plan Markdown's closing ```pycode-tasks block (TaskWrite arguments as JSON) "
+        "and ask for execution approval; the approved steps become the task board",
         {"type": "object", "properties": {}, "additionalProperties": False},
         category="read",
         # Like AskUserQuestion: an interrupt while running must stay the batch's only one.

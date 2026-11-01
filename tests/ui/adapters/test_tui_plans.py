@@ -1,6 +1,7 @@
 """Textual Pilot exercises the actual Plan interrupt and automatic execution."""
 
 import pytest
+from textual.widgets import Static
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
@@ -19,6 +20,8 @@ async def test_tui_plan_inline_review_drives_same_live_agent(tmp_path, monkeypat
         skill_reply("ExitPlanMode", {}, "exit"),
         skill_reply("bash", {"command": "printf implemented > done.txt"}, "run"),
         chat_completion(),
+        # The approved board is still active: the one end check asks again.
+        chat_completion(),
     ]
     with protocol_server(replies) as (url, requests):
         app = compose_application(
@@ -32,11 +35,13 @@ async def test_tui_plan_inline_review_drives_same_live_agent(tmp_path, monkeypat
             await settled(app)
             await pilot.pause()
             assert app.query("#plan-inline") and len(requests) == 2
+            assert str(app.query_one("#plan-layers", Static).render()) == "分层：1) a, c  2) b"
+            assert str(app.query_one("#plan-critical-path", Static).render()) == "关键路径：a → b"
             assert not (tmp_path / "done.txt").exists()
             await pilot.click("#plan-auto")
             await settled(app)
             assert (tmp_path / "done.txt").read_text() == "implemented"
-            assert len(requests) == 4 and not app.query("#plan-inline")
+            assert len(requests) == 5 and not app.query("#plan-inline")
             assert app.state["plan"]["mode"] == "completed"
 
 

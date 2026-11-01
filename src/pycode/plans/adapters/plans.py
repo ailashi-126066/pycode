@@ -3,8 +3,6 @@
 from langgraph.func import task
 from langgraph.types import interrupt
 
-from pycode.kernel import StorageError
-
 
 @task(name="pycode_plan_approval")
 async def plan_answer(payload):
@@ -12,14 +10,6 @@ async def plan_answer(payload):
 
 
 class InterruptPlanPrompt:
+    # validate_operation_answer has checked the answer before Command(resume) delivers it.
     async def ask(self, payload):
-        answer = await plan_answer(payload)
-        if (
-            not isinstance(answer, dict)
-            or answer.get("operation_id") != payload["operation_id"]
-            or answer.get("plan_id") != payload["plan_id"]
-        ):
-            raise StorageError("invalid_plan_answer", "Plan answer must identify the active review")
-        if answer.get("decision") not in {"auto", "review", "feedback"}:
-            raise StorageError("invalid_plan_answer", "Choose auto, review or feedback")
-        return answer
+        return await plan_answer(payload)

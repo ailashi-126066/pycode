@@ -3,8 +3,16 @@
 from dataclasses import replace
 from uuid import uuid4
 
-from pycode.kernel import EntryDraft, Message, SessionTree, ToolError, ToolResult, plain_data
-from pycode.plans.domain.plans import PlanState
+from pycode.kernel import (
+    EntryDraft,
+    Message,
+    SessionTree,
+    ToolError,
+    ToolResult,
+    plain_data,
+    work_graph,
+)
+from pycode.plans.domain.plans import PlanState, plan_board
 from pycode.plans.ports.plans import PlanFiles, QuestionPrompt
 
 
@@ -62,93 +70,57 @@ class PlanService:
             return False
         if state.mode in {"auto", "review"} and context.run_id != state.approved_run_id:
             state = await self.save(replace(state, mode="planning", approved_run_id=None))
+        writes_plan = (
+            call.name in {"write", "edit"} and call.arguments["path"] == state.virtual_path
+        )
         if state.mode == "planning":
-            if spec.category == "read":
-                return True
-            if call.name in {"write", "edit"} and call.arguments["path"] == state.virtual_path:
+            if spec.category == "read" or writes_plan:
                 return True
             raise ToolError(
                 "plan_read_only",
                 "Plan mode allows read/search, questions and the exact active Plan file only",
             )
-        try:
-            document = await self.files.read(state.plan_id)
-        except ToolError as error:
-            await self.save(
-                replace(state, mode="planning", approved_run_id=None, approved_hash=None)
-            )
-            raise ToolError(
-                "plan_changed",
-                "Approved Plan is no longer readable; restore it and request fresh approval",
-            ) from error
-        if document.sha256 != state.approved_hash:
-            await self.save(
-                replace(state, mode="planning", approved_run_id=None, approved_hash=None)
-            )
-            raise ToolError(
-                "plan_changed",
-                "Plan Markdown changed after approval; review and approve its new contents",
-            )
-        if call.name in {"write", "edit"} and call.arguments["path"] == state.virtual_path:
+        # The approved sha256 is recorded once; execution relies on this write ban alone.
+        if writes_plan:
             raise ToolError(
                 "approved_plan_read_only", "Approved Plan Markdown is fixed during execution"
             )
-        if state.mode == "auto" and spec.category in {"read", "write", "command"}:
-            return True
-        return False
+        return state.mode == "auto" and spec.category in {"read", "write", "command"}
 
     async def review(self, context):
         if self.state is None or self.state.mode != "planning":
             raise ToolError("not_in_plan_mode", "Enter Plan mode before requesting approval")
-        snapshot = await self.history.snapshot()
-        captured = None
-        for entry in snapshot.entries:
-            if entry.type == "plan_review" and entry.operation_id == context.operation_id:
-                captured = entry.data
-                break
-        if captured is None:
-            document = await self.files.read(self.state.plan_id)
-            captured = {
-                "plan_id": self.state.plan_id,
-                "content": document.content,
-                "sha256": document.sha256,
-                "virtual_path": self.state.virtual_path,
-                "storage_path": document.storage_path,
-                "original_mode": self.state.original_mode,
-                "branch_leaf_id": snapshot.leaf_id,
-            }
-            await self.history.append_entry(
-                EntryDraft(
-                    "plan_review",
-                    data=captured,
-                    run_id=context.run_id,
-                    operation_id=context.operation_id,
-                )
-            )
+        document = await self.files.read(self.state.plan_id)
+        board = plan_board(document.content, self.state.plan_id)
         answer = await self.prompt.ask(
             {
                 "kind": "plan",
                 "operation_id": context.operation_id,
                 "session_id": context.session_id,
                 "run_id": context.run_id,
-                **captured,
+                "plan_id": self.state.plan_id,
+                "virtual_path": self.state.virtual_path,
+                "content": document.content,
+                "sha256": document.sha256,
+                "layers": [list(layer) for layer in work_graph.layers(board)],
+                "critical_path": list(work_graph.critical_path(board)),
             }
         )
+        decision = {
+            "plan_id": self.state.plan_id,
+            "decision": answer["decision"],
+            "sha256": document.sha256,
+            "content": document.content,
+        }
         if answer["decision"] == "feedback":
-            feedback = answer.get("feedback", "").strip()
-            if not feedback:
-                raise ToolError("empty_plan_feedback", "Plan feedback must not be empty")
+            feedback = answer["feedback"].strip()
             await self.history.append_message(
                 Message("plan-feedback:" + context.operation_id, "user", feedback)
             )
             await self.history.append_entry(
                 EntryDraft(
                     "plan_decision",
-                    data={
-                        "plan_id": self.state.plan_id,
-                        "decision": "feedback",
-                        "feedback": feedback,
-                    },
+                    data={**decision, "feedback": feedback},
                     run_id=context.run_id,
                     operation_id=context.operation_id,
                 )
@@ -158,20 +130,11 @@ class PlanService:
                 "ExitPlanMode",
                 "Feedback recorded; revise the same Plan Markdown and request approval again",
             )
-        document = await self.files.read(self.state.plan_id)
-        if document.sha256 != captured["sha256"]:
-            raise ToolError(
-                "plan_changed", "Plan changed while awaiting approval; request a fresh review"
-            )
         mode = "auto" if answer["decision"] == "auto" else "review"
         await self.history.append_entry(
             EntryDraft(
                 "plan_decision",
-                data={
-                    "plan_id": self.state.plan_id,
-                    "decision": answer["decision"],
-                    "sha256": captured["sha256"],
-                },
+                data=decision,
                 run_id=context.run_id,
                 operation_id=context.operation_id,
             )
@@ -180,15 +143,19 @@ class PlanService:
             replace(
                 self.state,
                 mode=mode,
-                approved_hash=captured["sha256"],
+                approved_hash=document.sha256,
                 approved_run_id=context.run_id,
             )
         )
+        # The approved board is the execution task board (details.task_board, like TaskWrite).
         return ToolResult(
             context.call_id,
             "ExitPlanMode",
-            "Plan approved for this run: " + self.state.virtual_path,
-            details={"plan_id": self.state.plan_id, "sha256": captured["sha256"], "mode": mode},
+            "Plan approved for this run: "
+            + self.state.virtual_path
+            + "\n"
+            + work_graph.view(board),
+            details={"task_board": plain_data(board)},
         )
 
     async def finish(self, run_id):

@@ -31,6 +31,7 @@ EntryType = Literal[
     "thinking_level_change",
     "tool_set_change",
     "plan_state",
+    # plan_review: read-only, written before 11.1 section 33.1 #11.
     "plan_review",
     "plan_decision",
     "session_metadata",
