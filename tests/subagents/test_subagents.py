@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from pycode.kernel import Event, RunResult, ToolContext, ToolError
-from pycode.subagents.manager import SubagentManager
+from pycode.subagents.subagents import SubagentManager
 from pycode.subagents.tools import subagent_tools
 from pycode.subagents.types import Worktree
 
@@ -81,7 +81,7 @@ def completed(text):
 def setup(*results, worktrees=None, max_agents=4):
     sessions, events, notified = ChildSessions(*results), [], []
     manager = SubagentManager(
-        sessions,
+        sessions.open,
         worktrees or FakeWorktrees(),
         lambda agent: Events(agent, events, sessions.waiting),
         workspace="/project",

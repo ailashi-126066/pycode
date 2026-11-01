@@ -1,7 +1,8 @@
+# Pi 没有，pycode 新增
 """Agent, SendMessage and StopAgent: Claude Code's subagent tools."""
 
 from pycode.kernel import ToolContext, ToolResult, ToolSpec, plain_data
-from pycode.subagents.manager import SubagentManager, result_text
+from pycode.subagents.subagents import SubagentManager, result_text
 from pycode.subagents.types import Subagent
 
 # Slug: lowercase letters, digits and hyphens, at most 64 characters.
