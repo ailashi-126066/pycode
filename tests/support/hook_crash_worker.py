@@ -1,4 +1,4 @@
-"""Inject real process exit after a configured command Hook result is confirmed."""
+"""Inject real process exit right after a configured command Hook finished."""
 
 import asyncio
 import json
@@ -26,7 +26,7 @@ async def main():
 
     class CrashConsumer:
         async def consume(self, event):
-            if event.kind == "tool_execution_end" and event.data["name"] == "hook__mark":
+            if event.kind == "notification" and event.data.get("hook_id") == "mark":
                 os._exit(81)
 
     config = AppConfig(Path(request["workspace"]), Path(request["data"]), memory_mode="off")

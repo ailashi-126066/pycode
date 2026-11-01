@@ -47,7 +47,9 @@ async def test_tui_hook_rejects_tool_and_app_lifecycle_uses_same_event_source(
             await settled(app)
             assert app.last_error is None and not app.query("#perm-inline")
             assert not (tmp_path / "parent.txt").exists() and len(requests) == 2
-            assert any(entry["type"] == "hook_result" for entry in app.state["snapshot"]["entries"])
+            assert any(
+                entry["type"] == "hook_context" for entry in app.state["snapshot"]["entries"]
+            )
         assert (tmp_path / "closed.txt").read_text() == "closed"
 
 

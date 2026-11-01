@@ -2,6 +2,7 @@
 
 import asyncio
 from collections import deque
+from dataclasses import replace
 
 from pycode.kernel.domain.errors import StorageError
 from pycode.kernel.domain.events import Event
@@ -16,12 +17,13 @@ class MemoryEventJournal:
         self.sequences: dict[tuple[str, str], int] = {}
         self.lock = asyncio.Lock()
 
-    async def append_event(self, session_id, run_id, kind, data, *, operation_id=None):
+    async def append_event(self, event: Event) -> Event:
+        """Number the event within its (session, run); several streams may share one run."""
         async with self.lock:
-            key = (session_id, run_id)
+            key = (event.session_id, event.run_id)
             sequence = self.sequences.get(key, 0) + 1
             self.sequences[key] = sequence
-            event = Event(sequence, session_id, run_id, kind, clone_value(data), operation_id)
+            event = replace(event, sequence=sequence, data=clone_value(event.data))
             self.events.append(event)
             return clone_value(event)
 

@@ -235,9 +235,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 await context.events.emit(
                     "turn_end", {"turn": request.state["turn"], "message_id": context.assistant.id}
                 )
-                await self.lifecycle(
-                    context, "turn_end", context.assistant.id, message=context.assistant.text
-                )
+                await self.lifecycle(context, "turn_end", message=context.assistant.text)
         assert result.operation_id is not None
         message = self.converter(
             Message("result:" + result.operation_id, "tool_result", tool_result=result),
@@ -304,6 +302,10 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             if state.status == "validating":
                 # Only the permission gate interrupts before execution starts.
                 state.apply("request_approval")
+                if context.executor.hooks is not None:
+                    await context.executor.hooks.fire(
+                        "permission_request", tool_context, call, spec
+                    )
             async with context.settlement:
                 context.interrupted_calls.add(call.id)
                 await self.settle_ready(context)

@@ -67,22 +67,22 @@ async def test_upstream_echo_result_and_event_contract():
     assert result.text == "echoed: hello"
     assert [event.kind for event in recorder.events] == [
         "tool_execution_start",
-        "tool_action_start",
-        "tool_action_end",
+        "tool_execution_update",
     ]
+    assert recorder.events[1].data["state"] == "running"
     # Execution does not announce completion before the settlement owner saves it.
     await executor.emit_tool_execution_end(
         context, ToolCall("tool-1", "echo", {"value": "hello"}), result
     )
     assert [event.kind for event in recorder.events] == [
         "tool_execution_start",
-        "tool_action_start",
-        "tool_action_end",
+        "tool_execution_update",
         "tool_execution_end",
     ]
     assert all(event.operation_id == "operation-1" for event in recorder.events)
     end = recorder.events[-1].data
     assert (end["status"], end["outcome"]) == ("settled", "completed")
+    assert (end["tool_call_id"], end["result"]["text"]) == ("tool-1", "echoed: hello")
     assert isinstance(end["duration_ms"], int)
 
 
@@ -247,5 +247,5 @@ async def test_updates_after_the_tool_returned_are_dropped():
     executor, context, tool, recorder = make_executor(LateUpdates())
     await executor.execute(context, ToolCall("tool-1", "echo", {"value": "x"}), "tool_use")
     await tool.progress("after")
-    updates = [e.data["text"] for e in recorder.events if e.kind == "tool_execution_update"]
+    updates = [e.data["delta"] for e in recorder.events if "delta" in e.data]
     assert updates == ["during"]

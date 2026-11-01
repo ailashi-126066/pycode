@@ -16,15 +16,7 @@ class EventSink(Protocol):
 
 
 class EventJournal(Protocol):
-    async def append_event(
-        self,
-        session_id: str,
-        run_id: str,
-        kind: EventKind,
-        data: dict[str, Any],
-        *,
-        operation_id: str | None = None,
-    ) -> Event: ...
+    async def append_event(self, event: Event) -> Event: ...
 
     async def list_events(
         self,

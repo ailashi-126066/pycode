@@ -82,7 +82,13 @@ def test_prompt_streams_one_terminal_result_after_history_and_checkpoint_with_al
         assert events[-1]["data"]["final_text"] == "done"
         assert events[-1]["data"]["usage"]["main_turn"]["tokens"]["input_tokens"] == 20
         assert events[-1]["data"]["usage"]["main_turn"]["tokens"]["output_tokens"] == 5
-        assert any(row["type"] == "usage" for row in events)
+        assert {row["type"] for row in events} >= {"agent_start", "turn_start", "message_update"}
+        reply = next(
+            row["data"]["message"]
+            for row in events
+            if row["type"] == "message_end" and row["data"]["message"]["role"] == "assistant"
+        )
+        assert reply["usage"]["output_tokens"] == 5 and "duration_ms" in reply
         run_id = events[-1]["run_id"]
         assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
         snapshot = asyncio.run(read_session(tmp_path))

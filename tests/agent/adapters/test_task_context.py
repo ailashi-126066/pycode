@@ -100,7 +100,7 @@ async def test_task_update_and_native_tool_call_share_one_response(disclosed_too
     assert "current_task" in second_request and "定位并验证" in second_request
     assert "recent_execution_observations" in second_request and "tool-1" in second_request
     displayed = "".join(
-        event.data["text"] for event in recorder.events if event.kind == "message_delta"
+        event.data["delta"] for event in recorder.events if event.kind == "message_update"
     )
     assert displayed == "先定位问题已定位"
     assert "task_action" not in displayed
@@ -118,7 +118,8 @@ async def test_invalid_envelope_cannot_execute_its_tool_calls(text, disclosed_to
     assert not tool.executed
     assert len(journal.messages) == 1
     assert (
-        next(e for e in recorder.events if e.kind == "error").data["code"] == "invalid_task_output"
+        next(e for e in recorder.events if e.kind == "agent_end").data["error_code"]
+        == "invalid_task_output"
     )
 
 

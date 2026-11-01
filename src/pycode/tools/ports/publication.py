@@ -14,5 +14,5 @@ ContextT = TypeVar("ContextT", contravariant=True)
 
 class ToolLifecycle(Protocol[ContextT]):
     async def __call__(
-        self, context: ContextT, event: str, boundary: str, *, message: str = "", error: str = ""
+        self, context: ContextT, event: str, *, message: str = "", error: str = ""
     ) -> None: ...

@@ -29,7 +29,7 @@ def reply(*calls, identifier="a1"):
 
 def lifecycle(recorder):
     return Counter(
-        (event.kind, event.data["call_id"])
+        (event.kind, event.data["tool_call_id"])
         for event in recorder.events
         if event.kind in {"tool_execution_start", "tool_execution_end"}
     )
@@ -37,7 +37,7 @@ def lifecycle(recorder):
 
 def outcomes(recorder):
     return {
-        event.data["call_id"]: event.data["outcome"]
+        event.data["tool_call_id"]: event.data["outcome"]
         for event in recorder.events
         if event.kind == "tool_execution_end"
     }

@@ -232,10 +232,7 @@ class AgentTeam:
         }
 
     async def emit(self, kind, data):
-        try:
-            await self.events.emit("team", {"type": kind, **data})
-        except Exception:
-            _LOG.warning("Team event delivery failed", exc_info=True)
+        await self.events.emit("subagent", {"type": kind, **data})
 
     def own(self, coroutine, *, context=None):
         task = asyncio.create_task(coroutine, context=context)
@@ -540,72 +537,64 @@ class AgentTeam:
             return
         execution.sequences[key] = event.sequence
         kind, data = event.kind, event.data
-        if kind in {"model_request_start", "model_request_end"} and data["purpose"] not in {
-            "agent",
-            "subagent",
-        }:
-            return
         accepted = {
-            "model_request_start",
-            "model_request_end",
-            "message_delta",
-            "thinking_delta",
-            "tool_action_start",
-            "tool_action_end",
+            "message_start",
+            "message_update",
+            "message_end",
             "tool_execution_update",
             "tool_execution_end",
             "needs_input",
-            "error",
+            "agent_end",
             "turn_start",
             "turn_end",
         }
         if kind not in accepted:
             return
+        if kind in {"message_start", "message_end"} and data["message"]["role"] != "assistant":
+            return
         now = time.time()
         steps = dict(record["active_steps"])
         phase = record["phase"]
         operation = event.operation_id
-        if kind == "model_request_start":
+        if kind == "message_start":
             steps[data["request_id"]] = {
                 "kind": "model",
-                "name": data["model_id"],
+                "name": data["message"]["model_selection"]["model_id"],
                 "started_at": now,
                 "deadline_at": None,
             }
             phase = "model"
-        elif kind == "model_request_end":
-            steps.pop(data["request_id"], None)
-            phase = "running"
-        elif kind in {"message_delta", "thinking_delta"}:
-            if (
-                not (data.get("text") or data.get("output_activity"))
-                or data.get("request_id") not in steps
-            ):
+        elif kind == "message_end":
+            steps = {key: step for key, step in steps.items() if step["kind"] != "model"}
+            phase = "tool" if steps else "running"
+        elif kind == "message_update":
+            if data["request_id"] not in steps:
                 return
-        elif kind == "tool_action_start":
+        elif kind == "tool_execution_update" and data.get("state") == "running":
             limit = data["timeout"]
             steps[operation] = {
                 "kind": "tool",
-                "name": data["name"],
+                "name": data["tool_name"],
                 "started_at": now,
                 "deadline_at": now + limit if limit is not None else None,
             }
             phase = "tool"
-            if data["name"] == "bash" and record["worktree_id"]:
+            if data["tool_name"] == "bash" and record["worktree_id"]:
                 execution.source_versions[operation] = await self.worktrees.version(
                     record["worktree_id"]
                 )
-        elif kind == "tool_action_end":
+        elif kind == "tool_execution_update":
+            if not data.get("delta") or operation not in steps:
+                return
+        elif kind == "tool_execution_end":
             steps.pop(operation, None)
             phase = "tool" if steps else "running"
-        elif kind == "tool_execution_update":
-            if not data.get("text") or operation not in steps:
-                return
         elif kind == "needs_input":
             phase = "approval"
             steps = {}
-        elif kind == "error":
-            execution.failure_code = data.get("code")
+        elif kind == "agent_end":
+            if "error_code" in data:
+                execution.failure_code = data["error_code"]
             return
         # Activity has one timestamp in the same TeamState. No per-token session Store writes.
         current = self.records[identifier]
@@ -639,15 +628,15 @@ class AgentTeam:
                 task = self.board.records[record["task_id"]]
                 evidence = {
                     **task["evidence"],
-                    data["call_id"]: {
-                        "name": data["name"],
+                    data["tool_call_id"]: {
+                        "name": data["tool_name"],
                         "source_tree": source,
-                        "passed": not data["is_error"] and data.get("exit_code") in {None, 0},
+                        "passed": not data["is_error"] and data["result"]["exit_code"] in {None, 0},
                         "operation_id": operation,
                     },
                 }
                 await self.commit(tasks=[{**task, "evidence": evidence}])
-        if kind not in {"message_delta", "thinking_delta", "tool_execution_update"}:
+        if kind not in {"message_update", "tool_execution_update"}:
             async with self.lock:
                 current = self.records[identifier]
                 if current["generation"] == generation and current["status"] in {

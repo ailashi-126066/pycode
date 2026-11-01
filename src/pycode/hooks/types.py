@@ -3,11 +3,12 @@
 # Source: MewCode local hooks/conditions.py and models.py; fixed SHA in docs/source-map.md.
 # SHA-256 conditions: d11485198df8f4ebf76a009c4b13eaf51883ae0a1bbc14f734779d684817f870
 # SHA-256 models: 0a07d8f977875f523398ca5972eb11c1be0a074df7045711e758f92bfb416e19
-# Adaptation: immutable native records, validated conditions and stable boundary identities.
+# Adaptation: immutable native records; conditions compile and evaluate in process.
 # 来源：公众号@小林coding
 # 后端八股网站：xiaolincoding.com
 # Agent网站：xiaolinnote.com
 # 简历模版：jianli.xiaolinnote.com
+import fnmatch
 import re
 from dataclasses import dataclass, field
 
@@ -17,8 +18,8 @@ HOOK_EVENTS = frozenset(
     {
         "startup",
         "shutdown",
-        "session_start",
-        "session_end",
+        "run_start",
+        "run_end",
         "turn_start",
         "turn_end",
         "pre_send",
@@ -28,10 +29,16 @@ HOOK_EVENTS = frozenset(
         "compact",
         "permission_request",
         "file_change",
-        "command_execute",
         "error",
     }
 )
+# 11.1 section 21 #8: old names are configuration errors that name the replacement.
+RENAMED_EVENTS = {
+    "session_start": "run_start",
+    "session_end": "run_end",
+    "command_execute": 'pre_tool_use with "if": "tool == \\"bash\\""',
+}
+MAX_PATTERN_LENGTH = 256
 
 
 @dataclass(frozen=True)
@@ -39,12 +46,43 @@ class HookCondition:
     field: str
     operator: str
     value: str
+    # Compiled once when the configuration loads; =~ conditions only.
+    pattern: re.Pattern[str] | None = field(
+        default=None, compare=False, metadata={"serialize": False}
+    )
+
+    def matches(self, fields: dict[str, str]) -> bool:
+        value = fields.get(self.field, "")
+        if self.operator == "==":
+            return value == self.value
+        if self.operator == "!=":
+            return value != self.value
+        if self.operator == "~=":
+            return fnmatch.fnmatch(value, self.value)
+        assert self.pattern is not None
+        return self.pattern.search(value) is not None
 
 
 @dataclass(frozen=True)
 class HookConditionGroup:
     conditions: tuple[HookCondition, ...]
     logic: str = "and"
+
+    def matches(self, fields: dict[str, str]) -> bool:
+        results = (condition.matches(fields) for condition in self.conditions)
+        return all(results) if self.logic == "and" else any(results)
+
+
+def compile_pattern(value):
+    if value.startswith("/") and value.endswith("/"):
+        value = value[1:-1]
+    # Regexes run in process; a length limit keeps a hostile pattern small.
+    if len(value) > MAX_PATTERN_LENGTH:
+        raise DomainError("invalid_hook_condition", "Regex condition exceeds 256 characters")
+    try:
+        return re.compile(value)
+    except re.error as error:
+        raise DomainError("invalid_hook_condition", "Invalid regex condition") from error
 
 
 def parse_condition(expression):
@@ -64,7 +102,8 @@ def parse_condition(expression):
                 raise DomainError("invalid_hook_condition", "Condition needs a field and value")
             if value.startswith('"') and value.endswith('"'):
                 value = value[1:-1]
-            conditions.append(HookCondition(key, operator, value))
+            pattern = compile_pattern(value) if operator == "=~" else None
+            conditions.append(HookCondition(key, operator, value, pattern))
             break
         else:
             raise DomainError("invalid_hook_condition", "No valid operator in condition")
@@ -95,7 +134,6 @@ class HookContext:
     session_id: str
     run_id: str
     workspace: str
-    boundary_id: str
     event_name: str
     tool_name: str = ""
     tool_args: dict = field(default_factory=dict)

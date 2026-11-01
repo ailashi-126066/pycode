@@ -89,7 +89,7 @@ async def test_failed_reply_is_saved_with_message_end_and_retry_start_carries_at
     starts = [
         event.data
         for event in recorder.events
-        if event.kind == "message_start" and event.data["role"] == "assistant"
+        if event.kind == "message_start" and event.data["message"]["role"] == "assistant"
     ]
     # The failed attempt never produced a chunk, so only the retry announced itself.
     assert [start["attempt"] for start in starts] == [1]
@@ -102,9 +102,13 @@ async def test_failed_reply_is_saved_with_message_end_and_retry_start_carries_at
         "error",
         "provider_http_401",
     )
-    ends = [event.data for event in recorder.events if event.kind == "message_end"]
+    ends = [event.data["message"] for event in recorder.events if event.kind == "message_end"]
     assert ends[-1]["id"] == failed.id and ends[-1]["stop_reason"] == "error"
-    kinds = [(event.kind, event.data.get("id")) for event in recorder.events]
+    kinds = [
+        (event.kind, event.data["message"].get("id"))
+        for event in recorder.events
+        if event.kind in {"message_start", "message_end"}
+    ]
     assert kinds.index(("message_start", failed.id)) < kinds.index(("message_end", failed.id))
 
 

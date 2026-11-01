@@ -95,6 +95,7 @@ async def build_runtime(
             options.run_id,
             session.consumers,
             journal=session.event_journal or event_store,
+            agent_id=config.agent_id if options.agent_id == "lead" else options.agent_id,
         )
         snapshots = modules.snapshots.store()
         gate = modules.tools.gate(
@@ -126,11 +127,8 @@ async def build_runtime(
                 session.configured_hooks,
                 session.history_store,
                 actions,
-                outputs,
                 events,
                 modules=modules,
-                snapshots=snapshots,
-                plans=session.plans,
                 read_only=config.read_only,
             )
         executor = modules.tools.executor(

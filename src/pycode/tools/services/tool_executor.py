@@ -43,7 +43,7 @@ class ToolExecutor:
         if state.status == "issued":
             await self.events.emit(
                 "tool_execution_start",
-                {"call_id": call.id, "name": call.name},
+                {"tool_call_id": call.id, "tool_name": call.name, "args": call.arguments},
                 operation_id=context.operation_id,
             )
             state.apply("validate")
@@ -58,7 +58,7 @@ class ToolExecutor:
                 return
             await self.events.emit(
                 "tool_execution_update",
-                {"call_id": call.id, "name": call.name, "text": text},
+                {"tool_call_id": call.id, "tool_name": call.name, "delta": text},
                 operation_id=context.operation_id,
             )
 
@@ -86,21 +86,19 @@ class ToolExecutor:
             arguments = self.validator.convert(spec.input_schema, arguments)
             self.validator.validate(spec.input_schema, arguments)
             hook_call = replace(call, arguments=arguments)
-            if self.hooks is not None:
+            # A resumed approval already passed pre_tool_use before it was interrupted.
+            if self.hooks is not None and state.status == "validating":
                 rejected = await self.hooks.fire("pre_tool_use", context, hook_call, spec)
                 if rejected is not None:
                     raise ToolError("hook_rejected", rejected)
-                if spec.category != "read":
-                    await self.hooks.fire("permission_request", context, hook_call, spec)
-            # A permission interrupt leaves the call awaiting_approval (set by settlement);
-            # the resumed authorize returns only when the user approved.
+            # A permission interrupt leaves the call awaiting_approval (set by settlement,
+            # which also fires permission_request); the resumed authorize returns only
+            # when the user approved.
             await self.gate.authorize(context, spec, hook_call)
             if state.status == "awaiting_approval":
                 state.apply("approve")
             elif state.status == "validating":
                 state.apply("run")
-            if self.hooks is not None and spec.category == "command":
-                await self.hooks.fire("command_execute", context, hook_call, spec)
             if (
                 self.snapshots is not None
                 and spec.source != "memory"
@@ -117,10 +115,11 @@ class ToolExecutor:
                 assert spec is not None
                 timeout = arguments.get("timeout", 120) if spec.name == "bash" else None
                 await self.events.emit(
-                    "tool_action_start",
+                    "tool_execution_update",
                     {
-                        "name": call.name,
-                        "category": spec.category,
+                        "tool_call_id": call.id,
+                        "tool_name": call.name,
+                        "state": "running",
                         "timeout": timeout,
                     },
                     operation_id=context.operation_id,
@@ -131,9 +130,6 @@ class ToolExecutor:
                     return await invoke(context, call, spec)
                 finally:
                     accepting_updates = False
-                    await self.events.emit(
-                        "tool_action_end", {"name": call.name}, operation_id=context.operation_id
-                    )
 
             result = await self.error_boundary(replace(call, name=result_name), spec, action)
         result = replace(result, call_id=call.id, name=result_name)
@@ -146,11 +142,6 @@ class ToolExecutor:
         if self.outputs is not None:
             mode = "tail" if call.name.lower() in {"bash", "command"} else "head"
             result = await self.outputs.prepare(context, result, mode)
-            await self.events.emit(
-                "tool_output_ready",
-                {"call_id": result.call_id, "name": result.name},
-                operation_id=context.operation_id,
-            )
         if before is not None:
             assert self.snapshots is not None
             try:
@@ -182,7 +173,10 @@ class ToolExecutor:
         await self.events.emit(
             "tool_execution_end",
             {
-                **plain_data(result),
+                "tool_call_id": call.id,
+                "tool_name": call.name,
+                "result": plain_data(result),
+                "is_error": result.is_error,
                 "status": state.status,
                 "outcome": state.outcome,
                 "duration_ms": round((time.monotonic() - state.began) * 1000),

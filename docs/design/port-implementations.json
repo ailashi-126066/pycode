@@ -62,21 +62,6 @@
       "kind": "class"
     },
     {
-      "port": "pycode.hooks.contracts.HookExecution",
-      "implementation": "pycode.tools.services.tool_executor.ToolExecutor",
-      "kind": "class"
-    },
-    {
-      "port": "pycode.hooks.contracts.HookPlanGuard",
-      "implementation": "pycode.plans.services.plans.PlanService",
-      "kind": "class"
-    },
-    {
-      "port": "pycode.hooks.contracts.HookExecutorFactory",
-      "implementation": "pycode.app.composition.hooks.build_hook_engine",
-      "kind": "factory"
-    },
-    {
       "port": "pycode.kernel.ports.history.MessageJournal",
       "implementation": "pycode.session.adapters.storage.session.SqliteSessionStore",
       "kind": "class"

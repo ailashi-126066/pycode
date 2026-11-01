@@ -90,9 +90,6 @@ def upgrade_entry(payload: dict) -> dict:
     # 11.1 section 31: output_id gave way to details["full_output_path"].
     if isinstance(message, dict) and message["tool_result"] is not None:
         message["tool_result"].pop("output_id", None)
-    if payload["type"] == "hook_result":
-        payload["data"]["result"].pop("terminate", None)
-        payload["data"]["result"].pop("output_id", None)
     return payload
 
 
@@ -139,25 +136,6 @@ def validate_entry(entry: SessionEntry) -> None:
     # Unknown entry types are rejected by the EntryType Literal during validation.
     if entry.type == "custom" and entry.data.get("kind") not in get_args(CustomKind):
         raise ValueError("Unknown custom entry kind")
-    if entry.type == "hook_result":
-        reject_unknown_fields(entry.data.get("result"), ToolResult)
-    if entry.type == "hook_call":
-        hook = entry.data.get("hook")
-        if not isinstance(hook, dict) or set(hook) != {
-            "id",
-            "event",
-            "action",
-            "condition",
-            "reject",
-            "once",
-            "source",
-        }:
-            raise ValueError("Unsupported Hook record format")
-        action = hook["action"]
-        if not isinstance(action, dict) or set(action) != {"type", "command", "message", "timeout"}:
-            raise ValueError("Unsupported Hook action format")
-        if action["type"] not in {"command", "prompt"}:
-            raise ValueError("Unsupported Hook action")
     if entry.type == "custom" and entry.data.get("kind") == "run_start":
         owner = entry.data.get("execution_session_id")
         if not isinstance(owner, str) or not owner:

@@ -264,12 +264,13 @@ class AgentRuntime:
             await self.collect_tools(context)
             if context.summary is not None:
                 await context.summary.cancel_background()
-            await context.events.emit("agent_end", {"outcome": "aborted"})
+            await context.events.emit("agent_end", {"reason": "aborted"})
             raise
         except (ModelError, GraphRecursionError) as error:
             code = error.code if isinstance(error, ModelError) else "framework_execution_limit"
-            await context.events.emit("error", {"code": code, "message": str(error)})
-            await context.events.emit("agent_end", {"outcome": "error"})
+            await context.events.emit(
+                "agent_end", {"reason": "error", "error_code": code, "error": str(error)}
+            )
             return RunResult("error", "", tuple(context.completed))
         except BaseException:
             await self.collect_tools(context)

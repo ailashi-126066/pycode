@@ -17,7 +17,7 @@ class Crash:
         self._boundary = boundary
 
     async def consume(self, event):
-        if event.kind == "summary" and event.data.get("status") == self._boundary:
+        if event.kind == "compaction" and event.data.get("status") == self._boundary:
             os._exit(74)
         if (
             self._boundary == "request_started"

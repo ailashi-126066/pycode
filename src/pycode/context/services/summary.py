@@ -96,7 +96,7 @@ class SummaryService:
             except StorageError as error:
                 await self._objects.invalidate(entry.data["job_id"], "corrupt")
                 await self._events.emit(
-                    "summary",
+                    "compaction",
                     {"job_id": entry.data["job_id"], "status": "invalid", "error_code": error.code},
                 )
                 continue
@@ -160,7 +160,7 @@ class SummaryService:
         if self._source is not None and self._source.job_id == source.job_id:
             self._result = result
         await self._events.emit(
-            "summary",
+            "compaction",
             {"job_id": source.job_id, "status": result.status, "error_code": result.error_code},
         )
 
@@ -232,7 +232,7 @@ class SummaryService:
                 name="pycode-summary-" + source.job_id,
                 context=contextvars.Context(),
             )
-            await self._events.emit("summary", {"job_id": source.job_id, "status": "generating"})
+            await self._events.emit("compaction", {"job_id": source.job_id, "status": "generating"})
 
     async def apply_prepared(self, check):
         if self._task is not None and (check.manual or check.wait_for_capacity):
@@ -303,7 +303,7 @@ class SummaryService:
             )
         await self._history.append_entry(EntryDraft("compaction", id=identifier, data=data))
         await self._events.emit(
-            "summary", {"job_id": source.job_id, "status": "applied", "context_tokens": tokens}
+            "compaction", {"job_id": source.job_id, "status": "applied", "context_tokens": tokens}
         )
         await self._objects.invalidate(source.job_id, "adopted")
         self._source = self._result = self._task = None

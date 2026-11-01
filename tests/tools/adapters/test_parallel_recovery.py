@@ -141,7 +141,9 @@ async def test_later_call_is_not_prepared_while_an_earlier_call_waits_for_permis
     # Pi prepares parallel calls one by one: c2 neither runs nor starts while c1 awaits approval.
     assert pending.outcome == "needs_input" and len(pending.pending) == 1 and tool.executed == 0
     assert not [item for item in journal.messages if item.tool_result]
-    assert [e.data["call_id"] for e in events.events if e.kind == "tool_execution_start"] == ["c1"]
+    assert [e.data["tool_call_id"] for e in events.events if e.kind == "tool_execution_start"] == [
+        "c1"
+    ]
     question = pending.pending[0]
     result = await asyncio.wait_for(
         runtime.resume(context, {"operation_id": question["operation_id"], "decision": "approve"}),
@@ -153,11 +155,11 @@ async def test_later_call_is_not_prepared_while_an_earlier_call_waits_for_permis
         "c2",
     ]
     assert len(model.requests) == 2
-    starts = [e.data["call_id"] for e in events.events if e.kind == "tool_execution_start"]
+    starts = [e.data["tool_call_id"] for e in events.events if e.kind == "tool_execution_start"]
     assert starts == ["c1", "c2"]
     for event in events.events:
         if event.kind == "tool_execution_end":
-            assert event.operation_id == event.data["operation_id"]
+            assert event.operation_id == event.data["result"]["operation_id"]
 
 
 async def test_unrelated_prior_failure_does_not_serialize_two_parallel_reads():

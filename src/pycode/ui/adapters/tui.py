@@ -277,22 +277,22 @@ class PyApp(App):
         event = message.event
         if self._closed or event.session_id != self.session_id:
             return
-        if event.kind == "team":
+        if event.kind == "subagent":
             await self.refresh_state()
-            if event.data.get("type") == "wake":
+            if event.data["type"] == "wake":
                 self.maybe_wake_team()
-        elif event.kind == "message_start" and event.data.get("role") == "assistant":
+        elif event.kind == "message_start" and event.data["message"]["role"] == "assistant":
             self._live_text = self._live_thinking = ""
             await self.start_live_reply()
-        elif event.kind == "message_delta":
-            self._live_text += event.data["text"]
+        elif event.kind == "message_update" and event.data["kind"] == "text":
+            self._live_text += event.data["delta"]
             if self._live_phase is not None:
                 self._live_phase.update("PYCODE")
             if self._live_text_widget is not None:
                 self._live_text_widget.update(self._live_text)
             self.follow_conversation()
-        elif event.kind == "thinking_delta":
-            self._live_thinking += event.data["text"]
+        elif event.kind == "message_update":
+            self._live_thinking += event.data["delta"]
             if self._live_thinking_widget is not None:
                 self._live_thinking_widget.display = True
                 self._live_thinking_widget.update(
@@ -300,49 +300,39 @@ class PyApp(App):
                 )
             self.follow_conversation()
         elif event.kind == "message_end":
-            if event.data.get("role") == "assistant":
+            role = event.data["message"]["role"]
+            if role == "assistant":
                 await self.clear_live_reply()
             await self.render_history()
-            if event.data.get("role") == "user":
+            if role == "user":
                 self.follow_conversation(force=True)
         elif event.kind == "tool_execution_start":
-            identifier = event.data["call_id"]
-            if identifier not in self._running_tools:
-                body = Static("正在运行…", markup=False, classes="message-usage")
-                card = Collapsible(
-                    body,
-                    title=event.data["name"] + " · 运行中",
-                    collapsed=True,
-                    classes="tool-block",
-                )
-                await self.transcript().mount(card)
-                self._running_tools[identifier] = (card, body)
-                self.follow_conversation()
-        elif event.kind == "tool_execution_update":
-            running = self._running_tools.get(event.data.get("call_id"))
-            if running is not None:
-                _, body = running
-                body.update("最近输出：\n" + tool_preview(event.data.get("text", "正在运行…")))
-        elif event.kind == "tool_execution_end":
-            running = self._running_tools.pop(event.data["call_id"], None)
-            if running is not None:
-                card, _ = running
-                await card.remove()
-        elif event.kind == "usage":
-            # Usage belongs under the completed assistant reply.  It is rendered
-            # from durable history at message_end instead of flashing in the footer.
-            return
-        elif event.kind == "error":
-            self.notice(event.data["message"], "error")
-        elif event.kind == "summary":
-            self.notice("上下文整理：" + event.data.get("status", ""))
-        elif event.kind == "notification" and event.data.get("kind") == "hook":
-            self.notice(
-                event.data["message"],
-                "error"
-                if event.data.get("error_code") or event.data.get("success") is False
-                else None,
+            # One card per call: mounted at start, removed at the matching end.
+            body = Static("正在运行…", markup=False, classes="message-usage")
+            card = Collapsible(
+                body,
+                title=event.data["tool_name"] + " · 运行中",
+                collapsed=True,
+                classes="tool-block",
             )
+            await self.transcript().mount(card)
+            self._running_tools[event.data["tool_call_id"]] = (card, body)
+            self.follow_conversation()
+        elif event.kind == "tool_execution_update" and "delta" in event.data:
+            # A call approved after reopening the session ends without a start here.
+            running = self._running_tools.get(event.data["tool_call_id"])
+            if running is not None:
+                running[1].update("最近输出：\n" + tool_preview(event.data["delta"]))
+        elif event.kind == "tool_execution_end":
+            running = self._running_tools.pop(event.data["tool_call_id"], None)
+            if running is not None:
+                await running[0].remove()
+        elif event.kind == "agent_end" and "error" in event.data:
+            self.notice(event.data["error"], "error")
+        elif event.kind == "compaction":
+            self.notice("上下文整理：" + event.data["status"])
+        elif event.kind == "notification" and event.data["kind"] == "hook":
+            self.notice(event.data["message"], None if event.data["success"] else "error")
         elif event.kind == "result":
             self.notice("")
 

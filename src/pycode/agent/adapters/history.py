@@ -88,12 +88,12 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
 
     async def abefore_agent(self, state, runtime):
         context = runtime.context
-        await self.bindings.run_hook(context, "session_start", context.run_id)
+        await self.bindings.run_hook(context, "run_start")
         await context.events.emit("agent_start", {})
         await context.events.emit("turn_start", {"turn": 1})
         for message in context.initial_inputs:
-            await context.events.emit("message_start", plain_data(message))
-            await context.events.emit("message_end", plain_data(message))
+            await context.events.emit("message_start", {"message": plain_data(message)})
+            await context.events.emit("message_end", {"message": plain_data(message)})
 
     async def abefore_model(self, state, runtime):
         context = runtime.context
@@ -106,7 +106,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 current.summary.set_tools(current.model_tools or current.registry.model_specs())
                 summary = await current.summary.prepare()
                 if summary.applied_job_id is not None:
-                    await self.bindings.run_hook(current, "compact", summary.applied_job_id)
+                    await self.bindings.run_hook(current, "compact")
             if current.eviction is not None:
                 await current.eviction.apply(
                     protected_entry_ids=summary.protected_entry_ids if summary else ()
@@ -125,7 +125,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
 
         async def project_turn(pending):
             turn = state.get("turn", 0) + 1
-            await self.bindings.run_hook(context, "turn_start", f"{context.run_id}:turn-{turn}")
+            await self.bindings.run_hook(context, "turn_start")
             if turn > 1:
                 await context.events.emit("turn_start", {"turn": turn})
             updates: dict[str, Any] = {"turn": turn}
@@ -151,7 +151,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         context = request.runtime.context
         state = cast(PycodeState, request.state)
         boundary = f"{context.run_id}:model-{state['turn']}"
-        await self.bindings.run_hook(context, "pre_send", boundary)
+        await self.bindings.run_hook(context, "pre_send")
         projection = None
         if context.history_store is not None:
             projection = await self.current_projection(context)
@@ -261,7 +261,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         context.ready_results.clear()
         context.settled_calls.clear()
         context.turn_end_sent = False
-        await self.bindings.run_hook(context, "post_receive", message.id, message=message.text)
+        await self.bindings.run_hook(context, "post_receive", message=message.text)
         if assistant.invalid_tool_calls:
             calls = list(assistant.tool_calls)
             for call in message.tool_calls:
@@ -293,7 +293,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             outcome = "output_limit"
         if not message.tool_calls:
             await context.events.emit("turn_end", {"turn": state["turn"], "message_id": message.id})
-            await self.bindings.run_hook(context, "turn_end", message.id, message=message.text)
+            await self.bindings.run_hook(context, "turn_end", message=message.text)
         updates = {
             "outcome": outcome,
             "final_text": message.text,
@@ -331,9 +331,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             context.inputs = await context.durable_inputs.pending(context.run_id)
         kind, pending = take_queued(context)
         if not pending:
-            await self.bindings.run_hook(
-                context, "session_end", context.run_id, message=state.get("final_text", "")
-            )
+            await self.bindings.run_hook(context, "run_end", message=state.get("final_text", ""))
             if context.durable_inputs is not None:
                 context.inputs = await context.durable_inputs.finish_boundary(context.run_id)
                 kind, pending = take_queued(context)
@@ -343,4 +341,4 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 await deliver_input(context, message, kind)
                 framework.append(self.bindings.to_framework(message, context.selection))
             return {"messages": framework, "outcome": "running", "jump_to": "model"}
-        await context.events.emit("agent_end", {"outcome": state.get("outcome", "completed")})
+        await context.events.emit("agent_end", {"reason": state.get("outcome", "completed")})

@@ -17,6 +17,7 @@ EntryType = Literal[
     "compaction",
     "context_edit",
     "fork_context",
+    # hook_call/hook_result: read-only, written before 11.1 section 33.1 #3.
     "hook_call",
     "hook_result",
     "hook_context",

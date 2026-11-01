@@ -78,7 +78,7 @@ class ConfiguredRuntimeLauncher:
         engine = self._hook_factory(self, store, snapshot, lifetime)
         self._lifecycle_engine = engine
         self._lifecycle_context = HookContext(
-            snapshot.header.session_id, lifetime, str(self.config.workspace), lifetime, "startup"
+            snapshot.header.session_id, lifetime, str(self.config.workspace), "startup"
         )
         await engine.fire(self._lifecycle_context)
 
@@ -238,7 +238,6 @@ class ConfiguredRuntimeLauncher:
                         snapshot.header.session_id,
                         container.context.run_id,
                         str(self.config.workspace),
-                        report.applied_job_id,
                         "compact",
                     )
                 )

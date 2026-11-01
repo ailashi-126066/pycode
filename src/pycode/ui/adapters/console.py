@@ -1,6 +1,6 @@
 # Source: author-owned mewcode/runtime/output.py.
 # SHA-256: 1726aae4ccd94dc643956234638c60c2e148ad1215afc87bea6ddd40168bee71
-# Adaptation: native Event envelopes, durable needs_input, per-request nullable accounting.
+# Adaptation: stream-json writes the 11.1 section 3.1 events with their envelope as-is.
 """Text, JSON and NDJSON presentations consume the common application events."""
 
 from pycode.kernel import json_dumps, plain_data
@@ -18,7 +18,7 @@ class ConsoleOutput:
     async def consume(self, event):
         if self._format == "stream-json":
             self.write_json({"type": event.kind, **plain_data(event)})
-        elif event.kind == "team":
+        elif event.kind == "subagent":
             if event.data.get("type") == "approval":
                 self.write_json({"agent_needs_input": event.data})
             elif self._format == "text" and event.data.get("type") == "agent":
@@ -27,8 +27,12 @@ class ConsoleOutput:
                     f"{event.data['status']}\n"
                 )
                 self._stream.flush()
-        elif self._format == "text" and event.kind == "tool_execution_update":
-            self._stream.write(event.data["text"])
+        elif (
+            self._format == "text"
+            and event.kind == "tool_execution_update"
+            and "delta" in event.data
+        ):
+            self._stream.write(event.data["delta"])
             self._stream.flush()
         elif event.kind == "result":
             payload = {"session_id": event.session_id, "run_id": event.run_id, **event.data}

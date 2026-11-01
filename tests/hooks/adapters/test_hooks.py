@@ -74,7 +74,6 @@ async def test_prompt_action_appends_context_and_notification_before_actual_requ
             )
             entries = (await session.inspect())["snapshot"]["entries"]
             assert len([entry for entry in entries if entry["type"] == "hook_context"]) == 1
-            assert any(entry["type"] == "hook_result" for entry in entries)
         finally:
             await session.aclose()
 
@@ -199,25 +198,6 @@ async def test_startup_and_shutdown_run_at_open_close_without_user_input(tmp_pat
     assert (tmp_path / "life.txt").read_text() == "startendstartend"
 
 
-async def test_startup_once_result_survives_close_before_first_user(tmp_path):
-    config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
-    await hook_file(
-        config,
-        [
-            {
-                "id": "boot",
-                "event": "startup",
-                "once": True,
-                "action": {"type": "command", "command": "printf once >> boot.txt"},
-            }
-        ],
-    )
-    for _ in range(2):
-        session = await open_session(config, "http://127.0.0.1:1", create=True)
-        await session.aclose()
-    assert (tmp_path / "boot.txt").read_text() == "once"
-
-
 async def test_synchronous_hook_blocks_and_cancellation_stops_process(tmp_path, monkeypatch):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
@@ -246,8 +226,6 @@ async def test_synchronous_hook_blocks_and_cancellation_stops_process(tmp_path, 
                 with pytest.raises(asyncio.CancelledError):
                     await running
             assert len(requests) == 1 and not (tmp_path / "late.txt").exists()
-            state = await session.inspect()
-            assert any(entry["type"] == "hook_call" for entry in state["snapshot"]["entries"])
         finally:
             running.cancel()
             await asyncio.gather(running, return_exceptions=True)
@@ -255,7 +233,7 @@ async def test_synchronous_hook_blocks_and_cancellation_stops_process(tmp_path, 
         assert not (tmp_path / "late.txt").exists()
 
 
-async def test_real_exit_after_hook_command_reuses_confirmed_effect_then_asks_parent_approval(
+async def test_real_exit_after_hook_command_then_cancel_does_not_run_parent_tool(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
@@ -347,7 +325,7 @@ async def test_project_hooks_require_trust_and_same_id_overrides_in_config_order
         )
 
 
-async def test_all_fifteen_events_fire_through_real_lifecycle_tools_error_and_compaction(
+async def test_all_fourteen_events_fire_through_real_lifecycle_tools_error_and_compaction(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
@@ -394,8 +372,9 @@ async def test_all_fifteen_events_fire_through_real_lifecycle_tools_error_and_co
         view = await compose_application(config).open_view("s1")
         try:
             entries = (await view.inspect())["snapshot"]["entries"]
+            # Each Hook's id is its event name.
             observed = {
-                entry["data"]["event"] for entry in entries if entry["type"] == "hook_result"
+                entry["data"]["hook_id"] for entry in entries if entry["type"] == "hook_context"
             }
             assert observed == HOOK_EVENTS
         finally:
@@ -427,17 +406,19 @@ async def test_failed_check_is_recorded_and_reported_without_aborting_model(tmp_
             assert "CHECK_FAILED" in str(requests[0]["body"]["messages"])
             assert (await session.run(Message("u2", "user", "continue"))).outcome == "completed"
             assert (tmp_path / "attempts.txt").read_text() == "x"
-            results = [
+            records = [
                 entry
                 for entry in (await session.inspect())["snapshot"]["entries"]
-                if entry["type"] == "hook_result"
+                if entry["type"] == "hook_context"
             ]
-            assert len(results) == 1 and results[0]["data"]["result"]["is_error"]
+            assert len(records) == 1 and "pre_send: failed" in records[0]["data"]["text"]
         finally:
             await session.aclose()
 
 
-async def test_failed_pre_tool_check_blocks_only_the_requested_tool(tmp_path, monkeypatch):
+# 11.1 section 26 #3: a non-zero exit and an action that cannot run both block the tool.
+@pytest.mark.parametrize("command", ["printf CHECK_FAILED; exit 1", "printf $ENV.MISSING_HOOK_ENV"])
+async def test_failed_pre_tool_check_blocks_only_the_requested_tool(tmp_path, monkeypatch, command):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
     await hook_file(
@@ -446,7 +427,7 @@ async def test_failed_pre_tool_check_blocks_only_the_requested_tool(tmp_path, mo
             {
                 "id": "check",
                 "event": "pre_tool_use",
-                "action": {"type": "command", "command": "printf CHECK_FAILED; exit 1"},
+                "action": {"type": "command", "command": command},
             }
         ],
     )
@@ -466,49 +447,6 @@ async def test_failed_pre_tool_check_blocks_only_the_requested_tool(tmp_path, mo
                 if entry["message"] and entry["message"]["role"] == "tool_result"
             ]
             assert results[0]["error_code"] == "hook_rejected"
-        finally:
-            await session.aclose()
-
-
-async def test_interrupted_once_check_never_replays_or_blocks_reopened_session(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
-    config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
-    await hook_file(
-        config,
-        [
-            {
-                "id": "check",
-                "event": "post_receive",
-                "once": True,
-                "action": {"type": "command", "command": "printf x >> attempts.txt; sleep 30"},
-            }
-        ],
-    )
-    with protocol_server([chat_completion(), chat_completion()]) as (url, requests):
-        session = await open_session(config, url, create=True)
-        running = asyncio.create_task(session.run(Message("u1", "user", "inspect")))
-        try:
-            async with asyncio.timeout(5):
-                while not await asyncio.to_thread((tmp_path / "attempts.txt").exists):  # noqa: ASYNC110
-                    await asyncio.sleep(0.02)
-                running.cancel()
-                with pytest.raises(asyncio.CancelledError):
-                    await running
-        finally:
-            running.cancel()
-            await asyncio.gather(running, return_exceptions=True)
-            await session.aclose()
-        session = await open_session(config, url)
-        try:
-            assert (await session.run(Message("u2", "user", "continue"))).outcome == "completed"
-            assert len(requests) == 2 and (tmp_path / "attempts.txt").read_text() == "x"
-            state = await session.inspect()
-            assert not state["pending"]
-            records = [e for e in state["snapshot"]["entries"] if e["type"] == "hook_result"]
-            assert len(records) == 1
-            assert records[0]["data"]["result"]["error_code"] == "hook_interrupted"
         finally:
             await session.aclose()
 

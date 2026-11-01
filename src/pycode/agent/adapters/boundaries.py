@@ -93,11 +93,13 @@ class ModelEventCallbacks(AsyncCallbackHandler):
             await context.events.emit(
                 "message_start",
                 {
-                    "role": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "model_selection": plain_data(requests.selection),
+                    },
                     "request_id": requests.active_request_id,
                     "attempt": requests.active_attempt,
-                    "model_selection": plain_data(requests.selection),
-                    "provider_run_id": str(kwargs["run_id"]),
                 },
             )
         if token:
@@ -106,31 +108,25 @@ class ModelEventCallbacks(AsyncCallbackHandler):
             updated = visible_partial(raw)
             self.text_streams[kwargs["run_id"]] = (raw, updated)
             context.streamed_text = updated
-            await context.events.emit(
-                "message_delta",
-                {
-                    "text": updated[len(visible) :],
-                    "output_activity": True,
-                    "request_id": requests.active_request_id,
-                },
-            )
+            await self.update(context, "text", updated[len(visible) :])
         if chunk is None:
             return
         reasoning = chunk.message.additional_kwargs.get("reasoning_content")
         if reasoning:
-            await context.events.emit(
-                "thinking_delta",
-                {"text": reasoning, "request_id": requests.active_request_id},
-            )
+            await self.update(context, "thinking", reasoning)
         if isinstance(chunk.message.content, list):
             for block in chunk.message.content:
                 if isinstance(block, dict) and block.get("type") in {"thinking", "reasoning"}:
                     text = block.get("thinking") or block.get("reasoning")
                     if text:
-                        await context.events.emit(
-                            "thinking_delta",
-                            {"text": text, "request_id": requests.active_request_id},
-                        )
+                        await self.update(context, "thinking", text)
+
+    @staticmethod
+    async def update(context, kind, delta):
+        await context.events.emit(
+            "message_update",
+            {"request_id": context.requests.active_request_id, "kind": kind, "delta": delta},
+        )
 
     async def on_llm_end(self, response, *, run_id, **kwargs):
         self.text_streams.pop(run_id, None)
@@ -162,9 +158,9 @@ async def save_message(context, message):
     context.completed.append(message)
     # A streamed assistant reply already sent message_start with its first chunk.
     if message.role != "assistant" or context.streamed_text is None:
-        await context.events.emit("message_start", plain_data(message))
+        await context.events.emit("message_start", {"message": plain_data(message)})
     context.streamed_text = None
-    await context.events.emit("message_end", {**plain_data(message), "entry_id": entry_id})
+    await context.events.emit("message_end", {"message": plain_data(message), "entry_id": entry_id})
     return entry_id
 
 

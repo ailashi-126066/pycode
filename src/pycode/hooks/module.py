@@ -7,7 +7,7 @@ from pathlib import Path
 from pycode.hooks.actions import ConfiguredHookActions
 from pycode.hooks.api import Hooks
 from pycode.hooks.config import load_hooks
-from pycode.hooks.contracts import HookActions, HookExecutorFactory, HookPlanGuard
+from pycode.hooks.contracts import HookActions
 from pycode.hooks.types import Hook
 from pycode.kernel import EventSink, HistoryJournal, data_hash, plain_data
 from pycode.kernel.adapters.path_io import owned_io
@@ -78,17 +78,5 @@ class HooksModule:
         history: HistoryJournal,
         actions: HookActions,
         events: EventSink,
-        *,
-        executor_factory: HookExecutorFactory,
-        plans: HookPlanGuard | None = None,
-        read_only: bool = False,
     ) -> Hooks:
-        return Hooks(
-            hooks,
-            history,
-            actions,
-            events,
-            executor_factory=executor_factory,
-            plans=plans,
-            read_only=read_only,
-        )
+        return Hooks(hooks, history, actions, events)

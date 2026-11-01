@@ -33,8 +33,7 @@ then the injected feature scope. Worker mode always installs the mandatory worke
 the custom/scope constraints. Team merge approval remains a specialized Tools policy. The injected
 scope is an independent `ToolGate`; it cannot replace its parent or enlarge worker permissions.
 
-`executor` installs the official tool-error boundary. `configured_executor` is the constrained
-executor factory building block for Hooks. `settlement` and `framework_tool` receive ordered
+`executor` installs the official tool-error boundary. `settlement` and `framework_tool` receive ordered
 `tool_extensions` and `native_bindings`, leaving Skill and MCP lookup/normalization with their owners.
 
 The module owns no global task lifetime. Streaming writers own open output handles; the Agent/run

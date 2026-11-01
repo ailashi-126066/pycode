@@ -1,7 +1,7 @@
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/agent/src/agent.ts
 """Single ordered event publisher; it owns no alternative message history."""
 
 import asyncio
-import logging
 from typing import Any
 
 from pycode.kernel.domain.errors import OutputClosed
@@ -19,6 +19,8 @@ class EventStream:
         initial_sequence: int = 0,
         *,
         journal: EventJournal | None = None,
+        agent_id: str = "lead",
+        parent_call_id: str | None = None,
     ) -> None:
         self._session_id = session_id
         self._run_id = run_id
@@ -26,45 +28,39 @@ class EventStream:
         self._sequence = initial_sequence
         self._lock = asyncio.Lock()
         self._journal = journal
-        self._disabled: set[int] = set()
+        self._agent_id = agent_id
+        self._parent_call_id = parent_call_id
+        self._turn = 0
+        self._closed: set[int] = set()
 
+    # Pi: Agent.processEvents awaits every listener in order; a listener error fails the run.
     async def emit(
         self, kind: EventKind, data: dict[str, Any], *, operation_id: str | None = None
     ) -> Event:
         async with self._lock:
+            if kind == "turn_start":
+                self._turn = data["turn"]
+            event = Event(
+                sequence=self._sequence + 1,
+                session_id=self._session_id,
+                run_id=self._run_id,
+                kind=kind,
+                data=clone_value(data),
+                operation_id=operation_id,
+                turn=self._turn,
+                agent_id=self._agent_id,
+                parent_call_id=self._parent_call_id,
+            )
             if self._journal is not None:
-                event = await self._journal.append_event(
-                    self._session_id,
-                    self._run_id,
-                    kind,
-                    clone_value(data),
-                    operation_id=operation_id,
-                )
-                self._sequence = event.sequence
-            else:
-                self._sequence += 1
-                event = Event(
-                    sequence=self._sequence,
-                    session_id=self._session_id,
-                    run_id=self._run_id,
-                    kind=kind,
-                    data=clone_value(data),
-                    operation_id=operation_id,
-                )
+                event = await self._journal.append_event(event)
+            self._sequence = event.sequence
             for index, consumer in enumerate(self._consumers):
-                if index in self._disabled:
+                if index in self._closed:
                     continue
                 try:
                     await consumer.consume(clone_value(event))
                 except BrokenPipeError:
-                    self._disabled.add(index)
+                    # stdout is gone: stop writing to it and cancel the run.
+                    self._closed.add(index)
                     raise OutputClosed("Console output closed") from None
-                except Exception:
-                    self._disabled.add(index)
-                    logging.getLogger("pycode.events").exception(
-                        "Disabled failed event consumer %s for session=%s run=%s",
-                        type(consumer).__name__,
-                        self._session_id,
-                        self._run_id,
-                    )
             return event

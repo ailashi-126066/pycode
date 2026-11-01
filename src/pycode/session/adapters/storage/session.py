@@ -239,10 +239,8 @@ class SqliteSessionStore:
             if entry.id in self._entries_by_id:
                 raise StorageError("entry_id_conflict", "Entry ID already exists")
             self.validate_branch_entry(entry)
-            will_persist = (
-                self._persisted
-                or entry.type == "hook_call"
-                or (entry.type == "message" and entry.require_message().role == "user")
+            will_persist = self._persisted or (
+                entry.type == "message" and entry.require_message().role == "user"
             )
             if will_persist:
                 self.write_entry(entry)

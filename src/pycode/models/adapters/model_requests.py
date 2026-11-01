@@ -14,7 +14,6 @@ from pycode.kernel import (
     ModelSelection,
     Purpose,
     Timing,
-    plain_data,
 )
 from pycode.models.adapters.messages import normalize_usage
 from pycode.models.domain.requests import ModelFailure, RequestRecord, RetryPolicy
@@ -143,7 +142,6 @@ class ModelRequestRunner:
             self._observation.prepare_reasoning(reasoning)
         self.active_request_id = record.request_id
         self.active_attempt = attempt
-        await self._events.emit("model_request_start", plain_data(record))
         failure = None
         try:
             result = await handler(request)
@@ -199,9 +197,8 @@ class ModelRequestRunner:
                 usage=usage,
                 provider_request_id=metadata.get("provider_response_id") or assistant.id,
             )
+            # Usage reaches the UI in the assistant's message_end; the record serves /usage.
             await self._store.settle(completed)
-            await self._events.emit("usage", plain_data(usage))
-            await self._events.emit("model_request_end", plain_data(completed))
             updated = replace(response, result=[*response.result[:-1], assistant])
             return (
                 replace(result, model_response=updated)
@@ -251,8 +248,6 @@ class ModelRequestRunner:
             provider_request_id=metadata.get("provider_request_id"),
         )
         await self._store.settle(settled)
-        await self._events.emit("usage", plain_data(usage))
-        await self._events.emit("model_request_end", plain_data(settled))
 
     async def list_attempts(self):
         return tuple(

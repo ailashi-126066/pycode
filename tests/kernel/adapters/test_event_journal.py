@@ -26,15 +26,11 @@ async def test_shared_publishers_are_ordered_but_restart_starts_empty(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-async def test_bounded_events_survive_consumer_error_only_within_current_process():
-    class Disconnected:
-        async def consume(self, event):
-            raise ConnectionError("terminal disconnected")
-
+async def test_bounded_events_are_kept_only_within_current_process():
     journal = MemoryEventJournal(capacity=2)
-    stream = EventStream("s", "r", (Disconnected(),), journal=journal)
-    await stream.emit("message_delta", {"text": "你好"})
-    await stream.emit("message_delta", {"text": "二"})
+    stream = EventStream("s", "r", (), journal=journal)
+    await stream.emit("message_update", {"text": "你好"})
+    await stream.emit("message_update", {"text": "二"})
     await stream.emit("message_end", {"text": "完成"})
     events = await journal.list_events("s", "r")
     assert [event.sequence for event in events] == [2, 3]

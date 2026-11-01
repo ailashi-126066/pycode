@@ -1,5 +1,4 @@
 import json
-from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -27,7 +26,6 @@ def test_fixed_event_and_condition_vectors_parse_before_execution():
         "s",
         "r",
         "/workspace",
-        "b",
         "post_tool_use",
         "Write",
         {"file_path": "src/main.py"},
@@ -38,7 +36,6 @@ def test_fixed_event_and_condition_vectors_parse_before_execution():
         context.expand(VECTORS["template"])
         == "Event=post_tool_use Tool=Write File=src/main.py Msg=done Err= Arg=src/main.py"
     )
-    assert asdict(context)["boundary_id"] == "b"
 
 
 @pytest.mark.parametrize(
@@ -54,3 +51,17 @@ def test_fixed_event_and_condition_vectors_parse_before_execution():
 def test_invalid_configuration_is_a_domain_error(change):
     with pytest.raises(DomainError):
         parse_hooks([{**VECTORS["config"], **change}])
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("session_start", "run_start"),
+        ("session_end", "run_end"),
+        ("command_execute", 'pre_tool_use with "if": "tool == \\"bash\\""'),
+    ],
+)
+def test_renamed_event_is_an_error_that_names_the_replacement(old, new):
+    with pytest.raises(DomainError, match="renamed") as error:
+        parse_hooks([{**VECTORS["config"], "event": old, "reject": False}])
+    assert new in str(error.value)

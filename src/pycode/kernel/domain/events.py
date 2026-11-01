@@ -1,36 +1,30 @@
 # Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/agent/src/types.ts
-# Adaptation: sequence and stable execution identifiers for common CLI/TUI events.
+# Adaptation: an envelope with sequence, turn and agent identity around Pi's event payloads.
 """Unified event envelope; deltas are distinct from completed messages."""
 
 from dataclasses import dataclass, field
 from typing import Any, Literal, NotRequired, TypedDict
 
+# 11.1 section 3.1: Pi's 10 AgentEvent types, then 8 pycode additions.
 EventKind = Literal[
-    "team",
-    "model_change",
-    "model_request_start",
-    "model_request_end",
     "agent_start",
     "agent_end",
     "turn_start",
     "turn_end",
     "message_start",
-    "message_delta",
-    "thinking_delta",
+    "message_update",
     "message_end",
     "tool_execution_start",
-    "tool_action_start",
-    "tool_action_end",
-    "tool_output_ready",
     "tool_execution_update",
     "tool_execution_end",
-    "usage",
-    "retry",
     "needs_input",
-    "summary",
-    "notification",
-    "error",
     "result",
+    "retry",
+    "compaction",
+    "model_change",
+    "subagent",
+    "task",
+    "notification",
 ]
 
 
@@ -42,6 +36,9 @@ class Event:
     kind: EventKind
     data: dict[str, Any] = field(default_factory=dict)
     operation_id: str | None = None
+    turn: int = 0
+    agent_id: str = "lead"
+    parent_call_id: str | None = None
 
 
 # Payloads of the 18 events in 11.1 section 3.1; Event.kind carries Pi's `type`.
@@ -68,19 +65,22 @@ class TurnEndEvent(TypedDict):
 
 class MessageStartEvent(TypedDict):
     message: dict[str, Any]
+    # A streamed reply starts with its first chunk, once per retry attempt.
+    request_id: NotRequired[str]
+    attempt: NotRequired[int]
 
 
 class MessageUpdateEvent(TypedDict):
-    message_id: str
+    request_id: str
     kind: Literal["text", "thinking"]
     delta: str
 
 
 class MessageEndEvent(TypedDict):
+    """An assistant message carries its usage, stop_reason, error and duration_ms."""
+
     message: dict[str, Any]
     entry_id: NotRequired[str]
-    usage: NotRequired[dict[str, Any]]
-    duration_ms: NotRequired[int]
 
 
 class ToolExecutionStartEvent(TypedDict):
@@ -92,8 +92,11 @@ class ToolExecutionStartEvent(TypedDict):
 class ToolExecutionUpdateEvent(TypedDict):
     tool_call_id: str
     tool_name: str
-    state: NotRequired[str]
-    partial_result: NotRequired[Any]
+    # "running" when the tool body starts; replaces tool_action_start.
+    state: NotRequired[Literal["running"]]
+    timeout: NotRequired[float | None]
+    # Pi sends the accumulated partialResult; pycode streams each new output chunk.
+    delta: NotRequired[str]
 
 
 class ToolExecutionEndEvent(TypedDict):
@@ -103,7 +106,7 @@ class ToolExecutionEndEvent(TypedDict):
     is_error: bool
     status: str
     outcome: str
-    duration_ms: NotRequired[int]
+    duration_ms: int
 
 
 # pycode additions.
@@ -135,6 +138,8 @@ class RetryEvent(TypedDict):
 class CompactionEvent(TypedDict):
     job_id: str
     status: str
+    error_code: NotRequired[str | None]
+    context_tokens: NotRequired[int]
 
 
 class ModelChangeEvent(TypedDict):
@@ -143,8 +148,9 @@ class ModelChangeEvent(TypedDict):
 
 
 class SubagentEvent(TypedDict):
-    agent_id: str
-    status: str
+    """Until step 11 replaces team, this carries the team engine's {type, ...} updates."""
+
+    type: str
 
 
 class TaskEvent(TypedDict):
@@ -154,8 +160,19 @@ class TaskEvent(TypedDict):
 
 
 class NotificationEvent(TypedDict):
+    """kind is hook, input_delivered or tool_eviction; the other keys belong to that kind."""
+
     kind: str
     message: NotRequired[str]
+    hook_id: NotRequired[str]
+    event: NotRequired[str]
+    success: NotRequired[bool]
+    full_output_path: NotRequired[str | None]
+    input_id: NotRequired[str]
+    queue_kind: NotRequired[str]
+    entry_id: NotRequired[str]
+    targets: NotRequired[list[Any]]
+    reclaimed_tokens: NotRequired[int]
 
 
 AgentEvent = (

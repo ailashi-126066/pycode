@@ -16,7 +16,9 @@ class Recorder:
 async def test_concurrent_producers_have_one_ordered_event_sequence():
     recorder = Recorder()
     stream = EventStream("s1", "r1", (recorder,), initial_sequence=10)
-    await asyncio.gather(*(stream.emit("message_delta", {"text": str(i)}) for i in range(20)))
+    await asyncio.gather(
+        *(stream.emit("message_update", {"kind": "text", "delta": str(i)}) for i in range(20))
+    )
     assert [event.sequence for event in recorder.events] == list(range(11, 31))
     assert all(event.session_id == "s1" and event.run_id == "r1" for event in recorder.events)
 
@@ -35,22 +37,33 @@ async def test_consumer_and_producer_cannot_mutate_another_consumers_payload():
     assert published.data["nested"]["text"] == "original"
 
 
-async def test_failed_consumer_is_disabled_without_interrupting_delivery(caplog):
+async def test_consumer_error_fails_the_emit_and_the_consumer_keeps_receiving_events():
     class FailingConsumer:
         calls = 0
 
         async def consume(self, event):
             self.calls += 1
-            raise ValueError("broken display")
+            if self.calls == 1:
+                raise ValueError("broken display")
 
     failing = FailingConsumer()
+    stream = EventStream("s1", "r1", (failing,))
+    with pytest.raises(ValueError, match="broken display"):
+        await stream.emit("tool_execution_start", {"tool_call_id": "c1"})
+    await stream.emit("agent_end", {"reason": "error"})
+    assert failing.calls == 2
+
+
+async def test_envelope_carries_turn_and_agent_identity():
     recorder = Recorder()
-    stream = EventStream("s1", "r1", (failing, recorder))
-    await stream.emit("tool_execution_start", {"call_id": "c1"})
-    await stream.emit("tool_execution_end", {"call_id": "c1", "text": "persisted"})
-    assert failing.calls == 1
-    assert [event.sequence for event in recorder.events] == [1, 2]
-    assert "Disabled failed event consumer" in caplog.text
+    stream = EventStream("s1", "r1", (recorder,), agent_id="child", parent_call_id="call-1")
+    await stream.emit("agent_start", {})
+    await stream.emit("turn_start", {"turn": 2})
+    await stream.emit("message_end", {"message": {}})
+    assert [event.turn for event in recorder.events] == [0, 2, 2]
+    assert {(event.agent_id, event.parent_call_id) for event in recorder.events} == {
+        ("child", "call-1")
+    }
 
 
 async def test_broken_pipe_requests_controlled_cancellation():
@@ -60,4 +73,4 @@ async def test_broken_pipe_requests_controlled_cancellation():
 
     stream = EventStream("s1", "r1", (ClosedConsole(),))
     with pytest.raises(asyncio.CancelledError, match="Console output closed"):
-        await stream.emit("message_delta", {"text": "cancel"})
+        await stream.emit("message_update", {"kind": "text", "delta": "cancel"})

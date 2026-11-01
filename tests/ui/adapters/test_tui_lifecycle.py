@@ -7,6 +7,7 @@ from textual.widgets import Static
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
+from pycode.kernel.domain.events import Event
 from pycode.ui.adapters.tui import content_text
 from tests.session.adapters.test_revert_http import command_reply
 from tests.support.execution import provider
@@ -95,6 +96,29 @@ async def test_tui_uses_the_pycode_brand_and_keeps_live_output_inside_conversati
             assert "第 1 轮" in rendered and "输入 20" in rendered and "输出 5" in rendered
             status = str(app.query_one("#status", Static).render())
             assert "模型：wire-model" in status and "上下文：" in status
+
+
+async def test_tool_card_is_mounted_at_start_and_removed_at_its_end(tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
+    app = compose_application(
+        AppConfig(tmp_path, tmp_path / "data", memory_mode="off"),
+        (provider("http://127.0.0.1:1"),),
+    ).tui()
+    async with app.run_test(size=(120, 45)):
+        await app.ready.wait()
+
+        async def render(kind, data):
+            event = Event(1, app.session_id, "r1", kind, data)
+            await app.render_runtime_event(app.RuntimeEvent(event))
+
+        call = {"tool_call_id": "c1", "tool_name": "bash"}
+        await render("tool_execution_start", {**call, "args": {}})
+        await render("tool_execution_update", {**call, "delta": "line"})
+        assert len(app.query(".tool-block")) == 1
+        await render("tool_execution_end", {**call, "result": {}, "is_error": False})
+        assert not app.query(".tool-block") and app._running_tools == {}
+        # A call approved after reopening the session ends without a start in this view.
+        await render("tool_execution_end", {**call, "result": {}, "is_error": False})
 
 
 async def test_cancel_after_confirmed_tool_result_does_not_redisplay_consumed_approval(

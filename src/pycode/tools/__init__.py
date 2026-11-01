@@ -15,7 +15,6 @@ from pycode.tools.ports.outputs import OutputWriter, ToolOutputStore
 from pycode.tools.ports.publication import ContextT, MessagePublisher, ToolLifecycle
 from pycode.tools.ports.questions import QuestionPrompt
 from pycode.tools.ports.tools import ToolGate
-from pycode.tools.services.hook_gate import ConfiguredActionGate
 from pycode.tools.services.permissions import (
     MemoryToolGate,
     NoOpToolGate,
@@ -35,7 +34,6 @@ __all__ = [
     "repeated_tool_failure",
     "failure_update",
     "ArgumentValidator",
-    "ConfiguredActionGate",
     "ContextT",
     "MemoryToolGate",
     "MessagePublisher",

@@ -43,7 +43,6 @@ from pycode.tools.ports.outputs import ToolOutputStore
 from pycode.tools.ports.publication import MessagePublisher, ToolLifecycle
 from pycode.tools.ports.questions import QuestionPrompt
 from pycode.tools.ports.tools import ToolGate
-from pycode.tools.services.hook_gate import ConfiguredActionGate
 from pycode.tools.services.permissions import (
     MemoryToolGate,
     NoOpToolGate,
@@ -208,24 +207,6 @@ class ToolsModule:
             snapshots=snapshots,
             hooks=hooks,
             error_boundary=execute_tool_errors,
-        )
-
-    def configured_executor(
-        self,
-        tools: tuple[ExecutableTool, ...],
-        events: EventSink,
-        outputs: ToolOutputStore,
-        *,
-        snapshots: SnapshotStore | None = None,
-        plans: object | None = None,
-        read_only: bool = False,
-    ) -> ToolExecutor:
-        return self.executor(
-            self.registry(tools),
-            ConfiguredActionGate(plans, read_only),
-            events,
-            outputs,
-            snapshots=snapshots,
         )
 
     @staticmethod

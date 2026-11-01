@@ -51,7 +51,7 @@ class WorkerBoundaryGate:
     async def authorize(self, context, spec, call):
         if self.readonly and spec.category != "read":
             raise ToolError("readonly_tool_denied", "Read-only child cannot perform effects")
-        if spec.source.startswith("mcp") or spec.source.startswith("hook:"):
+        if spec.source.startswith("mcp"):
             raise ToolError("worker_tool_denied", "Child cannot execute unisolated external tools")
         await self.constraints.authorize(context, spec, call)
         if spec.category == "read" or spec.name in {"write", "edit"}:

@@ -13,7 +13,7 @@ import re
 from dataclasses import fields
 from pathlib import Path
 
-from pycode.hooks.types import HOOK_EVENTS, Hook, HookAction, parse_condition
+from pycode.hooks.types import HOOK_EVENTS, RENAMED_EVENTS, Hook, HookAction, parse_condition
 from pycode.kernel import DomainError, SessionEntry, StorageError
 
 
@@ -25,7 +25,14 @@ def parse_hooks(raw, source="user"):
         if not isinstance(item, dict):
             raise DomainError("invalid_hook_config", "Hook must be an object")
         event = item.get("event")
-        if not isinstance(event, str) or event not in HOOK_EVENTS:
+        if not isinstance(event, str):
+            raise DomainError("invalid_hook_config", "Unknown lifecycle event")
+        if event in RENAMED_EVENTS:
+            raise DomainError(
+                "invalid_hook_config",
+                f"Hook event {event} was renamed; use {RENAMED_EVENTS[event]}",
+            )
+        if event not in HOOK_EVENTS:
             raise DomainError("invalid_hook_config", "Unknown lifecycle event")
         name = item.get("id", event + "_" + str(index))
         if (

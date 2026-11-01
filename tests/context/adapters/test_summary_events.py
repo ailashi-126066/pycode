@@ -22,7 +22,7 @@ async def test_summary_can_publish_ready_while_main_runtime_is_closed_and_user_i
 
         async def consume(self, event):
             self.events.append(event)
-            if event.kind == "summary" and event.data.get("status") == "ready":
+            if event.kind == "compaction" and event.data.get("status") == "ready":
                 self.ready.set()
 
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")

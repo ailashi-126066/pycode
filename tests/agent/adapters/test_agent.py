@@ -43,7 +43,7 @@ class Recorder:
 
     async def consume(self, event):
         self.events.append(event)
-        if event.kind == "message_delta":
+        if event.kind == "message_update":
             self.delta_seen.set()
 
 
@@ -144,7 +144,7 @@ async def test_fixed_model_uses_actual_framework_and_pi_event_order():
     assert all(kind in types for kind in VECTORS["basic_events"]["required"])
     assert types[:4] == ["agent_start", "turn_start", "message_start", "message_end"]
     assert types[-2:] == ["turn_end", "agent_end"]
-    delta = types.index("message_delta")
+    delta = types.index("message_update")
     completed = max(i for i, kind in enumerate(types) if kind == "message_end")
     assert delta < completed
 
@@ -183,7 +183,9 @@ async def test_pi_parallel_completion_and_source_order_vectors():
     tool.first_release = asyncio.Event()
     await runtime.run((Message("u1", "user", "echo both"),), context)
     ends = [
-        event.data["call_id"] for event in recorder.events if event.kind == "tool_execution_end"
+        event.data["tool_call_id"]
+        for event in recorder.events
+        if event.kind == "tool_execution_end"
     ]
     persisted = [
         message.tool_result.call_id for message in journal.messages if message.role == "tool_result"
@@ -260,7 +262,11 @@ async def test_cancelled_model_stream_is_saved_as_aborted_reply():
     aborted = journal.messages[-1]
     assert (aborted.stop_reason, aborted.content) == ("aborted", ())
     # No chunk arrived, so saving the reply sends its start and end.
-    kinds = [(event.kind, event.data.get("id")) for event in recorder.events]
+    kinds = [
+        (event.kind, event.data["message"].get("id"))
+        for event in recorder.events
+        if event.kind in {"message_start", "message_end"}
+    ]
     assert kinds.index(("message_start", aborted.id)) < kinds.index(("message_end", aborted.id))
 
 
@@ -352,7 +358,7 @@ async def test_graph_tool_cancellation_is_collected_before_run_returns():
     end = next(event for event in recorder.events if event.kind == "tool_execution_end")
     assert end.data["outcome"] == "interrupted"
     assert recorder.events[-1].kind == "agent_end"
-    assert recorder.events[-1].data["outcome"] == "aborted"
+    assert recorder.events[-1].data["reason"] == "aborted"
 
 
 async def test_partial_stream_is_saved_as_aborted_reply_with_its_text():
@@ -364,17 +370,18 @@ async def test_partial_stream_is_saved_as_aborted_reply_with_its_text():
     running.cancel()
     with pytest.raises(asyncio.CancelledError):
         await running
-    assert any(event.data.get("text") == "partial stream" for event in recorder.events)
+    assert any(event.data.get("delta") == "partial stream" for event in recorder.events)
     assert [message.role for message in journal.messages] == ["user", "assistant"]
     aborted = journal.messages[-1]
     assert (aborted.stop_reason, aborted.text) == ("aborted", "partial stream")
     starts = [event.data for event in recorder.events if event.kind == "message_start"]
     # The streamed reply announced itself on its first chunk, with the attempt number.
-    assert starts[-1]["role"] == "assistant" and starts[-1]["attempt"] == 0
-    assert "id" not in starts[-1]
+    assert starts[-1]["message"]["role"] == "assistant" and starts[-1]["attempt"] == 0
+    assert "id" not in starts[-1]["message"]
     assert recorder.events[-1].kind != "message_start"
     assert any(
-        event.kind == "message_end" and event.data["id"] == aborted.id for event in recorder.events
+        event.kind == "message_end" and event.data["message"]["id"] == aborted.id
+        for event in recorder.events
     )
     assert model.cleaned.is_set()
 
