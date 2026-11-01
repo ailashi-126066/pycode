@@ -4,6 +4,8 @@
 
 这一章不从一张类名表开始。我们跟着这次请求走四步：准备可关闭的SDK对象，确认这次模型能看到哪些工具，保存请求并发送，最后处理同模型的有界重试。Agent框架何时回调这些方法，第05章会把它们接起来。
 
+ModelCatalog 在接收 Provider 配置、生成或读取目录快照时冻结数据。snapshot 等读取方法共享这些不可变对象，避免每次读目录都深复制；进入 SDK 或 JSON 等需要普通可变数据的边界时，再做格式转换。
+
 ## 第一步：选好了Provider，为什么还不能直接发送文本
 
 应用选定 Provider 后调用 composition.open_model。它用 AsyncExitStack 登记请求账本、同步与异步 HTTP transport 和自有事件 journal，再调用 create_model 选择官方 LangChain 集成。ModelOwner 保存模型、ModelRequestRunner、账本和关闭栈；本轮结束后 aclose 释放这些资源。
