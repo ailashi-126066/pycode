@@ -1,4 +1,4 @@
-# Source: Pi agent-loop.ts at 42a3497d03ad17e308a2299fa824727894f2c0ec.
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/agent/src/agent-loop.ts
 # Adaptation: framework middleware owns scheduling and session Store settlement.
 """Validate, authorize and execute one tool; no second execution ledger."""
 

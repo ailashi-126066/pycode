@@ -1,4 +1,4 @@
-# Source: Pi agent-session.ts at 42a3497d03ad17e308a2299fa824727894f2c0ec.
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/agent-session.ts
 # Adaptation: Deep Agents owns model/tool routing; middleware owns durable facts.
 """The single Deep Agents execution boundary."""
 

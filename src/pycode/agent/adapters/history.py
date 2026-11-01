@@ -1,3 +1,4 @@
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/agent/src/agent-loop.ts
 """Deep Agents boundary extracted for sequential, readable ownership."""
 
 import asyncio
