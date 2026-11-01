@@ -104,5 +104,61 @@ async def test_tui_question_reopen_has_one_interrupted_pair_and_cannot_answer_ol
             assert len(outputs) == 1 and outputs[0]["error_code"] == "tool_interrupted"
 
 
+async def test_tui_answers_a_subagent_progress_guard_question_in_that_subagent(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
+    question = {
+        "kind": "ask_user",
+        "operation_id": "child-run:loop-4",
+        "questions": [
+            {
+                "type": "radio",
+                "name": "loop",
+                "title": "Progress guard",
+                "message": "`bash` ran 3 times. Is the agent waiting on purpose?",
+                "options": [
+                    {"value": "continue", "label": "Continue", "description": ""},
+                    {"value": "stop", "label": "Stop (loop_detected)", "description": ""},
+                ],
+            }
+        ],
+    }
+    child = {"agent_id": "agent-1", "name": "a1", "description": "poll", "pending": [question]}
+    with protocol_server([]) as (url, requests):
+        app = compose_application(
+            AppConfig(tmp_path, tmp_path / "data", memory_mode="off"), (provider(url),)
+        ).tui()
+        async with app.run_test(size=(120, 45)) as pilot:
+            await app.ready.wait()
+            session = app.active_session
+            inspect = session.inspect
+            answered = []
+
+            async def waiting_child(**options):
+                state = dict(await inspect(**options))
+                state["subagents"] = {"approvals": [child]}
+                return state
+
+            async def answer_agent(agent_id, answer):
+                answered.append((agent_id, answer))
+                child["pending"] = []
+
+            monkeypatch.setattr(session, "inspect", waiting_child)
+            monkeypatch.setattr(session, "answer_agent", answer_agent)
+            await app.refresh_state()
+            await pilot.pause()
+            app.query_one("#answer-0", Select).value = "continue"
+            await pilot.pause()
+            await pilot.click("#question-check")
+            await pilot.pause()
+            await pilot.click("#question-submit")
+            await settled(app)
+            assert answered == [
+                ("agent-1", {"operation_id": "child-run:loop-4", "answers": {"loop": "continue"}})
+            ]
+            assert app.last_error is None and requests == []
+
+
 # This suite tests execution with tool definitions already disclosed.
 pytestmark = pytest.mark.usefixtures("disclosed_tools")

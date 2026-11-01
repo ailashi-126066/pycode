@@ -480,7 +480,7 @@ class PyApp(App):
         child_source = None
         subagents = self.view_state["subagents"]
         if not pending and subagents is not None and subagents["approvals"]:
-            # A subagent's approval is answered in the main session.
+            # A subagent's approval or question is answered in the main session.
             child_source = subagents["approvals"][0]
             pending = child_source["pending"]
         if pending:
@@ -514,7 +514,11 @@ class PyApp(App):
             elif payload["kind"] == "plan":
                 await self.query_one("#pending", Vertical).mount(PlanPanel(payload))
             elif payload["kind"] == "ask_user":
-                await self.query_one("#pending", Vertical).mount(QuestionPanel(payload))
+                await self.query_one("#pending", Vertical).mount(
+                    QuestionPanel(
+                        payload, agent_id=child_source["agent_id"] if child_source else None
+                    )
+                )
         if self.view_state["pending_revert_id"]:
             self.notice(
                 "Revert recovery required: " + self.view_state["pending_revert_id"], "warning"
@@ -638,12 +642,16 @@ class PyApp(App):
         panel = self.query_one("#perm-inline", ApprovalPanel)
         panel.disabled = True
         self.collapse_parent(panel)
-        if event.agent_id is not None:
-            task = asyncio.create_task(self.answer_child(event.agent_id, event.answer))
+        self.route_answer(event.agent_id, event.answer)
+
+    def route_answer(self, agent_id, answer):
+        """A forwarded subagent wait goes to that subagent; anything else resumes this run."""
+        if agent_id is not None:
+            task = asyncio.create_task(self.answer_child(agent_id, answer))
             self._answer_tasks.add(task)
             task.add_done_callback(self._answer_tasks.discard)
         else:
-            self.respond(event.answer)
+            self.respond(answer)
 
     async def answer_child(self, agent_id, answer):
         try:
@@ -663,7 +671,7 @@ class PyApp(App):
     def on_question_panel_responded(self, event):
         event.stop()
         self.query_one("#askuser-inline", QuestionPanel).disabled = True
-        self.respond(event.answer)
+        self.route_answer(event.agent_id, event.answer)
 
     def on_revert_panel_responded(self, event):
         event.stop()

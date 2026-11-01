@@ -23,13 +23,15 @@ class QuestionPanel(Vertical):
     """
 
     class Responded(Message):
-        def __init__(self, answer):
+        def __init__(self, answer, agent_id=None):
             super().__init__()
+            self.agent_id = agent_id
             self.answer = answer
 
-    def __init__(self, payload):
+    def __init__(self, payload, *, agent_id=None):
         super().__init__(id="askuser-inline")
         self._payload = clone_value(payload)
+        self._agent_id = agent_id
         self._reviewed = None
 
     def compose(self) -> ComposeResult:
@@ -106,7 +108,8 @@ class QuestionPanel(Vertical):
         if event.button.id == "question-cancel":
             self.post_message(
                 self.Responded(
-                    {"operation_id": self._payload["operation_id"], "decision": "cancel"}
+                    {"operation_id": self._payload["operation_id"], "decision": "cancel"},
+                    self._agent_id,
                 )
             )
         elif event.button.id == "question-check":
@@ -123,4 +126,4 @@ class QuestionPanel(Vertical):
             )
             self.query_one("#question-submit", Button).disabled = False
         elif event.button.id == "question-submit" and self._reviewed is not None:
-            self.post_message(self.Responded(clone_value(self._reviewed)))
+            self.post_message(self.Responded(clone_value(self._reviewed), self._agent_id))
