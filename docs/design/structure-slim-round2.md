@@ -2,7 +2,7 @@
 
 - 基线：分支 `refactor-structure-slim`，本地 main `457c8b9`。
 - 依据：11.1.md 第 21、23、32、33.2、34、41 节；`.agents/tasks/pycode-overdefensive-audit-2.md`（下称"审计 2"，行号基于 `5286c1b`，已偏移，实施时按代码内容重新定位）；`.agents/tasks/pycode-overcomplexity-audit-2026-11-01.md`（下称"复杂度审计"）；Pi 源码 `/tmp/pi-research`（HEAD `2c8d1fe`）。
-- 本文已按根目录 11.1.md 的最新决定同步，替代旧 Feature 方案。原设计可从提交 f1460be 查阅。已完成的业务实现和精简保留；本文描述目标，不代表代码全部完成。
+- 本文已按根目录 11.1.md 的最新决定同步，替代旧 Feature 方案。原设计可从提交 f1460be 查阅。已完成的业务实现和精简保留；本轮已验收并合入main，文中的分线/worktree路径是实施历史，原工作分支已清理。
 
 ## 0. 现状数字（457c8b9）
 
