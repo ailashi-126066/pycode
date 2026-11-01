@@ -73,14 +73,7 @@ from pycode.kernel.domain.truncation import (
     truncate,
 )
 from pycode.kernel.domain.values import clone_value, freeze_value, json_dumps, plain_data
-from pycode.kernel.domain.work_graph import (
-    Acceptance,
-    Board,
-    BoardStatus,
-    Evidence,
-    Step,
-    StepStatus,
-)
+from pycode.kernel.domain.work_graph import Board, BoardStatus, Step, StepStatus
 from pycode.kernel.ports.events import EventConsumer, EventJournal, EventSink
 from pycode.kernel.ports.history import HistoryJournal, MessageJournal
 from pycode.kernel.ports.timing import Timing
@@ -92,7 +85,6 @@ __all__ = [
     "AgentEvent",
     "AgentStartEvent",
     "ArgumentValidator",
-    "Acceptance",
     "Board",
     "BoardStatus",
     "CUSTOM_ROLES",
@@ -103,7 +95,6 @@ __all__ = [
     "EntryDraft",
     "EntryType",
     "Event",
-    "Evidence",
     "EventConsumer",
     "EventJournal",
     "EventSink",

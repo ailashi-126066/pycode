@@ -107,9 +107,7 @@ class TaskUpdate:
         "(note required), skipped, pending (retry). Board: completed (every step done and one "
         "evidence ref per done_when item, in order), failed (note what was tried), blocked "
         "(note the question for the user; the run ends), abandoned, active (resume). "
-        "evidence_refs are tool call ids or message ids recorded after the step started; cited "
-        "tool calls must have succeeded. An acceptance item with a check is proven by running "
-        "that exact command with bash after the step started; the system finds the run.",
+        "evidence_refs are tool call ids or message ids from this conversation.",
         {
             "type": "object",
             "properties": {
@@ -147,21 +145,14 @@ class TaskUpdate:
         triggers = BOARD_TRIGGERS if target == "board" else STEP_TRIGGERS
         if status not in triggers:
             raise ToolError("invalid_task_status", f"{status} is not a status for {target}")
-        refs = arguments.get("evidence_refs", ())
-        branch = task_evidence(path)
-        unknown = set(refs) - branch.keys()
+        evidence = tuple(arguments.get("evidence_refs", ()))
+        unknown = set(evidence) - task_evidence(path)
         if unknown:
             raise ToolError(
                 "invalid_evidence",
                 "Evidence must cite records on the current branch: " + ", ".join(sorted(unknown)),
             )
         updated = work_graph.apply(
-            board,
-            target,
-            triggers[status],
-            note=arguments.get("note", ""),
-            evidence=tuple(branch[ref] for ref in refs),
-            call_id=context.call_id,
-            branch=branch,
+            board, target, triggers[status], note=arguments.get("note", ""), evidence=evidence
         )
         return board_result(context, self.spec.name, updated, f"{target} is now {status}.")

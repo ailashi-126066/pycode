@@ -9,21 +9,9 @@ from uuid import uuid4
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
-from pycode.kernel import Acceptance, Board, Step, ToolError, work_graph
+from pycode.kernel import Board, Step, ToolError, work_graph
 
 TEXT = {"type": "string", "minLength": 1}
-# A plain string is the same as {"text": ...}.
-ACCEPTANCE = {
-    "oneOf": [
-        TEXT,
-        {
-            "type": "object",
-            "properties": {"text": TEXT, "check": TEXT},
-            "required": ["text"],
-            "additionalProperties": False,
-        },
-    ]
-}
 # TaskWrite's arguments; a Plan's pycode-tasks block holds the same JSON.
 TASK_WRITE_SCHEMA = {
     "type": "object",
@@ -39,7 +27,7 @@ TASK_WRITE_SCHEMA = {
                     "id": TEXT,
                     "title": TEXT,
                     "depends_on": {"type": "array", "items": TEXT},
-                    "acceptance": {"type": "array", "items": ACCEPTANCE},
+                    "acceptance": {"type": "array", "items": TEXT},
                 },
                 "required": ["title", "depends_on"],
                 "additionalProperties": False,
@@ -90,10 +78,7 @@ def written_steps(items, previous):
         fields = {
             "title": item["title"],
             "depends_on": tuple(item["depends_on"]),
-            "acceptance": tuple(
-                Acceptance(entry) if isinstance(entry, str) else Acceptance(**entry)
-                for entry in item.get("acceptance", ())
-            ),
+            "acceptance": tuple(item.get("acceptance", ())),
         }
         steps[identifier] = (
             replace(steps[identifier], **fields)

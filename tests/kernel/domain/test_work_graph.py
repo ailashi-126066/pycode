@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.kernel import Acceptance, Board, DomainError, Evidence, Step, work_graph
+from pycode.kernel import Board, DomainError, Step, work_graph
 
 
 def board(*steps, done_when=("tests pass",)):
@@ -47,56 +47,14 @@ def test_only_one_step_in_progress():
     assert error_code(lambda: work_graph.apply(started, "b", "start")) == "invalid_board"
 
 
-# Branch records by id; "u1" is the TaskUpdate that starts step a.
-BRANCH = {
-    "old": Evidence("old", 0, "bash", "pytest", 0),
-    "u1": Evidence("u1", 1, "TaskUpdate"),
-    "bad": Evidence("bad", 2, "bash", "pytest", 1, is_error=True),
-    "ok": Evidence("ok", 3, "bash", " pytest -q ", 0),
-    "msg": Evidence("msg", 4),
-}
-
-
-def started(*acceptance):
-    return work_graph.apply(
-        board(Step("a", "A", (), acceptance=acceptance)), "a", "start", call_id="u1"
-    )
-
-
-def complete(step_board, *refs):
-    evidence = tuple(BRANCH[ref] for ref in refs)
-    return work_graph.apply(step_board, "a", "complete", evidence=evidence, branch=BRANCH)
-
-
 def test_completion_needs_evidence_and_cannot_move_back():
-    step = started(Acceptance("unit tests"))
-    assert step.steps[0].started_by == "u1"
-    assert error_code(lambda: complete(step)) == "invalid_transition"
-    done = complete(step, "msg")
-    assert done.steps[0].evidence == (BRANCH["msg"],)
+    checked = board(Step("a", "A", (), acceptance=("unit tests",)))
+    started = work_graph.apply(checked, "a", "start")
+    assert error_code(lambda: work_graph.apply(started, "a", "complete")) == "invalid_transition"
+    done = work_graph.apply(started, "a", "complete", evidence=("msg-1",))
+    assert done.steps[0].evidence == ("msg-1",)
     assert error_code(lambda: work_graph.apply(done, "a", "retry")) == "invalid_transition"
     assert error_code(lambda: work_graph.apply(done, "a", "start")) == "invalid_transition"
-
-
-def test_evidence_from_before_the_step_started_is_stale():
-    assert error_code(lambda: complete(started(Acceptance("tests")), "old")) == "stale_evidence"
-
-
-def test_failed_tool_call_is_not_evidence():
-    assert error_code(lambda: complete(started(Acceptance("tests")), "bad")) == "failed_evidence"
-
-
-def test_successful_call_after_start_is_evidence():
-    done = complete(started(Acceptance("tests")), "ok")
-    assert done.steps[0].status == "completed"
-    assert work_graph.evidence_text(done.steps[0].evidence[0]) == "ok bash ` pytest -q ` exit 0"
-
-
-def test_check_finds_its_successful_run_after_start():
-    done = complete(started(Acceptance("tests", "pytest -q")))
-    assert done.steps[0].evidence == (BRANCH["ok"],)
-    never = started(Acceptance("lint", "ruff check"))
-    assert error_code(lambda: complete(never)) == "check_not_run"
 
 
 def test_failed_step_needs_note_and_can_retry():
@@ -115,14 +73,14 @@ def test_blocked_or_failed_upstream_propagates_downstream():
 def test_board_exits():
     one = board(Step("a", "A", ()))
     assert (
-        error_code(lambda: work_graph.apply(one, "board", "complete", evidence=(BRANCH["ok"],)))
+        error_code(lambda: work_graph.apply(one, "board", "complete", evidence=("ok",)))
         == "invalid_transition"
     )
     finished = work_graph.apply(work_graph.apply(one, "a", "start"), "a", "complete")
     assert (
         error_code(lambda: work_graph.apply(finished, "board", "complete")) == "invalid_transition"
     )
-    completed = work_graph.apply(finished, "board", "complete", evidence=(BRANCH["ok"],))
+    completed = work_graph.apply(finished, "board", "complete", evidence=("pytest passed",))
     assert completed.status == "completed"
     assert error_code(lambda: work_graph.apply(one, "board", "fail")) == "invalid_transition"
     assert work_graph.apply(one, "board", "fail", note="tried A and B").outcome == "tried A and B"
