@@ -5,6 +5,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from typing import TypeVar
 from uuid import uuid4
 
 from pycode.context import ContextProjector, task_board
@@ -33,6 +34,15 @@ from pycode.session.services.session_view import SessionView
 from pycode.session.services.sessions import name_session
 from pycode.skills import Skills
 from pycode.subagents import SubagentManager
+
+T = TypeVar("T")
+
+
+def require(service: T | None, name: str) -> T:
+    """The UI only offers a command when its module is installed."""
+    if service is None:
+        raise StorageError(f"{name}_unavailable", f"This session has no {name} service")
+    return service
 
 
 class AgentSession:
@@ -74,8 +84,6 @@ class AgentSession:
         self._cleanup = SessionCleanup()
 
     async def submit_input(self, message: Message, kind: InputKind) -> bool:
-        if self._durable_inputs is None:
-            raise StorageError("queue_unavailable", "This session has no durable input queue")
         async with self._submission:
             snapshot = await self._store.snapshot()
             if pending_revert(snapshot) is not None:
@@ -86,11 +94,13 @@ class AgentSession:
             if start is None:
                 for entry in snapshot.entries:
                     if entry.type == "input_queued" and entry.require_message().id == message.id:
-                        return await self._durable_inputs.submit(
+                        return await require(self._durable_inputs, "queue").submit(
                             message, kind, self.require_run_id(entry)
                         )
                 raise StorageError("no_pending_run", "Start a task before queueing input")
-            return await self._durable_inputs.submit(message, kind, self.require_run_id(start))
+            return await require(self._durable_inputs, "queue").submit(
+                message, kind, self.require_run_id(start)
+            )
 
     @asynccontextmanager
     async def execution(self, *, allow_revert_recovery=False):
@@ -157,20 +167,8 @@ class AgentSession:
         if self._memory is not None:
             await self._memory.initialize()
 
-    async def configure_fork_context(self, source_entry_ids):
-        async with self.execution():
-            self.require_settled(await self._store.snapshot())
-            await self._store.append_entry(
-                EntryDraft(
-                    "fork_context",
-                    data={"mode": "recent", "source_entry_ids": list(source_entry_ids)},
-                )
-            )
-
     async def load_skill(self, name, args=""):
-        if self._skills is None:
-            raise StorageError("skills_unavailable", "This session has no Skill service")
-        selected = await self._skills.load(name, args)
+        selected = await require(self._skills, "skills").load(name, args)
         prompt = (
             f"Use the {selected['name']} Skill. Read {selected['path']} for its instructions.\n"
             f"Task arguments: {selected['arguments']}"
@@ -182,35 +180,26 @@ class AgentSession:
     async def reload_skills(self):
         async with self.execution():
             self.require_settled(await self._store.snapshot())
-            if self._skills is None:
-                raise StorageError("skills_unavailable", "This session has no Skill service")
-            return await self._skills.refresh()
+            return await require(self._skills, "skills").refresh()
 
     async def skill_search(self, query="", limit=10):
-        if self._skills is None:
-            raise StorageError("skills_unavailable", "This session has no Skill service")
-        return await self._skills.search(query, limit)
+        return await require(self._skills, "skills").search(query, limit)
 
     async def install_skill(self, url, ref=None, subpath=None):
         async with self.execution():
             self.require_settled(await self._store.snapshot())
-            if self._skills is None:
-                raise StorageError("skills_unavailable", "This session has no Skill service")
-            return await self._skills.install(url, ref=ref, subpath=subpath)
+            return await require(self._skills, "skills").install(url, ref=ref, subpath=subpath)
 
     async def read_skill(self, name):
-        if self._skills is None:
-            raise StorageError("skills_unavailable", "This session has no Skill service")
-        return await self._skills.read(name)
+        return await require(self._skills, "skills").read(name)
 
     async def save_skill(self, name, content, *, scope="user", expected_revision=None):
         async with self.execution():
             self.require_settled(await self._store.snapshot())
-            if self._skills is None:
-                raise StorageError("skills_unavailable", "This session has no Skill service")
+            skills = require(self._skills, "skills")
             if expected_revision is None:
-                return await self._skills.create(name, content, scope=scope)
-            return await self._skills.update(
+                return await skills.create(name, content, scope=scope)
+            return await skills.update(
                 name, content, scope=scope, expected_revision=expected_revision
             )
 
@@ -231,25 +220,19 @@ class AgentSession:
     async def enter_plan(self, task=""):
         async with self.execution():
             self.require_settled(await self._store.snapshot())
-            if self._plans is None:
-                raise StorageError("plan_unavailable", "This session has no Plan service")
-            state = await self._plans.enter()
+            state = await require(self._plans, "plan").enter()
             if not task:
                 await self._store.append_message(Message(uuid4().hex, "user", "/plan"))
                 return state
         return await self.run(Message(uuid4().hex, "user", "Create a Plan for: " + task))
 
     async def storage_status(self):
-        if self._storage is None:
-            raise StorageError("storage_unavailable", "This session has no object service")
-        return await self._storage.status()
+        return await require(self._storage, "storage").status()
 
     async def storage_gc(self, *, dry_run=False):
         async with self.execution():
             self.require_settled(await self._store.snapshot())
-            if self._storage is None:
-                raise StorageError("storage_unavailable", "This session has no object service")
-            return await self._storage.collect(dry_run=dry_run)
+            return await require(self._storage, "storage").collect(dry_run=dry_run)
 
     async def run(self, message: Message) -> RunResult:
         if message.role != "user" or not message.id:
@@ -431,9 +414,7 @@ class AgentSession:
         await self._cleanup.close(tuple(closers))
 
     async def inspect(self, *, presentation=False):
-        if self._view is None:
-            raise StorageError("view_unavailable", "This session has no view service")
-        state = await self._view.inspect(presentation=presentation)
+        state = await require(self._view, "view").inspect(presentation=presentation)
         state["plan"] = (
             plain_data(self._plans.state)
             if self._plans is not None and self._plans.state is not None
@@ -463,9 +444,7 @@ class AgentSession:
             )
 
     def require_subagents(self) -> SubagentManager:
-        if self._subagents is None:
-            raise StorageError("subagents_unavailable", "This session has no subagents")
-        return self._subagents
+        return require(self._subagents, "subagents")
 
     async def answer_agent(self, agent_id, answer):
         await self.require_subagents().answer(agent_id, answer)
@@ -508,46 +487,32 @@ class AgentSession:
             return await self._run_locked(Message(uuid4().hex, "user", text))
 
     async def usage(self, run_id=None):
-        if self._view is None:
-            raise StorageError("usage_unavailable", "This session has no usage service")
-        return await self._view.usage(run_id)
+        return await require(self._view, "view").usage(run_id)
 
     async def request_records(self):
-        if self._view is None:
-            raise StorageError("view_unavailable", "This session has no request view")
-        return await self._view.request_records()
+        return await require(self._view, "view").request_records()
 
     async def memory_list(self):
-        if self._memory is None:
-            raise StorageError("memory_unavailable", "This session has no memory service")
-        return await self._memory.list()
+        return await require(self._memory, "memory").list()
 
     async def collect_memory(self):
         if self._memory is not None:
             await self._memory.collect()
 
     async def memory_mode(self, mode):
-        if self._memory is None:
-            raise StorageError("memory_unavailable", "This session has no memory service")
-        await self._memory.set_mode(mode)
+        await require(self._memory, "memory").set_mode(mode)
 
     async def memory_remove(self, memory_id, *, scope=None):
         async with self.execution():
-            if self._memory is None:
-                raise StorageError("memory_unavailable", "This session has no memory service")
-            await self._memory.remove(memory_id, scope=scope)
+            await require(self._memory, "memory").remove(memory_id, scope=scope)
 
     async def memory_edit(self, memory_id, content, *, scope=None):
         async with self.execution():
-            if self._memory is None:
-                raise StorageError("memory_unavailable", "This session has no memory service")
-            return await self._memory.edit(memory_id, content, scope=scope)
+            return await require(self._memory, "memory").edit(memory_id, content, scope=scope)
 
     async def memory_clear(self):
         async with self.execution():
-            if self._memory is None:
-                raise StorageError("memory_unavailable", "This session has no memory service")
-            await self._memory.clear()
+            await require(self._memory, "memory").clear()
 
     async def memory_extract(self):
         async with self.execution():
@@ -576,16 +541,12 @@ class AgentSession:
     async def preview_revert(self, target_leaf_id, mode="dialogue"):
         async with self.execution():
             self.require_settled(await self._store.snapshot())
-            if self._revert is None:
-                raise StorageError("revert_unavailable", "This session has no revert service")
-            return await self._revert.preview(target_leaf_id, mode)
+            return await require(self._revert, "revert").preview(target_leaf_id, mode)
 
     async def revert(self, plan):
         async with self.execution():
             self.require_settled(await self._store.snapshot())
-            if self._revert is None:
-                raise StorageError("revert_unavailable", "This session has no revert service")
-            result = await self._revert.apply(plan)
+            result = await require(self._revert, "revert").apply(plan)
             await self._launcher.invalidate_summary("reverted")
             if self._plans is not None:
                 await self._plans.initialize()
@@ -599,9 +560,9 @@ class AgentSession:
 
     async def recover_revert(self, restore_id, *, compensate=False):
         async with self.execution(allow_revert_recovery=True):
-            if self._revert is None:
-                raise StorageError("revert_unavailable", "This session has no revert service")
-            result = await self._revert.recover(restore_id, compensate=compensate)
+            result = await require(self._revert, "revert").recover(
+                restore_id, compensate=compensate
+            )
             await self._launcher.invalidate_summary("reverted")
             if self._plans is not None:
                 await self._plans.initialize()

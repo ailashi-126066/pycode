@@ -7,18 +7,6 @@ from pathlib import Path
 from uuid import uuid4
 
 
-def io_path(path):
-    path = Path(path)
-    if os.name != "nt":
-        return path
-    name = str(path.absolute())
-    if name.startswith("\\\\?\\"):
-        return path
-    if name.startswith("\\\\"):
-        return Path("\\\\?\\UNC\\" + name[2:])
-    return Path("\\\\?\\" + name)
-
-
 def file_sha256(path):
     with path.open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()

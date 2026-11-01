@@ -262,13 +262,10 @@ class PyApp(App):
         logging.getLogger("pycode.ui").error(
             "Disabled failed UI renderer: %s", error, exc_info=True
         )
-        try:
-            self.notice(
-                "Display failed; saved history remains available. Reopen the session to refresh.",
-                "error",
-            )
-        except Exception:
-            logging.getLogger("pycode.ui").exception("Could not display renderer failure")
+        self.notice(
+            "Display failed; saved history remains available. Reopen the session to refresh.",
+            "error",
+        )
 
     async def render_runtime_event(self, message):
         event = message.event

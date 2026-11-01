@@ -28,25 +28,15 @@ async def recover_conversation(
             ended.add(entry.run_id)
         if entry.type == "input_expired":
             expired_inputs.add(entry.data["input_entry_id"])
-    # Records written before ToolSpec.replay existed only came from non-read tools.
     started_operations = {
-        entry.operation_id: entry.data.get("replay", "never")
+        entry.operation_id: entry.data["replay"]
         for entry in path
         if entry.data.get("kind") == "tool_started"
     }
-    issued = {}
     for entry in path:
-        if entry.message is not None and entry.message.role == "assistant":
-            run_id = entry.run_id or entry.message.provider_metadata.get("pycode_run_id", "")
-            for call in entry.message.tool_calls:
-                issued[(run_id, call.id)] = entry.message.id
         if entry.message is not None and entry.message.tool_result is not None:
             result = entry.message.tool_result
-            run_id = entry.run_id or result.run_id or ""
-            owner = result.details.get("source_assistant_id") or issued.get(
-                (run_id, result.call_id)
-            )
-            paired.add((owner, result.call_id))
+            paired.add((result.details["source_assistant_id"], result.call_id))
         if entry.data.get("kind") == "run_start":
             starts.append(entry)
     for entry in path:

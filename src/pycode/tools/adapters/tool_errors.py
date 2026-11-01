@@ -4,12 +4,14 @@ Every Exception from execution becomes one error result; LangGraph control flow
 (interrupts) still propagates, and so does cancellation (a BaseException).
 """
 
+from typing import cast
+
 from langchain.agents.middleware import ToolErrorMiddleware
 from langchain.tools import ToolRuntime
 from langchain.tools.tool_node import ToolCallRequest
 from langchain_core.messages import ToolMessage
 
-from pycode.kernel import ToolResult, json_dumps
+from pycode.kernel import json_dumps
 from pycode.tools.domain.tool_failures import tool_failure
 
 
@@ -38,8 +40,6 @@ async def execute_tool_errors(call, spec, action):
 
     async def invoke(current):
         result = await action()
-        if not isinstance(result, ToolResult):
-            raise TypeError("Tool execution must return a ToolResult")
         return ToolMessage(
             content=result.text,
             artifact=result,
@@ -51,6 +51,5 @@ async def execute_tool_errors(call, spec, action):
     response = await ToolErrorMiddleware(aon_error=on_error).awrap_tool_call(request, invoke)
     if failure is not None:
         return failure
-    if not isinstance(response, ToolMessage) or not isinstance(response.artifact, ToolResult):
-        raise TypeError("Error boundary did not preserve the domain tool result")
-    return response.artifact
+    # invoke always returns a ToolMessage; the middleware only replaces errors with text.
+    return cast(ToolMessage, response).artifact

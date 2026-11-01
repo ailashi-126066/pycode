@@ -3,10 +3,7 @@
 from functools import partial
 
 from pycode.agent import RunContext
-from pycode.agent.module import AgentModule
 from pycode.hooks import run_hook
-from pycode.models.module import ModelsModule
-from pycode.tools.module import ToolsModule
 
 
 def build_runtime_bindings(
@@ -44,14 +41,4 @@ def build_runtime_bindings(
         framework_extensions=framework_extensions,
         model_filters=model_filters,
         before_model=before_model,
-    )
-
-
-def build_agent_runtime(model, **options):
-    return AgentModule().runtime(
-        model,
-        bindings=build_runtime_bindings(
-            agent=AgentModule(), models=ModelsModule, tools=ToolsModule()
-        ),
-        **options,
     )

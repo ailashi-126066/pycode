@@ -6,7 +6,6 @@ from dataclasses import replace
 import pytest
 from langchain_core.messages import AIMessage
 
-from pycode.app.composition.bindings import build_agent_runtime
 from pycode.context.services.context_projector import ContextProjector
 from pycode.kernel.domain.errors import StorageError, ToolError
 from pycode.kernel.domain.history import SessionHeader
@@ -20,6 +19,7 @@ from pycode.tools.services.tool_executor import ToolExecutor
 from pycode.tools.services.tool_registry import ToolRegistry
 from tests.agent.adapters.test_agent import assemble
 from tests.support.requests import TestTiming
+from tests.support.runtime import build_agent_runtime
 
 
 class HeldRead:

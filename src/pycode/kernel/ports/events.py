@@ -18,13 +18,4 @@ class EventSink(Protocol):
 class EventJournal(Protocol):
     async def append_event(self, event: Event) -> Event: ...
 
-    async def list_events(
-        self,
-        session_id: str,
-        run_id: str,
-        *,
-        after: int = 0,
-        limit: int = 1000,
-    ) -> tuple[Event, ...]: ...
-
     async def aclose(self) -> None: ...

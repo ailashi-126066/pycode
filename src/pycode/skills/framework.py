@@ -288,9 +288,5 @@ class SkillsToolExtension:
         if result.is_error:
             return
         if call.name == "SkillSearch" and self.selection.dispatch:
-            selected = result.structured_content
-            if selected is None:
-                selected = json.loads(result.text)
-            if not isinstance(selected, list):
-                raise TypeError("SkillSearch must return a list of skill records")
+            selected = json.loads(result.text)
             self.selection.select([item["path"] for item in selected])

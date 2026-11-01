@@ -136,9 +136,7 @@ async def test_source_change_rejects_cache_and_keeps_immutable_old_objects(tmp_p
             )
         elif cause == "configuration":
             service.configure(
-                replace(settings, selection=replace(settings.selection, model_id="new-model")),
-                generator,
-                events,
+                replace(settings, budget=InputBudget.create(30000, 1000)), generator, events
             )
         else:
             await history.branch(source.source_entry_ids[0])
@@ -150,6 +148,22 @@ async def test_source_change_rejects_cache_and_keeps_immutable_old_objects(tmp_p
             assert len(generator.sources) == 2
         assert await objects.load(source.job_id) is None
         assert (tmp_path / "summaries" / f"{source.job_id}.result.json").exists()
+    finally:
+        await service.aclose()
+        await history.aclose()
+
+
+async def test_model_switch_with_the_same_window_keeps_the_prepared_summary(tmp_path):
+    generator = Generator()
+    history, _, settings, events, service = await setup(tmp_path, generator)
+    try:
+        await service.prepare()
+        await service.collect(cancel=False)
+        source = generator.sources[0]
+        selection = ModelSelection("other", "other-model", "anthropic")
+        service.configure(replace(settings, selection=selection), generator, events)
+        assert (await service.prepare(manual=True)).applied_job_id == source.job_id
+        assert len(generator.sources) == 1
     finally:
         await service.aclose()
         await history.aclose()

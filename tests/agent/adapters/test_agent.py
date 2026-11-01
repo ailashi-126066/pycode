@@ -8,7 +8,6 @@ import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
 from pycode.agent import RunContext
-from pycode.app.composition.bindings import build_agent_runtime
 from pycode.context import task_board
 from pycode.context.services.context_projector import ContextProjector
 from pycode.kernel import Board, EntryDraft, ModelSelection, SessionTree, Step, plain_data
@@ -28,6 +27,7 @@ from pycode.tools.services.tool_executor import ToolExecutor
 from pycode.tools.services.tool_registry import ToolRegistry
 from tests.support.model import ScriptedChatModel
 from tests.support.requests import MemoryRequestStore, TestTiming
+from tests.support.runtime import build_agent_runtime
 
 VECTORS = json.loads((Path(__file__).parents[2] / "fixtures/pi-agent-loop.json").read_text())
 
@@ -323,7 +323,7 @@ async def test_length_stop_ends_the_turn_without_automatic_continuation():
 
 
 def payloads(recorder, kind):
-    return [event.data for event in recorder.events if event.kind == kind]
+    return [plain_data(event.data) for event in recorder.events if event.kind == kind]
 
 
 async def test_every_turn_has_exactly_one_turn_end_with_its_tool_results():

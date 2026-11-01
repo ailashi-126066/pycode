@@ -11,7 +11,6 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.store.base import PutOp
 from langgraph.store.sqlite.base import SqliteStore
 
-from pycode.context import valid_kept_boundary
 from pycode.kernel import (
     EntryDraft,
     Message,
@@ -244,7 +243,8 @@ class SqliteSessionStore:
             entry = freeze_value(decode_entry(encode_entry(entry)))
             if entry.id in self._entries_by_id:
                 raise StorageError("entry_id_conflict", "Entry ID already exists")
-            self.validate_branch_entry(entry)
+            if entry.type == "input_queued":
+                self.require_active_run(entry)
             will_persist = self._persisted or (
                 entry.type == "message" and entry.require_message().role == "user"
             )
@@ -259,46 +259,24 @@ class SqliteSessionStore:
 
         return await self.run_io(append)
 
-    def validate_branch_entry(self, entry: SessionEntry, path=None) -> None:
-        if path is None:
-            path = SessionTree(self._entries_by_id).path(self._leaf)
-        active = {item.id: item for item in path}
-        if entry.type == "input_queued":
-            started = any(
-                item.type == "custom"
-                and item.data.get("kind") == "run_start"
-                and item.run_id == entry.run_id
-                and run_belongs_to_session(self._header, item)
-                for item in path
-            )
-            ended = any(
-                item.type == "custom"
-                and item.data.get("kind") == "run_end"
-                and item.run_id == entry.run_id
-                for item in self._entries_by_id.values()
-            )
-            if not started or ended:
-                raise StorageError("run_settled", "Queued input has no active owning run")
-        if entry.type == "context_edit":
-            target = active.get(entry.data["target_id"])
-            if target is None or (
-                target.type != "custom_message"
-                and not (target.type == "message" and target.require_message().role != "system")
-            ):
-                raise StorageError(
-                    "invalid_context_target", "Context target is not editable on the active branch"
-                )
-        if entry.type == "compaction":
-            kept = entry.data["first_kept_entry_id"]
-            if kept != entry.id and kept not in active:
-                raise StorageError(
-                    "invalid_compaction_boundary", "Retained boundary is not on the active branch"
-                )
-            if not valid_kept_boundary(path, None if kept == entry.id else kept):
-                raise StorageError(
-                    "unpaired_compaction_boundary",
-                    "Compaction would split a tool call from its result",
-                )
+    def require_active_run(self, entry: SessionEntry) -> None:
+        """Queued input races the run's end; the run must still be open on this branch."""
+        path = SessionTree(self._entries_by_id).path(self._leaf)
+        started = any(
+            item.type == "custom"
+            and item.data.get("kind") == "run_start"
+            and item.run_id == entry.run_id
+            and run_belongs_to_session(self._header, item)
+            for item in path
+        )
+        ended = any(
+            item.type == "custom"
+            and item.data.get("kind") == "run_end"
+            and item.run_id == entry.run_id
+            for item in self._entries_by_id.values()
+        )
+        if not started or ended:
+            raise StorageError("run_settled", "Queued input has no active owning run")
 
     async def has_checkpoint(self, run_id):
         if not (self._directory / "execution.sqlite").exists():

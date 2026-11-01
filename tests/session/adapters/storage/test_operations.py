@@ -48,7 +48,7 @@ async def test_completed_jsonl_result_is_preserved_without_second_result_path(tm
     store = store_at(tmp_path)
     await store.append_message(Message("u1", "user", "task"))
     await store.append_message(Message("a1", "assistant", content=(ToolCall("c1", "Read", {}),)))
-    result = ToolResult("c1", "Read", "original result")
+    result = ToolResult("c1", "Read", "original result", details={"source_assistant_id": "a1"})
     await store.append_message(Message("t1", "tool_result", tool_result=result))
     await store.aclose()
     original_bytes = (tmp_path / "s1" / "session.sqlite").read_bytes()

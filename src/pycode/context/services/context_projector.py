@@ -82,7 +82,7 @@ class ContextProjector:
     def incremental(self, snapshot):
         # Unknown contributors can depend on ordinary appended messages. Only an
         # explicit capability declaration permits reuse of their previous output.
-        if not all(getattr(item, "incremental_safe", False) for item in self._contributors):
+        if not all(item.incremental_safe for item in self._contributors):
             return None
         if self._cached is None or self._key is None:
             return None

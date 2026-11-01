@@ -87,6 +87,10 @@ def upgrade_entry(payload: dict) -> dict:
             message.update(stop_reason="error", error="provider_content_filter")
         if message["tool_result"] is not None:
             message["tool_result"].pop("terminate")
+    # Records written before ToolSpec.replay existed only came from non-read tools.
+    data = payload.get("data")
+    if isinstance(data, dict) and data.get("kind") == "tool_started":
+        data.setdefault("replay", "never")
     # 11.1 section 31: output_id gave way to details["full_output_path"].
     if isinstance(message, dict) and message["tool_result"] is not None:
         message["tool_result"].pop("output_id", None)

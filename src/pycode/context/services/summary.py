@@ -94,11 +94,13 @@ class SummaryService:
         self._meter = ContextMeter(self._settings)
 
     def config_hash(self):
-        # Only what shapes the summary text or its cut. Checkpoint state (task_board, plan,
-        # mcp, skills, prompt, tools) is taken again at adoption, so it is not hashed.
+        # Only the numbers that shape the cut and its budget (11.1 section 35): switching to a
+        # model with the same window keeps a prepared summary. Checkpoint state (task_board,
+        # plan, mcp, skills, prompt, tools) is taken again at adoption, so it is not hashed.
         return data_hash(
             {
-                "selection": plain_data(self._settings.selection),
+                "context_window": self._settings.budget.window,
+                "max_output_tokens": self._settings.budget.output_reserve,
                 "keep_recent_tokens": self._settings.keep_recent_tokens,
             }
         )

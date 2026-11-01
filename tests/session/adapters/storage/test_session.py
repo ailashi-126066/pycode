@@ -107,28 +107,6 @@ async def test_unknown_entry_type_is_rejected(tmp_path):
         await store.aclose()
 
 
-async def test_compaction_cannot_split_tool_call_and_result(tmp_path):
-    from pycode.kernel.domain.messages import ToolCall, ToolResult
-
-    store = open_store(tmp_path)
-    await store.append_message(Message("u1", "user", "task"))
-    call = await store.append_message(
-        Message("a1", "assistant", content=(ToolCall("c1", "Read", {}),))
-    )
-    result = await store.append_message(
-        Message("t1", "tool_result", tool_result=ToolResult("c1", "Read", "body"))
-    )
-    with pytest.raises(StorageError) as error:
-        await store.append_entry(
-            EntryDraft("compaction", data={"summary": "summary", "first_kept_entry_id": result})
-        )
-    assert error.value.code == "unpaired_compaction_boundary"
-    await store.append_entry(
-        EntryDraft("compaction", data={"summary": "summary", "first_kept_entry_id": call})
-    )
-    await store.aclose()
-
-
 async def test_record_and_position_commit_atomically(tmp_path):
     from pycode.session.adapters.storage.session import open_database, read_records
 

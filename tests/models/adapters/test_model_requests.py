@@ -7,7 +7,6 @@ from typing import Any
 import pytest
 from langchain_core.messages import AIMessage
 
-from pycode.app.composition.bindings import build_agent_runtime
 from pycode.kernel.domain.messages import Message
 from pycode.models.adapters.failures import ProviderFailureClassifier
 from pycode.models.adapters.model_requests import ModelRequestRunner
@@ -16,6 +15,7 @@ from tests.agent.adapters.test_agent import assemble, tool_response
 from tests.models.adapters.test_failures import status_error
 from tests.support.model import ScriptedChatModel
 from tests.support.requests import MemoryRequestStore, TestTiming
+from tests.support.runtime import build_agent_runtime
 
 VECTORS = json.loads((Path(__file__).parents[2] / "fixtures/pi-retry.json").read_text())
 

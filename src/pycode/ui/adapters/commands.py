@@ -101,9 +101,3 @@ class CommandRegistry:
             for name, command in sorted((self._commands | self._skills).items())
             if name.startswith(text)
         )
-
-    def help_text(self):
-        return "Commands: " + ", ".join(
-            command.name + (" " + command.usage if command.usage else "")
-            for command in (*self._commands.values(), *self._skills.values())
-        )

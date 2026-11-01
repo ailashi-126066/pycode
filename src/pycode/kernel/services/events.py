@@ -6,7 +6,7 @@ from typing import Any
 
 from pycode.kernel.domain.errors import OutputClosed
 from pycode.kernel.domain.events import Event, EventKind
-from pycode.kernel.domain.values import clone_value
+from pycode.kernel.domain.values import freeze_value
 from pycode.kernel.ports.events import EventConsumer, EventJournal
 
 
@@ -45,7 +45,8 @@ class EventStream:
                 session_id=self._session_id,
                 run_id=self._run_id,
                 kind=kind,
-                data=clone_value(data),
+                # Frozen once here; every consumer receives the same object.
+                data=freeze_value(data),
                 operation_id=operation_id,
                 turn=self._turn,
                 agent_id=self._agent_id,
@@ -58,7 +59,7 @@ class EventStream:
                 if index in self._closed:
                     continue
                 try:
-                    await consumer.consume(clone_value(event))
+                    await consumer.consume(event)
                 except BrokenPipeError:
                     # stdout is gone: stop writing to it and cancel the run.
                     self._closed.add(index)

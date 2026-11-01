@@ -1,7 +1,6 @@
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
-from pycode.app.composition.bindings import build_agent_runtime
 from pycode.context.domain.tool_eviction import EvictionBudget
 from pycode.context.services.context_projector import ContextProjector
 from pycode.context.services.tool_eviction import ToolEvictionService
@@ -11,6 +10,7 @@ from pycode.session.adapters.storage.session import SqliteSessionStore
 from tests.agent.adapters.test_agent import assemble
 from tests.support.model import ScriptedChatModel
 from tests.support.requests import TestTiming
+from tests.support.runtime import build_agent_runtime
 
 
 async def test_next_framework_request_uses_persistent_evictions_not_original_graph_messages(

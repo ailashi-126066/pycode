@@ -2,7 +2,6 @@
 
 from pycode.context.domain.context_budget import InputBudget
 from pycode.context.domain.context_meter import ContextMeter
-from pycode.context.domain.history_boundaries import valid_kept_boundary
 from pycode.context.domain.retention import retained_context_entries
 from pycode.context.domain.summaries import SummaryReport, SummarySettings
 from pycode.context.domain.tasks import (
@@ -27,7 +26,6 @@ __all__ = [
     "ProjectionContribution",
     "ProjectionContributor",
     "ProjectedContext",
-    "valid_kept_boundary",
     "estimate_messages",
     "ContextMeter",
     "ContextProjector",

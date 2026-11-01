@@ -1,7 +1,6 @@
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
-from pycode.app.composition.bindings import build_agent_runtime
 from pycode.kernel.domain.messages import Message, ToolResult
 from pycode.kernel.domain.tools import ToolSpec
 from pycode.kernel.domain.truncation import MAX_BYTES
@@ -15,6 +14,7 @@ from pycode.tools.services.tool_executor import ToolExecutor
 from pycode.tools.services.tool_registry import ToolRegistry
 from tests.agent.adapters.test_agent import assemble
 from tests.support.model import ScriptedChatModel
+from tests.support.runtime import build_agent_runtime
 
 
 async def test_large_tool_output_is_read_back_with_read_through_the_same_executor():

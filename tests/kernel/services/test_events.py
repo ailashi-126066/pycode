@@ -23,18 +23,16 @@ async def test_concurrent_producers_have_one_ordered_event_sequence():
     assert all(event.session_id == "s1" and event.run_id == "r1" for event in recorder.events)
 
 
-async def test_consumer_and_producer_cannot_mutate_another_consumers_payload():
-    class MutatingConsumer:
-        async def consume(self, event):
-            event.data["nested"]["text"] = "changed"
-
-    recorder = Recorder()
-    stream = EventStream("s1", "r1", (MutatingConsumer(), recorder))
+async def test_payload_is_frozen_once_and_shared_by_every_consumer():
+    first, second = Recorder(), Recorder()
+    stream = EventStream("s1", "r1", (first, second))
     data = {"nested": {"text": "original"}}
     published = await stream.emit("message_end", data)
     data["nested"]["text"] = "later"
-    assert recorder.events[0].data["nested"]["text"] == "original"
+    assert first.events[0] is second.events[0] is published
     assert published.data["nested"]["text"] == "original"
+    with pytest.raises(TypeError):
+        published.data["nested"]["text"] = "changed"
 
 
 async def test_consumer_error_fails_the_emit_and_the_consumer_keeps_receiving_events():
