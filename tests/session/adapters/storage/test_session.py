@@ -150,7 +150,8 @@ async def test_record_and_position_commit_atomically(tmp_path):
     assert after["leaf_id"] == root and saved == entries
 
 
-async def test_old_team_records_are_skipped_and_their_children_reattached(tmp_path):
+@pytest.mark.parametrize("old_type", ["team_agent", "plan_decision", "session_deleted"])
+async def test_removed_record_types_are_skipped_and_their_children_reattached(tmp_path, old_type):
     from pycode.session.adapters.storage.session import open_database
 
     store = open_store(tmp_path)
@@ -158,7 +159,7 @@ async def test_old_team_records_are_skipped_and_their_children_reattached(tmp_pa
     await store.aclose()
     database = open_database(tmp_path / "session/session.sqlite")
     stored = database.get(("entries",), root).value["entry"]
-    team = {**stored, "id": "team", "parent_id": root, "type": "team_agent", "message": None}
+    team = {**stored, "id": "team", "parent_id": root, "type": old_type, "message": None}
     reply = {
         **stored,
         "id": "reply",
@@ -186,6 +187,19 @@ async def test_old_team_records_are_skipped_and_their_children_reattached(tmp_pa
     # New records follow every stored record, including the skipped one.
     assert database.get(("entries",), latest).value["sequence"] == 3
     database.conn.close()
+
+
+@pytest.mark.parametrize("kind", ["plan_decision", "skill_install"])
+async def test_custom_kinds_round_trip(tmp_path, kind):
+    store = open_store(tmp_path)
+    await store.append_message(Message("u1", "user", "start"))
+    saved = await store.append_entry(EntryDraft("custom", data={"kind": kind, "value": 1}))
+    await store.aclose()
+    reopened = open_store(tmp_path)
+    try:
+        assert (await reopened.snapshot()).index[saved.id].data == {"kind": kind, "value": 1}
+    finally:
+        await reopened.aclose()
 
 
 async def test_unknown_schema_is_rejected(tmp_path):

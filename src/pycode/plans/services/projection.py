@@ -12,17 +12,15 @@ class PlanProjection:
     def contribute(self, snapshot, path, entries, checkpoint):
         pinned = []
         updates = {}
-        plan_state = None
         plan_entry = None
         for entry in path:
             if (
                 entry.type == "plan_state"
                 and entry.data["session_id"] == snapshot.header.session_id
             ):
-                plan_state = entry.data
                 plan_entry = entry
-        if plan_state is not None and plan_state["mode"] != "completed":
-            assert plan_entry is not None
+        if plan_entry is not None and plan_entry.data["mode"] != "completed":
+            plan_state = plan_entry.data
             updates["plan"] = clone_value(plan_state)
             reminder = (
                 f"Plan mode={plan_state['mode']}; active Markdown={plan_state['virtual_path']}. "

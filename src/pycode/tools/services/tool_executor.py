@@ -109,10 +109,11 @@ class ToolExecutor:
             # Validation, authorization and synchronous Hooks precede execution.
             result = tool_failure(error, replace(call, name=result_name))
         if result is None:
+            if spec is None:
+                raise StorageError("unknown_tool_spec", "No spec for " + call.name)
 
             async def action():
                 nonlocal accepting_updates
-                assert spec is not None
                 await self.events.emit(
                     "tool_execution_update",
                     {
@@ -141,7 +142,8 @@ class ToolExecutor:
             mode = "tail" if call.name.lower() in {"bash", "command"} else "head"
             result = await self.outputs.prepare(context, result, mode)
         if before is not None:
-            assert self.snapshots is not None
+            if self.snapshots is None:
+                raise SnapshotError("snapshot_unavailable", "No snapshot service for this call")
             try:
                 after = await self.snapshots.capture()
                 paths = []

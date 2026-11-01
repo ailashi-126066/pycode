@@ -30,6 +30,7 @@ from pycode.kernel import (
     Message,
     ModelError,
     SnapshotError,
+    StorageError,
     TextBlock,
     plain_data,
     work_graph,
@@ -139,7 +140,8 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
     async def current_projection(self, context):
         """One projection per model call, reused while the history leaf is unchanged."""
 
-        assert context.history_store is not None and context.projector is not None
+        if context.history_store is None or context.projector is None:
+            raise StorageError("history_unavailable", "Projection needs history and a projector")
         snapshot = await context.history_store.snapshot()
         cached = context.model_projection
         if cached is None or cached.leaf_id != snapshot.leaf_id:
@@ -351,7 +353,8 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
     async def aafter_model(self, state, runtime):
         context = runtime.context
         message = context.assistant
-        assert message is not None
+        if message is None:
+            raise StorageError("assistant_not_saved", "The model reply was not saved")
         if message.tool_calls:
             context.run_state.apply("tools")
         else:

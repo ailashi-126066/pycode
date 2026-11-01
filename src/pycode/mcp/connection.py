@@ -282,7 +282,8 @@ class MCPAdapterConnections:
     async def catalog(self):
         self.start()
         owned = self._startup
-        assert owned is not None
+        if owned is None:
+            raise StorageError("mcp_not_started", "MCP startup did not begin")
         result = await asyncio.shield(owned)
         if self._startup is owned:
             self._startup = None

@@ -93,8 +93,24 @@ def upgrade_entry(payload: dict) -> dict:
     return payload
 
 
-# 11.1 section 10: records of the removed team feature are skipped on read.
-REMOVED_ENTRY_TYPES = frozenset({"team_agent", "team_parent", "team_transition"})
+# Skipped on read: the removed team feature (11.1 section 10), records nobody reads any more
+# and top-level types that became custom kinds (section 13 #1).
+REMOVED_ENTRY_TYPES = frozenset(
+    {
+        "team_agent",
+        "team_parent",
+        "team_transition",
+        "hook_call",
+        "hook_result",
+        "memory_load",
+        "memory_recall_error",
+        "plan_review",
+        "plan_decision",
+        "skill_install",
+        "session_deleted",
+        "session_restored",
+    }
+)
 
 
 def decode_entries(records) -> tuple[tuple[SessionEntry, ...], dict[str, str | None]]:

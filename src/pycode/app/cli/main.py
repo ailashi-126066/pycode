@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             return 141
     application = compose_application(config)
     status = application.status()
-    isolation = asyncio.run(compose_application(config).sandbox_status())
+    isolation = asyncio.run(application.sandbox_status())
     tools = external_tools()
     if args.json:
         print(

@@ -204,10 +204,12 @@ class AgentRuntime:
 
     async def restore_task(self, context):
         self.build(context)
-        assert self.graph is not None
+        if self.graph is None or context.history_store is None:
+            raise StorageError(
+                "runtime_unavailable", "Restoring a task needs the graph and history"
+            )
         checkpoint = await self.graph.aget_state(self.config(context))
         state = checkpoint.values
-        assert context.history_store is not None
         snapshot = await context.history_store.snapshot()
         path = SessionTree(snapshot.index).path(snapshot.leaf_id)
         start = next(

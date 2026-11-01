@@ -27,7 +27,7 @@ class AppConfig:
     agent_id: str = "lead"
     request_database: Path | None = None
     isolated_worker: bool = False
-    # Embedding hooks: a gate replacing the default tool authorization chain and
+    # Embedding hooks: a gate checked before the default tool authorization chain and
     # directories prepended to the Bash tool's PATH.
     tool_gate: ToolGate | None = None
     bash_path_prefix: tuple[str, ...] = ()

@@ -119,8 +119,8 @@ class PlanService:
             )
             await self.history.append_entry(
                 EntryDraft(
-                    "plan_decision",
-                    data={**decision, "feedback": feedback},
+                    "custom",
+                    data={"kind": "plan_decision", **decision, "feedback": feedback},
                     run_id=context.run_id,
                     operation_id=context.operation_id,
                 )
@@ -133,8 +133,8 @@ class PlanService:
         mode = "auto" if answer["decision"] == "auto" else "review"
         await self.history.append_entry(
             EntryDraft(
-                "plan_decision",
-                data=decision,
+                "custom",
+                data={"kind": "plan_decision", **decision},
                 run_id=context.run_id,
                 operation_id=context.operation_id,
             )

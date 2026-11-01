@@ -13,19 +13,15 @@ class SystemPromptProjection:
 
     def contribute(self, snapshot, path, entries, checkpoint):
         prompt = None
+        source_id = ""
         for entry in path:
             if entry.type == "system_prompt":
-                prompt = entry.data
+                prompt, source_id = entry.data, entry.id
             elif entry.type == "compaction":
                 prompt = entry.data.get("checkpoint", {}).get("prompt_snapshot", prompt)
+                source_id = entry.id
         if prompt is None:
             return ProjectionContribution()
-        source_id = snapshot.leaf_id
-        for entry in reversed(path):
-            if entry.type in {"system_prompt", "compaction"}:
-                source_id = entry.id
-                break
-        assert source_id is not None
         return ProjectionContribution(
             (
                 ProjectedEntry(

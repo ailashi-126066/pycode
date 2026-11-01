@@ -7,6 +7,7 @@ from pycode.kernel import (
     MAX_BYTES,
     MAX_LINES,
     ToolContext,
+    ToolError,
     ToolResult,
     ToolSpec,
     format_size,
@@ -67,7 +68,8 @@ class Read:
         )
         if page.error:
             raise backend_error(page.error)
-        assert page.file_data is not None
+        if page.file_data is None:
+            raise ToolError("not_a_file", f"{path} has no file content")
         content = page.file_data["content"]
         total = f" of {page.total_lines}" if page.total_lines is not None else ""
         truncation = truncate(content, "head")

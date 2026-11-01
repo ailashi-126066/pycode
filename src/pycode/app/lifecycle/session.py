@@ -71,7 +71,8 @@ class ConfiguredRuntimeLauncher:
             return
         snapshot = await store.snapshot()
         lifetime = uuid4().hex
-        assert self._hook_factory is not None
+        if self._hook_factory is None:
+            raise StorageError("hooks_unavailable", "Hooks are configured without a factory")
         engine = self._hook_factory(self, store, snapshot, lifetime)
         self._lifecycle_engine = engine
         self._lifecycle_context = HookContext(
@@ -127,7 +128,8 @@ class ConfiguredRuntimeLauncher:
         container = self._active_container if resume else None
         restoring = resume and container is None
         if container is None:
-            assert self._prompt_factory is not None and self._runtime_factory is not None
+            if self._prompt_factory is None or self._runtime_factory is None:
+                raise StorageError("runtime_unavailable", "This session cannot run the agent")
             await self._prompt_factory(store).refresh()
             container = await self._runtime_factory(self, provider, store, run_id)
             self._active_container = container
@@ -162,7 +164,8 @@ class ConfiguredRuntimeLauncher:
 
     async def compact(self, provider, store):
         snapshot = await store.snapshot()
-        assert self._runtime_factory is not None
+        if self._runtime_factory is None:
+            raise StorageError("runtime_unavailable", "This session cannot run the agent")
         container = await self._runtime_factory(self, provider, store, uuid4().hex)
         self.summary = container.context.summary
         container.owns_summary = False

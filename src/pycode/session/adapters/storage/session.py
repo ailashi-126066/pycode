@@ -50,7 +50,8 @@ def read_records(path):
     store = open_database(path)
     try:
         saved = store.get(("session",), "position")
-        assert saved is not None
+        if saved is None:
+            raise StorageError("invalid_session_position", "Session has no stored position")
         metadata = saved.value
         entries = []
         offset = 0
@@ -72,7 +73,8 @@ def read_header(path):
     store = open_database(path)
     try:
         saved = store.get(("session",), "position")
-        assert saved is not None
+        if saved is None:
+            raise StorageError("invalid_session_position", "Session has no stored position")
         return decode_header(encode_header(saved.value["header"]))
     finally:
         store.conn.close()

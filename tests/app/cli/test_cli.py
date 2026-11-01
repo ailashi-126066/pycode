@@ -24,6 +24,20 @@ def test_diagnostics_use_shared_application(tmp_path, capsys):
     assert not (tmp_path / ".git").exists()
 
 
+def test_doctor_builds_one_application(tmp_path, capsys, monkeypatch):
+    import pycode.app.cli.main as cli
+
+    built = []
+
+    def compose(*args):
+        built.append(args)
+        return compose_application(*args)
+
+    monkeypatch.setattr(cli, "compose_application", compose)
+    assert main(["--workspace", str(tmp_path), "doctor", "--json"]) == 0
+    assert len(built) == 1
+
+
 def test_doctor_reports_external_tools_with_install_hints(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
     assert main(["--workspace", str(tmp_path), "doctor", "--json"]) == 0

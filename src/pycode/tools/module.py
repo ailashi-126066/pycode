@@ -50,13 +50,15 @@ from pycode.tools.services.tool_registry import ToolRegistry
 
 
 @dataclass(frozen=True)
-class _ScopedGate:
-    scope: ToolGate
-    parent: ToolGate
+class _OuterGate:
+    """outer decides first; the call still passes the inner chain."""
+
+    outer: ToolGate
+    inner: ToolGate
 
     async def authorize(self, context: ToolContext, spec: ToolSpec, call: ToolCall) -> None:
-        await self.scope.authorize(context, spec, call)
-        await self.parent.authorize(context, spec, call)
+        await self.outer.authorize(context, spec, call)
+        await self.inner.authorize(context, spec, call)
 
 
 class ToolsModule:
@@ -160,9 +162,9 @@ class ToolsModule:
         if plans is not None:
             gate = PlanToolGate(plans, gate)
         if custom is not None:
-            gate = custom
+            gate = _OuterGate(custom, gate)
         if scope is not None:
-            gate = _ScopedGate(scope, gate)
+            gate = _OuterGate(scope, gate)
         return gate
 
     def executor(

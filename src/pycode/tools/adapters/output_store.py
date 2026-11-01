@@ -12,6 +12,7 @@ from pycode.kernel import (
     MAX_BYTES,
     MAX_LINES,
     PreviewMode,
+    StorageError,
     ToolContext,
     ToolResult,
     format_size,
@@ -109,7 +110,8 @@ class StreamingOutputWriter:
         self.stream = self.path.open("wb")
 
     async def append(self, data: bytes) -> None:
-        assert self.stream is not None
+        if self.stream is None:
+            raise StorageError("output_not_open", "Open the output file before appending")
         await owned_io(self.stream.write, data)
         self.size += len(data)
         self.newlines += data.count(b"\n")

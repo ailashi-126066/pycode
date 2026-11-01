@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import threading
 from pathlib import Path, PurePosixPath
-from typing import Literal, overload
+from typing import IO, Literal, cast, overload
 
 from deepagents.backends.protocol import (
     BackendProtocol,
@@ -308,8 +308,8 @@ class PycodeBackend(BackendProtocol):
             )
         except (OSError, ToolError, UnicodeError) as error:
             return result_type(error=self.error(error), truncated=True)
-        stdout, stderr = process.stdout, process.stderr
-        assert stdout is not None and stderr is not None  # Both were explicitly requested as PIPE.
+        # Both were requested as PIPE.
+        stdout, stderr = cast(IO[bytes], process.stdout), cast(IO[bytes], process.stderr)
         diagnostics = bytearray()
         timed_out = threading.Event()
 
@@ -385,8 +385,8 @@ class PycodeBackend(BackendProtocol):
         parser = RipgrepMatches(
             base, self.workspace, self.resolve, files=files, max_count=max_count
         )
-        stdout, stderr = process.stdout, process.stderr
-        assert stdout is not None and stderr is not None  # Both were explicitly requested as PIPE.
+        # Both were requested as PIPE.
+        stdout, stderr = cast(IO[bytes], process.stdout), cast(IO[bytes], process.stderr)
         diagnostics = bytearray()
 
         async def errors():

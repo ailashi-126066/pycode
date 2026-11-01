@@ -135,8 +135,8 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
 
     async def awrap_tool_call(self, request, handler):
         context = cast(SettlementContext, request.runtime.context)
-        owner = asyncio.current_task()
-        assert owner is not None
+        # Always set: the framework awaits this hook inside a task.
+        owner = cast(asyncio.Task, asyncio.current_task())
         context.tool_tasks.add(owner)
         try:
             return await self.ordered_call(request, handler)
@@ -221,7 +221,8 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 if call.id not in context.settled_calls:
                     await context.settlement.wait()
             context.settlement.notify_all()
-        assert result.operation_id is not None
+        if result.operation_id is None:
+            raise StorageError("unbound_tool_result", "Tool result has no operation id")
         message = self.converter(
             Message("result:" + result.operation_id, "tool_result", tool_result=result),
             context.selection,
@@ -580,7 +581,8 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             failed=result.is_error,
             file_snapshot=result.details.get("file_snapshot"),
         )
-        assert result.operation_id is not None
+        if result.operation_id is None:
+            raise StorageError("unbound_tool_result", "Tool result has no operation id")
         # Pi: createToolResultMessage + emitToolResultMessage.
         entry_id = await self.publisher.publish(
             Message("result:" + result.operation_id, "tool_result", tool_result=result)

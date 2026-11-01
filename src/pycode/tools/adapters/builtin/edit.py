@@ -168,7 +168,8 @@ class Edit:
             page = await self.backend.aread(target, 0, sys.maxsize)
             if page.error:
                 raise backend_error(page.error)
-            assert page.file_data is not None
+            if page.file_data is None:
+                raise ToolError("not_a_file", f"{path} has no file content")
             raw = page.file_data["content"]
             # The model never includes an invisible BOM in oldText.
             bom = "\ufeff" if raw.startswith("\ufeff") else ""

@@ -11,8 +11,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import uuid4
 
+from pycode.kernel import DomainError
 from pycode.sandbox.adapters.seatbelt import SeatbeltSandbox
 from pycode.sandbox.domain.sandbox import SandboxSettings
+
+
+def check(passed, name):
+    # An explicit check, so the probe still fails under python -O.
+    if not passed:
+        raise DomainError("seatbelt_check_failed", name)
 
 
 async def execute(sandbox, workspace, command, *, network=False, mode="on"):
@@ -43,14 +50,17 @@ async def verify(root):
     sandbox = SeatbeltSandbox()
     manual = await sandbox.status(SandboxSettings("on"))
     automatic = await sandbox.status(SandboxSettings("on-auto"))
-    assert manual.enabled and not manual.auto_approve
-    assert automatic.enabled and automatic.auto_approve
+    check(manual.enabled and not manual.auto_approve, "status_on")
+    check(automatic.enabled and automatic.auto_approve, "status_on_auto")
     allowed = await execute(
         sandbox, workspace, "printf allowed > " + shlex.quote(str(workspace / "inside.txt"))
     )
     denied = await execute(sandbox, workspace, "printf denied > " + shlex.quote(str(outside)))
-    assert allowed["exit_code"] == 0 and (workspace / "inside.txt").read_text() == "allowed"
-    assert denied["exit_code"] != 0 and not outside.exists()
+    check(
+        allowed["exit_code"] == 0 and (workspace / "inside.txt").read_text() == "allowed",
+        "write_inside",
+    )
+    check(denied["exit_code"] != 0 and not outside.exists(), "write_outside")
     auto_allowed = await execute(
         sandbox,
         workspace,
@@ -60,19 +70,25 @@ async def verify(root):
     auto_denied = await execute(
         sandbox, workspace, "printf denied > " + shlex.quote(str(outside)), mode="on-auto"
     )
-    assert auto_allowed["exit_code"] == 0 and (workspace / "auto.txt").read_text() == "automatic"
-    assert auto_denied["exit_code"] != 0 and not outside.exists()
+    check(
+        auto_allowed["exit_code"] == 0 and (workspace / "auto.txt").read_text() == "automatic",
+        "on_auto_write_inside",
+    )
+    check(auto_denied["exit_code"] != 0 and not outside.exists(), "on_auto_write_outside")
     protected = {}
     for relative in (".env", ".git/config", ".pycode/state.json"):
         path = workspace / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("protected-test-marker")
         rejected = await execute(sandbox, workspace, "printf changed > " + shlex.quote(str(path)))
-        assert rejected["exit_code"] != 0 and path.read_text() == "protected-test-marker"
+        check(
+            rejected["exit_code"] != 0 and path.read_text() == "protected-test-marker",
+            "protected_path",
+        )
         protected[relative] = rejected
     # /Users is outside the read allow list; only its listing is requested.
     read_outside = await execute(sandbox, workspace, "ls /Users")
-    assert read_outside["exit_code"] != 0
+    check(read_outside["exit_code"] != 0, "read_outside")
     (workspace / ".env.local").write_text("protected-test-marker")
     renamed = shlex.quote(str(workspace / "renamed.txt"))
     dotenv_rename = await execute(
@@ -80,7 +96,7 @@ async def verify(root):
         workspace,
         f"mv {shlex.quote(str(workspace / '.env.local'))} {renamed}; cat {renamed}",
     )
-    assert "protected-test-marker" not in dotenv_rename["stdout"]
+    check("protected-test-marker" not in dotenv_rename["stdout"], "dotenv_rename")
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -100,8 +116,11 @@ async def verify(root):
         )
         no_network = await execute(sandbox, workspace, command)
         with_network = await execute(sandbox, workspace, command, network=True)
-        assert no_network["exit_code"] != 0
-        assert with_network["exit_code"] == 0 and with_network["stdout"] == "local-probe"
+        check(no_network["exit_code"] != 0, "no_network")
+        check(
+            with_network["exit_code"] == 0 and with_network["stdout"] == "local-probe",
+            "with_network",
+        )
         return {
             "status": "passed",
             "write_inside": allowed,

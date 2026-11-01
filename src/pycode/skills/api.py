@@ -158,6 +158,9 @@ class Skills:
         report = await self._installer.install(url, ref=ref, subpath=subpath)
         catalog = await self.refresh()
         saved = await self._history.append_entry(
-            EntryDraft("skill_install", data={**report, "catalog_hash": catalog["hash"]})
+            EntryDraft(
+                "custom",
+                data={"kind": "skill_install", **report, "catalog_hash": catalog["hash"]},
+            )
         )
         return saved.data

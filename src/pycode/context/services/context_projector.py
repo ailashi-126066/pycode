@@ -16,6 +16,7 @@ from pycode.kernel import (
     SessionEntry,
     SessionSnapshot,
     SessionTree,
+    StorageError,
     clone_value,
     freeze_value,
 )
@@ -57,10 +58,6 @@ class ContextProjector:
             "custom",
             "input_queued",
             "session_metadata",
-            "hook_call",
-            "hook_result",
-            "plan_review",
-            "plan_decision",
         }
     )
 
@@ -292,7 +289,8 @@ class ContextProjector:
         if entry.type == "message":
             return (freeze_value(entry.require_message()),)
         if entry.type == "input_expired":
-            assert self._tree is not None
+            if self._tree is None:
+                raise StorageError("projection_not_started", "Project the snapshot first")
             original = self._tree.get(entry.data["input_entry_id"])
             for saved in self._tree.path(entry.parent_id):
                 if (

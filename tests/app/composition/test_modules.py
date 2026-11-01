@@ -270,3 +270,21 @@ async def test_view_factory_failure_closes_records_before_returning(tmp_path, mo
 
 # This suite tests execution with tool definitions already disclosed.
 pytestmark = pytest.mark.usefixtures("disclosed_tools")
+
+
+async def test_custom_gate_runs_before_the_default_chain():
+    from pycode.kernel import ToolError
+    from pycode.sandbox.domain.sandbox import SandboxSettings
+    from pycode.tools.module import ToolsModule
+
+    seen = []
+
+    class Approved:
+        async def authorize(self, context, spec, call):
+            seen.append(call.name)
+
+    gate = ToolsModule.gate(None, SandboxSettings(), read_only=True, custom=Approved())  # type: ignore[arg-type]
+    spec = ToolSpec("write", "writes", {"type": "object"}, category="write")
+    with pytest.raises(ToolError) as error:
+        await gate.authorize(ToolContext("s", "r", "c", "/w"), spec, ToolCall("c", "write", {}))
+    assert seen == ["write"] and error.value.code == "approval_required"

@@ -697,9 +697,9 @@ class PyApp(App):
     async def stop_active(self):
         if self.busy:
             await self.active_session.cancel()
-            if self.busy:
-                assert self._operation is not None
-                self._operation.cancel()
+            operation = self._operation
+            if operation is not None and not operation.done():
+                operation.cancel()
             await self.wait_idle()
         elif self.session is not None:
             await self.active_session.cancel()

@@ -102,7 +102,9 @@ async def test_plan_writes_only_current_markdown_then_approves_execution(
             state = await session.inspect()
             assert state["plan"]["mode"] == "completed"
             decisions = [
-                entry for entry in state["snapshot"]["entries"] if entry["type"] == "plan_decision"
+                entry
+                for entry in state["snapshot"]["entries"]
+                if entry["type"] == "custom" and entry["data"]["kind"] == "plan_decision"
             ]
             assert len(decisions) == 1 and decisions[0]["data"]["content"] == plan_markdown()
             board = tool_results(state)[1]["details"]["task_board"]

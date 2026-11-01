@@ -206,8 +206,12 @@ class SummaryService:
             await self.collect(cancel=True)
             self._source = self._result = self._task = None
         await self.restore(snapshot, projection, fingerprint)
-        if manual and self._result is not None and self._result.status == "failed":
-            assert self._source is not None
+        if (
+            manual
+            and self._source is not None
+            and self._result is not None
+            and self._result.status == "failed"
+        ):
             await self._objects.invalidate(self._source.job_id, "manual_retry")
             self._source = self._result = self._task = None
         trigger = manual or force or tokens >= self._settings.budget.cache_trigger

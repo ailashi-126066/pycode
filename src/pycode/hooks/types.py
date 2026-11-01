@@ -59,7 +59,8 @@ class HookCondition:
             return value != self.value
         if self.operator == "~=":
             return fnmatch.fnmatch(value, self.value)
-        assert self.pattern is not None
+        if self.pattern is None:
+            raise DomainError("invalid_hook_condition", "Regex condition was not compiled")
         return self.pattern.search(value) is not None
 
 

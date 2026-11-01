@@ -17,6 +17,7 @@ from pycode.kernel import (
     ProjectedContext,
     SessionSnapshot,
     SessionTree,
+    StorageError,
     clone_value,
     data_hash,
     plain_data,
@@ -83,7 +84,8 @@ def capture_source(
     read_files, modified_files = compute_file_lists(file_ops)
     included = projection.entries[:index]
     visible = tuple(item for item in included if any(m.role != "system" for m in item.messages))
-    assert snapshot.leaf_id is not None
+    if snapshot.leaf_id is None:
+        raise StorageError("empty_session", "Nothing to summarize in an empty session")
     return SummarySource(
         job_id,
         snapshot.header.session_id,
