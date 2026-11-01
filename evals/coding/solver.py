@@ -60,6 +60,16 @@ class ConfiguredEvaluationSolver:
                         connect_mcp=False,
                     )
                     result = await session.run(Message(uuid4().hex, "user", prompt))
+                    # The evaluation gate runs before the default approval chain and has
+                    # already limited the call; it stands in for the user's approval.
+                    while (
+                        result.outcome == "needs_input"
+                        and result.pending[0]["kind"] == "permission"
+                    ):
+                        operation_id = result.pending[0]["operation_id"]
+                        result = await session.resume(
+                            {"operation_id": operation_id, "decision": "approve"}
+                        )
                     outcome, final_text = result.outcome, result.final_text
             except TimeoutError:
                 outcome = "timeout"
@@ -92,9 +102,9 @@ class ConfiguredEvaluationSolver:
                 )
                 if tool["error_code"]:
                     failures.append(tool["error_code"])
-                if not tool["is_error"] and tool["name"] in {"write_file", "edit_file"}:
+                if not tool["is_error"] and tool["name"] in {"write", "edit"}:
                     edits.append(position)
-                if tool["name"] == "Bash" and not tool["is_error"] and tool["exit_code"] == 0:
+                if tool["name"] == "bash" and not tool["is_error"] and tool["exit_code"] == 0:
                     verified_at = position
             requests = []
             for record in await session.request_records():

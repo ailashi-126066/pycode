@@ -1,5 +1,6 @@
 """Evaluation grants writes only to solutions and commands only to fixed tests."""
 
+import posixpath
 import shlex
 
 from pycode.kernel.domain.errors import ToolError
@@ -13,14 +14,16 @@ class EvaluationToolGate:
     async def authorize(self, context, spec, call):
         if spec.category == "read":
             return
-        if spec.name in {"write_file", "edit_file"}:
-            path = call.arguments.get("file_path", "")
+        if spec.name in {"write", "edit"}:
+            # Pi's write/edit take a workspace-relative or absolute path.
+            path = call.arguments["path"]
+            path = posixpath.normpath(path if path.startswith("/") else "/workspace/" + path)
             permitted = path.removeprefix("/workspace/") in self.solutions
             if path.startswith("/workspace/") and permitted:
                 return
             raise ToolError("eval_write_denied", "Modify only declared evaluation solution files")
-        if spec.name == "Bash":
-            command = call.arguments.get("command", "")
+        if spec.name == "bash":
+            command = call.arguments["command"]
             if any(character in command for character in (";", "|", "&", "`", "$", "\n", ">", "<")):
                 raise ToolError("eval_command_denied", "Use a single fixed test invocation")
             tokens = shlex.split(command)

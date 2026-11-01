@@ -127,8 +127,8 @@ async def collect(case, directory):
         replies = [held, chat_completion()]
     else:
         replies = [
-            skill_reply("ToolSearch", {"query": "read_file"}, "search"),
-            skill_reply("read_file", {"file_path": "/workspace/control.py"}, "read-control"),
+            skill_reply("ToolSearch", {"query": "read"}, "search"),
+            skill_reply("read", {"path": "control.py"}, "read-control"),
             chat_completion(),
         ]
     with protocol_server(replies) as (url, captured):

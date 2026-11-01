@@ -37,20 +37,18 @@ async def test_fixed_model_three_task_smoke_is_real_local_protocol_control(
         replies.append(
             skill_reply(
                 "ToolSearch",
-                {"query": "read_file write_file Bash", "limit": 3},
+                {"query": "read write bash", "limit": 3},
                 task.task_id + "-search",
             )
         )
-        filename = "/workspace/" + task.solution_files[0]
-        replies.append(skill_reply("read_file", {"file_path": filename}, task.task_id + "-read"))
+        filename = task.solution_files[0]
+        replies.append(skill_reply("read", {"path": filename}, task.task_id + "-read"))
         replies.append(
-            skill_reply(
-                "write_file", {"file_path": filename, "content": solution}, task.task_id + "-write"
-            )
+            skill_reply("write", {"path": filename, "content": solution}, task.task_id + "-write")
         )
         if verify:
             replies.append(
-                skill_reply("Bash", {"command": "python -m pytest -q"}, task.task_id + "-verify")
+                skill_reply("bash", {"command": "python -m pytest -q"}, task.task_id + "-verify")
             )
         replies.append(chat_completion())
     telemetry_server = (
