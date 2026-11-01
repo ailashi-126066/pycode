@@ -136,14 +136,10 @@ class SummaryService:
                 await self._generator.reconcile_lost(source)
                 await self._objects.invalidate(source.job_id, "lost_executor")
                 continue
-            if (
-                result is not None
-                and result.status == "ready"
-                and valid_source(source, snapshot, projection, fingerprint)
-            ):
+            if result.status == "ready" and valid_source(source, snapshot, projection, fingerprint):
                 self._source, self._result = source, result
                 return
-            if result is not None and result.status == "ready":
+            if result.status == "ready":
                 await self._objects.invalidate(source.job_id, "source_or_configuration_changed")
 
     async def invalidate(self, reason: str):

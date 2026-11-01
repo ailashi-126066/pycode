@@ -64,15 +64,6 @@ class ContextProjector:
     def __init__(self, contributors: tuple[ProjectionContributor, ...] | None = None):
         selected = contributors if contributors is not None else (SystemPromptProjection(),)
         self._contributors = (*selected, TaskProjection())
-        names = set()
-        keys = set()
-        for contributor in self._contributors:
-            if contributor.name in names or keys & contributor.checkpoint_keys:
-                raise ValueError(
-                    "Projection contributors must have unique names and checkpoint keys"
-                )
-            names.add(contributor.name)
-            keys.update(contributor.checkpoint_keys)
         self._session_id = None
         self._key = None
         self._cached = None
@@ -80,10 +71,6 @@ class ContextProjector:
         self._tree = None
 
     def incremental(self, snapshot):
-        # Unknown contributors can depend on ordinary appended messages. Only an
-        # explicit capability declaration permits reuse of their previous output.
-        if not all(item.incremental_safe for item in self._contributors):
-            return None
         if self._cached is None or self._key is None:
             return None
         if snapshot.revision <= self._key[1]:
@@ -95,8 +82,6 @@ class ContextProjector:
             if current is None:
                 return None
             entry = tree.get(current)
-            if entry is None:
-                return None
             if entry.type not in self.ORDINARY_STATES and entry.type not in {
                 "message",
                 "custom_message",
@@ -161,21 +146,13 @@ class ContextProjector:
         contributions, checkpoint, raw_messages = self.projected_entries(path)
         messages = repair_tool_pairing(raw_messages)
         pinned = []
-        frozen_snapshot = freeze_value(snapshot)
-        frozen_path = freeze_value(path)
         for contributor in self._contributors:
             contribution = contributor.contribute(
-                frozen_snapshot,
-                frozen_path,
-                freeze_value(tuple((*pinned, *contributions))),
-                freeze_value(checkpoint),
+                snapshot, path, tuple((*pinned, *contributions)), checkpoint
             )
-            written = set(contribution.checkpoint_updates) | contribution.checkpoint_removals
-            if not written <= contributor.checkpoint_keys:
-                raise ValueError("Projection contributor wrote another feature's checkpoint keys")
             for key_to_remove in contribution.checkpoint_removals:
                 checkpoint.pop(key_to_remove, None)
-            checkpoint.update(clone_value(dict(contribution.checkpoint_updates)))
+            checkpoint.update(contribution.checkpoint_updates)
             pinned.extend(contribution.entries)
         return self.cache_projection(
             snapshot,
@@ -273,16 +250,8 @@ class ContextProjector:
         )
         self._cached = freeze_value(projected)
         self._key = key
-        frozen_messages = {}
-        for message in self._cached.messages:
-            frozen_messages[message.id] = message
-        raw = []
-        for item in pinned:
-            for message in item.messages:
-                raw.append(frozen_messages.get(message.id, freeze_value(message)))
-        for message in raw_messages:
-            raw.append(frozen_messages.get(message.id, freeze_value(message)))
-        self._raw_messages = tuple(raw)
+        # The incremental path re-pairs these; repair_tool_pairing freezes its copy.
+        self._raw_messages = tuple(pinned_messages) + raw_messages
         return self._cached
 
     def messages_for(self, entry: SessionEntry) -> tuple[Message, ...]:

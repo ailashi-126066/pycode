@@ -6,7 +6,6 @@ from pycode.kernel import ProjectionContribution
 
 class TaskProjection:
     name = "tasks"
-    incremental_safe = True
     checkpoint_keys = frozenset({"task_board"})
 
     def contribute(self, snapshot, path, entries, checkpoint):

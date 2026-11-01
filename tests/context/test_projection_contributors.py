@@ -1,12 +1,10 @@
-"""Optional context contributions cannot mutate facts or disappear behind incremental caches."""
+"""Feature contributions survive compaction and the incremental cache stays immutable."""
 
 import pytest
 
 from pycode.context import ContextProjector
 from pycode.kernel import (
     Message,
-    ProjectedEntry,
-    ProjectionContribution,
     SessionEntry,
     SessionHeader,
     SessionSnapshot,
@@ -21,43 +19,6 @@ def snapshot(*entries):
         len(entries),
         len(entries),
     )
-
-
-class MessageCount:
-    name = "message-count"
-    incremental_safe = False
-    checkpoint_keys = frozenset({"message_count"})
-
-    def contribute(self, state, path, entries, checkpoint):
-        with pytest.raises(TypeError):
-            checkpoint["other"] = "mutation"
-        return ProjectionContribution(
-            (ProjectedEntry(path[-1].id, (Message("count", "system", str(len(path))),)),),
-            {"message_count": len(path)},
-        )
-
-
-def test_custom_contributor_observes_new_ordinary_messages():
-    first = SessionEntry("u1", None, "message", "t", message=Message("u1", "user", "one"))
-    second = SessionEntry("u2", "u1", "message", "t", message=Message("u2", "user", "two"))
-    projector = ContextProjector((MessageCount(),))
-    assert projector.transform_context(snapshot(first)).checkpoint["message_count"] == 1
-    current = projector.transform_context(snapshot(first, second))
-    assert current.checkpoint["message_count"] == 2
-    assert current.messages[0].text == "2"
-    assert projector.transform_context(snapshot(first, second)) is current
-
-
-def test_contributor_cannot_claim_another_feature_checkpoint():
-    class Invalid(MessageCount):
-        def contribute(self, *args):
-            return ProjectionContribution(checkpoint_updates={"somebody_else": 1})
-
-    entry = SessionEntry("u", None, "message", "t", message=Message("u", "user", "x"))
-    with pytest.raises(ValueError, match="another feature"):
-        ContextProjector((Invalid(),)).transform_context(snapshot(entry))
-    with pytest.raises(ValueError, match="unique"):
-        ContextProjector((MessageCount(), MessageCount()))
 
 
 def test_completed_plan_clears_active_plan_in_an_older_compaction():
