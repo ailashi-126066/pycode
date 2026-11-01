@@ -7,9 +7,6 @@ from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
-from tests.skills.test_skills_http import skill_reply
-from tests.support.execution import provider
-from tests.support.http_provider import HTTPResponse, chat_completion, protocol_server
 
 from evals.coding.assembly import build_evaluation_solver
 from evals.coding.runner import EvaluationRunner
@@ -17,6 +14,9 @@ from evals.coding.workspaces import EvaluationWorkspaces
 from evals.quality.langfuse import LangfuseEvaluationSummary
 from evals.tests.corpus import polyglot_cache
 from pycode.app import AppConfig
+from tests.skills.test_skills_http import skill_reply
+from tests.support.execution import provider
+from tests.support.http_provider import HTTPResponse, chat_completion, protocol_server
 
 
 @pytest.mark.parametrize("verify,telemetry_fault", [(True, False), (False, False), (True, True)])

@@ -3,7 +3,6 @@
 from types import SimpleNamespace
 
 import pytest
-from tests.support.requests import TestTiming
 
 from pycode.kernel import (
     EntryDraft,
@@ -23,6 +22,7 @@ from pycode.tasks import (
     plan_board,
     task_contribution,
 )
+from tests.support.requests import TestTiming
 
 
 @pytest.fixture

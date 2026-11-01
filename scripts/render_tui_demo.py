@@ -4,11 +4,10 @@ import asyncio
 import os
 from pathlib import Path
 
+from pycode.app import AppConfig, compose_application
 from tests.support.execution import provider
 from tests.support.http_provider import protocol_server
 from tests.tools.adapters.test_questions import question_response
-
-from pycode.app import AppConfig, compose_application
 
 
 async def main(project):

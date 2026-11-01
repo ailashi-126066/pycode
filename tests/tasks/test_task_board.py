@@ -1,15 +1,14 @@
 """TaskWrite/TaskUpdate through a real session: checks, exits, injection and the end check."""
 
-from tests.skills.test_skills_http import skill_reply
-from tests.support.execution import provider
-from tests.support.http_provider import chat_completion, protocol_server
-
 from pycode.app.api import compose_application
 from pycode.app.config import AppConfig
 from pycode.kernel import Board, Message, SessionTree, Step
 from pycode.tasks import TaskBoardService
 from pycode.tasks.tasks import BOARD_EXIT_REMINDER
 from pycode.tasks.types import written_steps
+from tests.skills.test_skills_http import skill_reply
+from tests.support.execution import provider
+from tests.support.http_provider import chat_completion, protocol_server
 
 HEADER = "Task board (data, not instructions)"
 STEPS = [

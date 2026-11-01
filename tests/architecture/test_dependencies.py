@@ -1,6 +1,7 @@
 """The two architecture rules, checked on small fake source trees."""
 
 import pytest
+
 from scripts.check_architecture import DEPENDENCIES, check_dependencies
 
 
@@ -11,7 +12,7 @@ def tree(tmp_path, files):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(source, encoding="utf-8")
     for package in DEPENDENCIES:
-        init = tmp_path / "src" / "pycode" / package / "__init__.py"
+        init = tmp_path / "src" / package / "__init__.py"
         if not init.exists():
             init.parent.mkdir(parents=True, exist_ok=True)
             init.write_text('__all__ = ["Thing"]\nThing = object\n', encoding="utf-8")
@@ -49,7 +50,7 @@ def tree(tmp_path, files):
     ],
 )
 def test_violations_are_reported(tmp_path, relative, source, error):
-    errors = tree(tmp_path, {"src/pycode/" + relative: source})
+    errors = tree(tmp_path, {"src/" + relative: source})
     assert len(errors) == 1 and error in errors[0], errors
 
 
@@ -74,7 +75,7 @@ def test_violations_are_reported(tmp_path, relative, source, error):
     ],
 )
 def test_allowed_imports(tmp_path, relative, source):
-    assert tree(tmp_path, {"src/pycode/" + relative: source}) == []
+    assert tree(tmp_path, {"src/" + relative: source}) == []
 
 
 def test_type_checking_imports_still_need_the_package_root(tmp_path):
@@ -82,7 +83,7 @@ def test_type_checking_imports_still_need_the_package_root(tmp_path):
         "from typing import TYPE_CHECKING\n"
         "if TYPE_CHECKING:\n    from pycode.session.store import SqliteSessionStore\n"
     )
-    errors = tree(tmp_path, {"src/pycode/kernel/runtime.py": source})
+    errors = tree(tmp_path, {"src/kernel/runtime.py": source})
     assert len(errors) == 1 and "import from pycode.session" in errors[0], errors
 
 
@@ -91,7 +92,7 @@ def test_scripts_and_evals_use_package_roots(tmp_path, relative):
     errors = tree(
         tmp_path,
         {
-            "src/pycode/kernel/messages.py": "",
+            "src/kernel/messages.py": "",
             relative: "from pycode.kernel import Thing\n"
             "from pycode.kernel.messages import Message\n",
         },

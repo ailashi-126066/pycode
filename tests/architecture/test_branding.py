@@ -1,4 +1,5 @@
 import pytest
+
 from scripts.check_architecture import check_branding
 
 
@@ -42,7 +43,7 @@ def test_worktrees_and_generated_data_are_not_scanned(tmp_path, relative):
 @pytest.mark.parametrize(
     "relative",
     [
-        "src/pycode/app/cli/main.py",
+        "src/app/cli/main.py",
         "tests/app/test_cli.py",
         "scripts/verify_release.py",
         "evals/coding/runner.py",

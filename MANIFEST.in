@@ -1,0 +1,16 @@
+include README.md pyproject.toml requirements-dev.lock .env.example
+graft src
+graft tests
+graft scripts
+graft evals
+graft docs
+prune docs/pi-tutorial
+prune evals/cache
+prune evals/work
+prune evals/results
+prune tests/.runtime-tests
+prune tests/.t
+prune tests/.fix-20261013
+prune tests/audit-20261013
+prune tests/dependency-artifacts
+global-exclude *.py[cod] .DS_Store

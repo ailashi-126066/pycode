@@ -8,14 +8,13 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
-from tests.support.execution import provider
-from tests.support.http_provider import chat_completion, protocol_server
-
 from evals.coding.assembly import build_evaluation_solver
 from evals.coding.runner import EvaluationRunner
 from evals.coding.workspaces import EvaluationWorkspaces
 from evals.tests.corpus import polyglot_cache
 from pycode.app import AppConfig
+from tests.support.execution import provider
+from tests.support.http_provider import chat_completion, protocol_server
 
 
 async def test_timeout_preserves_settled_request_usage_trace_and_independent_tests(

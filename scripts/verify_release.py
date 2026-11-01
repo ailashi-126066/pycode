@@ -56,9 +56,9 @@ def verify_distribution(directory):
     ):
         assert package in metadata and "==" + version in metadata
     assert "langgraph-checkpoint-sqlite" in metadata
-    assert "pycode/licenses/pi-MIT.txt" in wheel_files
-    assert "pycode/licenses/opencode-MIT.txt" in wheel_files
-    assert "pycode/licenses/exercism-MIT.txt" in wheel_files
+    assert "pycode-0.1.0.dist-info/licenses/docs/licenses/pi-MIT.txt" in wheel_files
+    assert "pycode-0.1.0.dist-info/licenses/docs/licenses/opencode-MIT.txt" in wheel_files
+    assert "pycode-0.1.0.dist-info/licenses/docs/licenses/exercism-MIT.txt" in wheel_files
     print(
         json.dumps(
             {

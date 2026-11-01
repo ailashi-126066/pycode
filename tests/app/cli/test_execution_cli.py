@@ -6,6 +6,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
+
+from pycode.app.api import compose_application
+from pycode.app.cli.main import main
+from pycode.app.config import AppConfig
+from pycode.kernel import Message
 from tests.context.test_summary_http import seed
 from tests.snapshot.test_git_tree import git, repository
 from tests.support.execution import provider
@@ -15,11 +20,6 @@ from tests.support.http_provider import (
     command_reply,
     protocol_server,
 )
-
-from pycode.app.api import compose_application
-from pycode.app.cli.main import main
-from pycode.app.config import AppConfig
-from pycode.kernel import Message
 
 VECTORS = json.loads(
     (Path(__file__).parents[2] / "fixtures/cli-baselines.json").read_text(encoding="utf-8")

@@ -55,7 +55,7 @@ def test_missing_workspace_is_a_reported_failure(tmp_path, capsys):
 
 def test_module_entry_point(tmp_path):
     environment = dict(os.environ)
-    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[3])
     result = subprocess.run(
         [sys.executable, "-m", "pycode", "--version"],
         cwd=tmp_path,

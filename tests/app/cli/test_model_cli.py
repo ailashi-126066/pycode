@@ -3,12 +3,12 @@ import json
 from dataclasses import asdict
 
 import pytest
-from tests.models.test_factory import configuration
 
 from pycode.app.api import compose_application
 from pycode.app.cli.main import main
 from pycode.app.config import AppConfig
 from pycode.kernel import EntryDraft, Message
+from tests.models.test_factory import configuration
 
 
 def test_model_command_lists_all_providers_and_selects_existing_session(tmp_path, capsys):

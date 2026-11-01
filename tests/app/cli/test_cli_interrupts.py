@@ -3,15 +3,15 @@ import json
 import threading
 
 import pytest
-from tests.app.cli.test_execution_cli import read_session, rows, setup_cli
-from tests.support.execution import provider
-from tests.support.http_provider import chat_completion, protocol_server
-from tests.tools.test_questions import question_response
 
 from pycode.app.cli.commands import command
 from pycode.app.cli.main import main
 from pycode.app.cli.parser import build_parser
 from pycode.app.config import AppConfig
+from tests.app.cli.test_execution_cli import read_session, rows, setup_cli
+from tests.support.execution import provider
+from tests.support.http_provider import chat_completion, protocol_server
+from tests.tools.test_questions import question_response
 
 
 def test_question_cli_retains_named_question_and_accepts_answer_file_after_restart(

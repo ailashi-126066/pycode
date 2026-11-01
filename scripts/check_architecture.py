@@ -165,11 +165,11 @@ def dependency_errors(source: str, module: str, package: bool, exports) -> list[
 def check_dependencies(root: Path = ROOT) -> list[str]:
     source_root = root / "src"
     exports = {}
-    for path in sorted((source_root / "pycode").glob("*/__init__.py")):
-        module, _ = module_name(path.relative_to(source_root))
+    for path in sorted(source_root.glob("*/__init__.py")):
+        module, _ = module_name(Path("pycode") / path.relative_to(source_root))
         exports[module] = public_exports(path.read_text(encoding="utf-8")) or set()
     files = [
-        (path, path.relative_to(source_root)) for path in (source_root / "pycode").rglob("*.py")
+        (path, Path("pycode") / path.relative_to(source_root)) for path in source_root.rglob("*.py")
     ]
     for path in [*(root / "evals").rglob("*.py"), *(root / "scripts").rglob("*.py")]:
         relative = path.relative_to(root)

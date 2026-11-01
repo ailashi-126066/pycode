@@ -3,12 +3,11 @@
 from dataclasses import replace
 from types import SimpleNamespace
 
-from tests.support.execution import provider
-from tests.support.model import ScriptedChatModel
-
 from pycode.app import AppConfig
 from pycode.app.composition import background_model
 from pycode.models import RetryPolicy
+from tests.support.execution import provider
+from tests.support.model import ScriptedChatModel
 
 
 async def test_memory_background_model_disables_thinking_and_closes_owner(tmp_path, monkeypatch):

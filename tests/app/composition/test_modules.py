@@ -1,13 +1,13 @@
 """Actual application configuration and resource ownership, without module registries."""
 
 import pytest
-from tests.support.execution import provider
 
 from pycode.app import AppConfig, compose_application
 from pycode.app.composition import child_config
 from pycode.kernel import Message
 from pycode.subagents import Subagent
 from pycode.tools import ReadOnlyToolGate
+from tests.support.execution import provider
 
 
 def configuration(tmp_path):
