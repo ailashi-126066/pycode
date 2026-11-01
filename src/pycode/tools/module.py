@@ -109,15 +109,8 @@ class ToolsModule:
         return PycodeBackend(root, read_only=True, empty_missing_root=True)
 
     @staticmethod
-    def composite(routes: Mapping[str, object]) -> CompositeBackend:
-        # Assembly carries opaque SDK handles. Validate them here, where the
-        # framework types belong, rather than importing the SDK into app inputs.
-        backends: dict[str, BackendProtocol] = {}
-        for prefix, backend in routes.items():
-            if not isinstance(backend, BackendProtocol):
-                raise TypeError(f"Invalid framework backend for route {prefix}")
-            backends[prefix] = backend
-        return CompositeBackend(default=StateBackend(), routes=backends)
+    def composite(routes: Mapping[str, BackendProtocol]) -> CompositeBackend:
+        return CompositeBackend(default=StateBackend(), routes=dict(routes))
 
     @staticmethod
     def builtin_tools(backend: CompositeBackend) -> tuple[AgentTool, ...]:

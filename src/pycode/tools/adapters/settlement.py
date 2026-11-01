@@ -222,10 +222,8 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 if call.id not in context.settled_calls:
                     await context.settlement.wait()
             context.settlement.notify_all()
-        if result.operation_id is None:
-            raise StorageError("unbound_tool_result", "Tool result has no operation id")
         message = self.converter(
-            Message("result:" + result.operation_id, "tool_result", tool_result=result),
+            Message("result:" + tool_context.operation_id, "tool_result", tool_result=result),
             context.selection,
         )
         return Command(
@@ -561,11 +559,11 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             and call.arguments["status"] == "in_progress"
         ):
             reset_repeats(context.progress_guard)
-        if result.operation_id is None:
-            raise StorageError("unbound_tool_result", "Tool result has no operation id")
+        # finalize_result always binds the operation id.
+        operation_id = cast(str, result.operation_id)
         # Pi: createToolResultMessage + emitToolResultMessage.
         entry_id = await self.publisher.publish(
-            Message("result:" + result.operation_id, "tool_result", tool_result=result)
+            Message("result:" + operation_id, "tool_result", tool_result=result)
         )
         if (
             call.name in {"write", "edit"}
@@ -579,7 +577,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         tool_context = ToolContext(
             context.session_id,
             context.run_id,
-            result.operation_id,
+            operation_id,
             context.workspace,
             call.id,
             call.name,

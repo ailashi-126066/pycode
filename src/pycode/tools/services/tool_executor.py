@@ -65,7 +65,6 @@ class ToolExecutor:
         context = replace(context, call_id=call.id, tool_name=call.name, progress=progress)
         state = await self.begin(context, call)
         before = None
-        result_name = call.name
         result = None
         try:
             if not tool_calls_may_execute(stop_reason):
@@ -107,10 +106,8 @@ class ToolExecutor:
                 before = await self.snapshots.capture()
         except ToolError as error:
             # Validation, authorization and synchronous Hooks precede execution.
-            result = tool_failure(error, replace(call, name=result_name))
+            result = tool_failure(error, call)
         if result is None:
-            if spec is None:
-                raise StorageError("unknown_tool_spec", "No spec for " + call.name)
 
             async def action():
                 nonlocal accepting_updates
@@ -130,8 +127,8 @@ class ToolExecutor:
                 finally:
                     accepting_updates = False
 
-            result = await self.error_boundary(replace(call, name=result_name), spec, action)
-        result = replace(result, call_id=call.id, name=result_name)
+            result = await self.error_boundary(call, spec, action)
+        result = replace(result, call_id=call.id, name=call.name)
         result = replace(
             result,
             session_id=context.session_id,
@@ -141,7 +138,7 @@ class ToolExecutor:
         if self.outputs is not None:
             mode = "tail" if call.name == "bash" else "head"
             result = await self.outputs.prepare(context, result, mode)
-        if before is not None and self.snapshots is not None:
+        if before is not None:
             try:
                 after = await self.snapshots.capture()
                 paths = []
