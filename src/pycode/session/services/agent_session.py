@@ -12,7 +12,6 @@ from pycode.context import ContextProjector, task_board
 from pycode.kernel import (
     EntryDraft,
     Message,
-    ModelError,
     RunResult,
     SessionEntry,
     SessionTree,
@@ -145,10 +144,6 @@ class AgentSession:
         return True
 
     async def select_model(self, provider: str, model_id: str):
-        if self._execution.locked():
-            raise ModelError(
-                "session_busy", "Wait for the current run to settle before switching models"
-            )
         async with self.execution():
             if self.pending_run(await self._store.snapshot()) is not None:
                 raise StorageError(
@@ -204,10 +199,6 @@ class AgentSession:
             )
 
     async def branch(self, leaf_id: str | None) -> None:
-        if self._execution.locked():
-            raise StorageError(
-                "session_busy", "Wait for the current run to settle before changing branches"
-            )
         async with self.execution():
             if self.pending_run(await self._store.snapshot()) is not None:
                 raise StorageError(
@@ -237,8 +228,6 @@ class AgentSession:
     async def run(self, message: Message) -> RunResult:
         if message.role != "user" or not message.id:
             raise ValueError("A task starts with an identified user input")
-        if self._execution.locked():
-            raise StorageError("session_busy", "This session already has an active executor")
         async with self.execution():
             return await self._run_locked(message)
 
@@ -324,7 +313,9 @@ class AgentSession:
             )
         )
         try:
-            result = await self._launcher.run(provider, self._store, (message,), history)
+            result = await self._launcher.run(
+                provider, self._store, self.require_run_id(start), (message,), history
+            )
         except asyncio.CancelledError:
             await recover_conversation(self._store, reason="aborted")
             raise
@@ -344,8 +335,6 @@ class AgentSession:
         return pending_run_entry(snapshot)
 
     async def resume(self, answers: dict | None = None) -> RunResult:
-        if self._execution.locked():
-            raise StorageError("session_busy", "This session already has an active executor")
         async with self.execution():
             start = self.pending_run(await self._store.snapshot())
             if start is None:

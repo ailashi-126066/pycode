@@ -16,6 +16,7 @@ from pycode.kernel import (
     ToolResult,
 )
 from pycode.session.adapters.storage.session_codec import (
+    decode_entries,
     decode_entry,
     decode_header,
     encode_entry,
@@ -127,3 +128,15 @@ def test_run_owner_is_explicit_not_inferred_from_parent_session():
                 SessionEntry("e", None, "custom", "now", data={"kind": "run_start"}, run_id="r")
             )
         )
+
+
+@pytest.mark.parametrize("kind", ["revert_started", "revert_completed", "file_snapshot"])
+def test_removed_revert_and_snapshot_records_are_skipped_on_read(kind):
+    records = [
+        asdict(SessionEntry("a", None, "message", "now", message=Message("u", "user", "hi"))),
+        {**asdict(SessionEntry("b", "a", "custom", "now")), "data": {"kind": kind}},
+        asdict(SessionEntry("c", "b", "session_metadata", "now", data={"title": "t"})),
+    ]
+    entries, skipped = decode_entries(records)
+    assert [entry.id for entry in entries] == ["a", "c"]
+    assert entries[1].parent_id == "a" and skipped == {"b": "a"}

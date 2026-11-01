@@ -15,6 +15,7 @@ class RuntimeLauncher(Protocol):
         self,
         provider: ProviderConfig,
         store: SessionStore,
+        run_id: str,
         inputs: tuple[Message, ...],
         history: tuple[Message, ...],
     ) -> RunResult: ...

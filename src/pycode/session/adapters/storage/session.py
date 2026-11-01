@@ -21,7 +21,6 @@ from pycode.kernel import (
     SessionTree,
     StorageError,
     SystemTiming,
-    clone_value,
     freeze_value,
     owned_io,
     plain_data,
@@ -186,7 +185,6 @@ class SqliteSessionStore:
 
     async def append_entry(self, draft: EntryDraft) -> SessionEntry:
         def append():
-            self.load()
             self.acquire_writer()
             if draft.type == "input_queued":
                 queued_message = draft.message
@@ -226,17 +224,14 @@ class SqliteSessionStore:
                         )
                     return previous
             identifier = draft.id or uuid4().hex
-            data = clone_value(draft.data)
-            if draft.type == "compaction" and data.get("first_kept_entry_id") is None:
-                data["first_kept_entry_id"] = identifier
             entry = SessionEntry(
                 identifier,
                 self._leaf,
                 draft.type,
                 datetime.fromtimestamp(self._timing.now(), timezone.utc).isoformat(),
-                data,
-                clone_value(draft.message),
-                clone_value(draft.selection),
+                draft.data,
+                draft.message,
+                draft.selection,
                 draft.run_id,
                 draft.operation_id,
             )

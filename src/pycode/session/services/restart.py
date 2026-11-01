@@ -75,8 +75,7 @@ async def recover_conversation(
     for start in starts:
         if (
             start.run_id in ended
-            or start.data.get("execution_session_id", snapshot.header.session_id)
-            != snapshot.header.session_id
+            or start.data["execution_session_id"] != snapshot.header.session_id
         ):
             continue
         current = await store.snapshot()

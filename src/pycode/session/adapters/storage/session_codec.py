@@ -122,6 +122,11 @@ REMOVED_ENTRY_TYPES = frozenset(
         "session_restored",
     }
 )
+# Custom kinds of the removed revert transaction and per-call snapshot records (33.2 #1);
+# file snapshots now live in the tool result's details.
+REMOVED_CUSTOM_KINDS = frozenset(
+    {"revert_started", "revert_completed", "revert_recovery", "file_snapshot"}
+)
 
 
 def decode_entries(records) -> tuple[tuple[SessionEntry, ...], dict[str, str | None]]:
@@ -131,7 +136,9 @@ def decode_entries(records) -> tuple[tuple[SessionEntry, ...], dict[str, str | N
     for record in records:
         try:
             parent = skipped.get(record["parent_id"], record["parent_id"])
-            removed = record["type"] in REMOVED_ENTRY_TYPES
+            removed = record["type"] in REMOVED_ENTRY_TYPES or (
+                record["type"] == "custom" and record["data"].get("kind") in REMOVED_CUSTOM_KINDS
+            )
         except (KeyError, TypeError) as error:
             raise StorageError("invalid_session_entry", "Invalid native session entry") from error
         if removed:

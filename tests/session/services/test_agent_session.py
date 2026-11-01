@@ -4,7 +4,6 @@ import pytest
 
 from pycode.context.services.context_projector import ContextProjector
 from pycode.kernel import EntryDraft, Message, RunResult, StorageError
-from pycode.session.domain.execution_recovery import pending_run_entry
 from pycode.session.services.agent_session import AgentSession
 from tests.models.adapters.test_factory import configuration
 from tests.models.services.test_model_control import controller, store_for
@@ -16,7 +15,7 @@ class Launcher:
         self.started = asyncio.Event()
         self.release = None
 
-    async def run(self, provider, store, inputs, history):
+    async def run(self, provider, store, run_id, inputs, history):
         self.calls.append((provider, inputs, history))
         self.started.set()
         if self.release is not None:
@@ -25,7 +24,6 @@ class Launcher:
             Message("assistant-" + inputs[0].id, "assistant", "done")
         )
         # The runtime writes run_end when its RunState enters finished.
-        start = pending_run_entry(await store.snapshot())
         await store.append_entry(
             EntryDraft(
                 "custom",
@@ -36,7 +34,7 @@ class Launcher:
                     "reason": "completed",
                     "final_entry_id": reply,
                 },
-                run_id=start.run_id,
+                run_id=run_id,
             )
         )
         return RunResult("completed", "done", ())
@@ -74,7 +72,7 @@ async def test_session_has_one_active_executor_and_cannot_switch_branch_mid_run(
     await launcher.started.wait()
     with pytest.raises(StorageError, match="active executor"):
         await session.run(Message("input-2", "user", "other"))
-    with pytest.raises(StorageError, match="settle"):
+    with pytest.raises(StorageError, match="active executor"):
         await session.branch(None)
     launcher.release.set()
     await running
@@ -96,7 +94,7 @@ async def test_interrupted_execution_with_history_is_not_blindly_reexecuted(tmp_
 async def test_failure_outside_the_runtime_still_ends_the_run_once(tmp_path):
     session, store, launcher = await assemble(tmp_path)
 
-    async def broken(provider, store, inputs, history):
+    async def broken(provider, store, run_id, inputs, history):
         raise RuntimeError("launcher broke")
 
     launcher.run = broken
