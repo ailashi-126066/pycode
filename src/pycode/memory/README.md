@@ -4,7 +4,7 @@
 用户级在 `~/.pycode/memory/<id>.md`，项目级在 `<项目>/.pycode/memory/<id>.md`（仅信任项目）；
 同目录的 `settings.json` 存 mode（auto/off），`memory.lock` 只在写盘时持有。
 
-`MemoryFeature(trusted, mode, model)` 实现的 Feature 成员：
+`MemoryService(trusted, mode, model)` 由 app 显式连接的服务方法：
 
 - `open`：建 scope 根目录和 `MarkdownMemoryStore`，mode 未指定时读 `settings.json`。
 - `prompt_sections`：系统提示里的索引（每条一行 `[scope] id — description`，最多 50 条，最近更新的在前）。
@@ -12,8 +12,8 @@
 - `tools`：`manage_user_memory` / `manage_project_memory`（LangMem manage tool，schema 为
   `MemoryNote(description, content)`）。过滤：单条 2000 字、每作用域 50 条、疑似密钥拒绝。
 - `gates`：这两个工具免审批。
-- `on_event`：`compaction` 事件 `status == "applied"` 时启动后台整理，同一时间最多一个；
-  失败只记一行 debug 日志，不影响 run。
+- `compacted(snapshot)`：采用压缩后传入确定的会话快照，排队保存各次原文范围；一个后台任务依次处理，
+  不因上一项未完成而丢弃新压缩。失败只记一行 debug 并继续后续项，不影响 run。
 - `aclose`：取消并等待后台整理。
 
 整理输入：后台整理取这次压缩被摘要掉的那段（上一次压缩的 `first_kept_entry_id` 到这次的

@@ -4,10 +4,10 @@ import os
 from dataclasses import replace
 
 from pycode.kernel import Message, ModelCapabilities, ModelSelection
-from pycode.mcp.connection import MCPAdapterConnections
+from pycode.mcp.client import MCPAdapterConnections
 from pycode.models import to_framework
 from pycode.tools.adapters.schema import JsonSchemaValidator
-from tests.mcp.adapters.test_connection import configured
+from tests.mcp.test_connection import configured
 
 
 async def test_real_stdio_image_is_preserved_and_forwarded_only_to_capable_model(tmp_path):
@@ -17,7 +17,7 @@ async def test_real_stdio_image_is_preserved_and_forwarded_only_to_capable_model
     try:
         catalog = await connections.catalog()
         declaration = next(item for item in catalog["tools"] if item["original_name"] == "picture")
-        result = await connections.call(declaration, {})
+        result = await connections.call(declaration, {}, call_id="picture")
         media = result.details["mcp_content_blocks"]
         assert len(media) == 1 and media[0]["type"] == "image"
         assert media[0]["mime_type"] == "image/png" and media[0]["base64"].startswith("iVBOR")

@@ -1,4 +1,4 @@
-"""MemoryFeature: the prompt index, consolidation input, tools, gate, mounts and edits."""
+"""MemoryService: the prompt index, consolidation input, tools, gate, mounts and edits."""
 
 import asyncio
 import logging
@@ -19,7 +19,7 @@ from pycode.kernel import (
     ToolError,
     ToolSpec,
 )
-from pycode.memory import MemoryFeature
+from pycode.memory import MemoryService
 from pycode.memory import memory as memory_module
 from pycode.memory.memory import INSTRUCTIONS, compacted_source, recent_source
 from pycode.memory.store import format_note
@@ -76,9 +76,9 @@ async def open_memory(tmp_path, *, trusted=False, mode=None, read_only=False):
         tmp_path / "session", SessionHeader("s1", str(workspace), "created"), TestTiming()
     )
     opened = []
-    memory = MemoryFeature(trusted=trusted, mode=mode, model=background_model(opened))
-    # Assembly subscribes every feature to the session's event stream.
-    events = EventStream("s1", "r1", (memory,))
+    memory = MemoryService(trusted=trusted, mode=mode, model=background_model(opened))
+    # Assembly delivers adopted snapshots directly to the memory service.
+    events = EventStream("s1", "r1", ())
     scope = SessionScope("s1", workspace, tmp_path / "data", history, events, read_only, "lead")
     await memory.open(scope)
     return memory, history, scope, opened
@@ -165,7 +165,7 @@ async def test_adopted_compaction_consolidates_in_the_background(tmp_path, monke
         await compaction(history, "User asked about tests.", kept)
         await scope.events.emit("compaction", {"job_id": "j1", "status": "generating"})
         assert memory.task is None
-        await scope.events.emit("compaction", {"job_id": "j1", "status": "applied"})
+        memory.compacted(await history.snapshot())
         await memory.collect()
         [(namespace, texts)] = managers.calls
         assert namespace == USER
@@ -193,7 +193,7 @@ async def test_background_failure_is_logged_and_manual_extract_raises(
         await history.append_message(Message("u1", "user", "Use ruff."))
         kept = await history.append_message(Message("u2", "user", "Kept."))
         await compaction(history, "Summary.", kept)
-        memory.compacted()
+        memory.compacted(await history.snapshot())
         await memory.collect()
         assert "provider_unavailable" in caplog.text
         with pytest.raises(ModelError):
@@ -212,15 +212,15 @@ async def test_only_one_background_consolidation_runs_at_a_time(tmp_path, monkey
         await history.append_message(Message("u1", "user", "Prefer tabs."))
         kept = await history.append_message(Message("u2", "user", "Kept."))
         await compaction(history, "Summary.", kept)
-        memory.compacted()
+        memory.compacted(await history.snapshot())
         first = memory.task
-        memory.compacted()
+        memory.compacted(await history.snapshot())
         assert memory.task is first
         release.set()
         await memory.collect()
         assert len(managers.calls) == 1
         await memory.set_mode("off")
-        memory.compacted()
+        memory.compacted(await history.snapshot())
         assert memory.task is None
     finally:
         await memory.aclose()
@@ -346,6 +346,64 @@ async def test_read_only_session_gets_no_manage_tools(tmp_path):
     memory, history, scope, _ = await open_memory(tmp_path, read_only=True)
     try:
         assert memory.tools(RunScope(scope, "r1", scope.events)) == ()
+    finally:
+        await memory.aclose()
+        await history.aclose()
+
+
+async def test_consecutive_compactions_keep_their_own_ranges(tmp_path, monkeypatch):
+    memory, history, _, _ = await open_memory(tmp_path)
+    started, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def consolidate(run_id, summary, messages):
+        calls.append((summary, tuple(message.text for message in messages)))
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(memory, "consolidate", consolidate)
+    try:
+        await history.append_message(Message("u1", "user", "Use pytest."))
+        kept = await history.append_message(Message("u2", "user", "Use ruff."))
+        await compaction(history, "first", kept)
+        first = await history.snapshot()
+        memory.compacted(first)
+        await started.wait()
+        second_kept = await history.append_message(Message("u3", "user", "Keep this tail."))
+        await compaction(history, "second", second_kept)
+        memory.compacted(await history.snapshot())
+        # A third history mutation must not change either queued compaction's source.
+        await history.append_message(Message("u4", "user", "Not compacted."))
+        release.set()
+        await memory.collect()
+        assert calls == [("first", ("Use pytest.",)), ("second", ("Use ruff.",))]
+    finally:
+        release.set()
+        await memory.aclose()
+        await history.aclose()
+
+
+async def test_failed_compaction_does_not_drop_the_next_queued_range(tmp_path, monkeypatch):
+    memory, history, _, _ = await open_memory(tmp_path)
+    calls = []
+
+    async def consolidate(run_id, summary, messages):
+        calls.append(summary)
+        if summary == "first":
+            raise RuntimeError("first failed")
+
+    monkeypatch.setattr(memory, "consolidate", consolidate)
+    try:
+        await history.append_message(Message("u1", "user", "Use pytest."))
+        kept = await history.append_message(Message("u2", "user", "Use ruff."))
+        await compaction(history, "first", kept)
+        first = await history.snapshot()
+        next_kept = await history.append_message(Message("u3", "user", "tail"))
+        await compaction(history, "second", next_kept)
+        memory.compacted(first)
+        memory.compacted(await history.snapshot())
+        await memory.collect()
+        assert calls == ["first", "second"]
     finally:
         await memory.aclose()
         await history.aclose()

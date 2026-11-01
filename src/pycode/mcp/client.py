@@ -1,9 +1,10 @@
-"""Mcp connection: component-owned implementation."""
-
-# Source: MewCode local mcp/manager.py and tool_wrapper.py; fixed SHA in docs/source-map.md.
-# SHA-256 manager: c43972ec32c050d47ab665e17274795d20fd382af4f439ac8db352e0aa61cd0b
-# SHA-256 wrapper: aeb2cfda21b0b9c03a490762ac64ec3208ed1cea4fafb637220e820aec55840a
-# Adaptation: concurrent owned connections, native catalogs and no blind call retry.
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/mcp/src/client.ts
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/extensions/mcp/runtime.ts
+# 参照 MewCode local mcp/manager.py、tool_wrapper.py; SHA-256:
+# manager c43972ec32c050d47ab665e17274795d20fd382af4f439ac8db352e0aa61cd0b
+# wrapper aeb2cfda21b0b9c03a490762ac64ec3208ed1cea4fafb637220e820aec55840a
+# Adaptation: concurrent owned connections over FastMCP, native catalogs, no blind call retry.
+"""MCP server connections: discovery, the tool catalog and calls."""
 
 import asyncio
 import contextvars
@@ -276,22 +277,7 @@ class MCPAdapterConnections:
             self._startup = None
         return result
 
-    def framework_tool(self, declaration):
-        connection = self._clients[declaration["server"]]
-        return connection.framework_tool(declaration["original_name"]).model_copy(
-            update={"name": declaration["name"]}
-        )
-
-    @asynccontextmanager
-    async def tool_call(self, declaration):
-        if declaration is None:
-            raise ToolError("mcp_tool_unavailable", "MCP tool is outside the current catalog")
-        client = await self.client(declaration["server"])
-        async with client.tool_call():
-            yield
-
-    async def call(self, declaration, arguments, *, call_id="mcp-call"):
-        """The explicit adapter entry uses the same native tool and policy boundary."""
+    async def call(self, declaration, arguments, *, call_id):
         # A changed remote schema surfaces as the server's own argument error.
         client = await self.client(declaration["server"])
         result = await client.invoke(declaration["original_name"], arguments, call_id=call_id)

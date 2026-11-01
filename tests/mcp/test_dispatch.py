@@ -1,8 +1,7 @@
 import pytest
 
 from pycode.kernel import EventStream, Message, ToolCall, ToolContext, ToolResult
-from pycode.mcp.api import MCP
-from pycode.mcp.tools import MCPTool
+from pycode.mcp import MCPService
 from pycode.tools.adapters.schema import JsonSchemaValidator
 from pycode.tools.adapters.tool_errors import execute_tool_errors
 from pycode.tools.services.permissions import ReadOnlyToolGate
@@ -35,7 +34,7 @@ class Connections:
     async def catalog(self):
         return {"servers": [{"name": "srv", "status": "connected"}], "tools": self.tools}
 
-    async def call(self, tool, arguments):
+    async def call(self, tool, arguments, *, call_id):
         self.calls.append((tool, arguments))
         return ToolResult("", tool["name"], "MCP done")
 
@@ -56,15 +55,12 @@ async def test_dispatch_checks_target_schema_and_parent_permission_before_call(
     history = store_for(tmp_path)
     await history.append_message(Message("u1", "user", "task"))
     connections = Connections(trusted=trusted)
-    service = MCP(history, connections)
+    service = MCPService(history, connections)
     try:
         await service.initialize()
         validator = JsonSchemaValidator()
         registry = ToolRegistry(validator)
-        await service.refresh(
-            registry,
-            lambda tool: MCPTool(tool, connections),
-        )
+        registry.replace_source("mcp:", service.tools())
         assert "mcp__srv__search" in {spec.name for spec in registry.model_specs()}
         context = ToolContext("s1", "r1", "op", str(tmp_path))
         result = await ToolExecutor(

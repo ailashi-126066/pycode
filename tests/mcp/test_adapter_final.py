@@ -3,12 +3,12 @@
 import sys
 from pathlib import Path
 
-from pycode.mcp.connection import MCPAdapterConnection
+from pycode.mcp.client import MCPAdapterConnection
 from pycode.mcp.types import MCPServer
 
 
 async def test_adapter_stdio_tools_and_close(tmp_path):
-    script = Path(__file__).parents[2] / "support" / "mcp_server.py"
+    script = Path(__file__).parents[1] / "support" / "mcp_server.py"
     config = MCPServer(
         "fixture",
         "stdio",

@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from pycode.mcp.connection import MCPAdapterConnection, MCPAdapterConnections
+from pycode.mcp.client import MCPAdapterConnection, MCPAdapterConnections
 from pycode.mcp.types import MCPServer
 from pycode.tools.adapters.schema import JsonSchemaValidator
 
-SERVER = Path(__file__).parents[2] / "support/mcp_server.py"
+SERVER = Path(__file__).parents[1] / "support/mcp_server.py"
 
 
 def configured(tmp_path):
@@ -68,7 +68,7 @@ async def test_manager_discovers_two_servers_concurrently(tmp_path):
         assert {server["name"] for server in catalog["servers"]} == {"srv", "other"}
         tool = next(tool for tool in catalog["tools"] if tool["name"] == "mcp__srv__echo")
         assert tool["trusted"]
-        assert (await manager.call(tool, {"value": "wire"})).text == "echo:wire"
+        assert (await manager.call(tool, {"value": "wire"}, call_id="wire")).text == "echo:wire"
     finally:
         await manager.aclose()
 
@@ -122,9 +122,11 @@ async def test_dead_stdio_server_reconnects_on_next_call_without_retrying_effect
         from pycode.kernel import StorageError
 
         with pytest.raises(StorageError) as error:
-            await manager.call(die, {})
+            await manager.call(die, {}, call_id="die")
         assert error.value.code == "mcp_effects_uncertain"
-        assert (await manager.call(tool, {"value": "reconnected"})).text == "echo:reconnected"
+        assert (
+            await manager.call(tool, {"value": "reconnected"}, call_id="reconnect")
+        ).text == "echo:reconnected"
         current = await asyncio.to_thread((tmp_path / "server.pid").read_text)
         assert current != previous
     finally:
@@ -136,7 +138,7 @@ async def test_one_discovery_snapshot_and_explicit_refresh(tmp_path, monkeypatch
 
     from fastmcp.client import Client
 
-    from pycode.mcp.connection import MCPAdapterConnections
+    from pycode.mcp.client import MCPAdapterConnections
     from pycode.tools.adapters.schema import JsonSchemaValidator
 
     calls = []
@@ -157,7 +159,7 @@ async def test_one_discovery_snapshot_and_explicit_refresh(tmp_path, monkeypatch
         await connections.catalog()
         assert len(calls) == 2
         echo = next(tool for tool in catalog["tools"] if tool["original_name"] == "echo")
-        await connections.call(echo, {"value": "cached"})
+        await connections.call(echo, {"value": "cached"}, call_id="cached")
         assert len(calls) == 2  # A call does not list tools again.
     finally:
         await connections.aclose()

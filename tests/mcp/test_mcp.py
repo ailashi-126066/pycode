@@ -12,7 +12,7 @@ from tests.skills.adapters.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
-SERVER = Path(__file__).parents[2] / "support/mcp_server.py"
+SERVER = Path(__file__).parents[1] / "support/mcp_server.py"
 
 
 async def mcp_config(config, *, mode="direct", trusted=True):

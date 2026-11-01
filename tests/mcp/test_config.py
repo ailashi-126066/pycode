@@ -5,11 +5,10 @@ from pathlib import Path
 import pytest
 
 from pycode.kernel import DomainError
-from pycode.mcp.config import parse_servers
-from pycode.mcp.types import mcp_spec
+from pycode.mcp.types import mcp_spec, parse_servers
 
 VECTORS = json.loads(
-    (Path(__file__).parents[2] / "fixtures/mcp-baselines.json").read_text(encoding="utf-8")
+    (Path(__file__).parents[1] / "fixtures/mcp-baselines.json").read_text(encoding="utf-8")
 )
 
 

@@ -1,5 +1,5 @@
 # Pi 没有，pycode 新增
-"""MemoryFeature: the prompt index, manage tools, a read-only mount and consolidation.
+"""MemoryService: the prompt index, manage tools, a read-only mount and consolidation.
 
 Consolidation runs in the background after a compaction is adopted (at most one at a time)
 and on demand through /memory extract. LangMem's Store Manager writes the same files.
@@ -8,6 +8,7 @@ and on demand through /memory extract. LangMem's Store Manager writes the same f
 import asyncio
 import contextvars
 import logging
+from collections import deque
 from pathlib import Path
 from uuid import uuid4
 
@@ -16,7 +17,6 @@ from langmem import create_memory_store_manager
 
 from pycode.context import retained_context_entries
 from pycode.kernel import (
-    Feature,
     Message,
     SessionScope,
     SessionTree,
@@ -134,15 +134,15 @@ class MemoryWriteGate:
         return None
 
 
-class MemoryFeature(Feature):
-    name = "memory"
-
+class MemoryService:
     def __init__(self, *, trusted: bool, mode: str | None, model: BackgroundModel):
         self.trusted = trusted
         self.mode = mode
         self.model = model
         self.task: asyncio.Task | None = None
         self.closed = False
+        self.pending = deque()
+        self.last_compaction_id: str | None = None
 
     async def open(self, session: SessionScope) -> None:
         self.history = session.history
@@ -181,35 +181,40 @@ class MemoryFeature(Feature):
             return ()
         return (memory_index(self.store.records(self.scopes)),)
 
-    async def on_event(self, event) -> None:
-        if event.kind == "compaction" and event.data["status"] == "applied":
-            self.compacted()
-
     async def aclose(self) -> None:
         self.closed = True
         await self.collect(cancel=True)
 
-    def compacted(self):
-        """Consolidate in the background after a compaction; at most one runs at a time."""
-        if self.closed or self.mode == "off":
-            return
-        if self.task is not None and not self.task.done():
-            return
-        self.task = asyncio.create_task(
-            self.background("memory-compaction-" + uuid4().hex),
-            name="pycode-memory-consolidate",
-            context=contextvars.Context(),
-        )
+    def compacted(self, snapshot):
+        """Queue the adopted snapshot, not whatever history contains when the task runs.
 
-    async def background(self, run_id):
-        # A failed background consolidation stays silent and never fails the run.
-        try:
-            summary, messages = compacted_source(await self.history.snapshot())
-            await self.consolidate(run_id, summary, messages)
-        except Exception as error:  # noqa: BLE001 - nothing awaits this task
-            logger.debug(
-                "Memory consolidation failed: %s", getattr(error, "code", type(error).__name__)
+        Assembly calls this once after adopting compaction. A single worker drains every
+        accepted range, including a new compaction while the previous model call waits.
+        """
+        if self.closed or self.mode == "off" or self.read_only:
+            return
+        if snapshot.leaf_id == self.last_compaction_id:
+            return
+        self.last_compaction_id = snapshot.leaf_id
+        self.pending.append(snapshot)
+        if self.task is None or self.task.done():
+            self.task = asyncio.create_task(
+                self.background(),
+                name="pycode-memory-consolidate",
+                context=contextvars.Context(),
             )
+
+    async def background(self):
+        while self.pending:
+            snapshot = self.pending.popleft()
+            # One failure boundary per accepted compaction; later queued work still runs.
+            try:
+                summary, messages = compacted_source(snapshot)
+                await self.consolidate("memory-compaction-" + uuid4().hex, summary, messages)
+            except Exception as error:  # noqa: BLE001 - background failures are non-fatal
+                logger.debug(
+                    "Memory consolidation failed: %s", getattr(error, "code", type(error).__name__)
+                )
 
     async def extract(self):
         """The manual /memory extract: the recent dialogue; failures reach the caller."""
@@ -250,13 +255,16 @@ class MemoryFeature(Feature):
             logger.info("Memory consolidation skipped %d filtered entries", len(view.rejected))
 
     async def collect(self, *, cancel=False):
-        task, self.task = self.task, None
+        task = self.task
         if task is None:
             return
         if cancel:
+            self.pending.clear()
             task.cancel()
         # background() keeps every failure inside the task; this only waits for it.
         await asyncio.wait((task,))
+        if self.task is task:
+            self.task = None
 
     async def set_mode(self, mode):
         if mode not in {"auto", "off"}:
