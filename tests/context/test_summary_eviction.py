@@ -4,7 +4,7 @@ from pycode.context.projector import ContextProjector
 from pycode.context.summary import FileSummaryStore, SummaryService
 from pycode.context.types import SummarySettings
 from pycode.kernel import EventStream, Message, ModelSelection, SessionHeader, ToolCall, ToolResult
-from pycode.session.adapters.storage.session import SqliteSessionStore
+from pycode.session import SqliteSessionStore
 from tests.context.test_summary import Generator
 from tests.support.requests import TestTiming
 

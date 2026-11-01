@@ -7,12 +7,26 @@ import sys
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Message
 from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
+
+
+async def run_skill(session, name, arguments=""):
+    from uuid import uuid4
+
+    selected = await session.skills.load(name, arguments)
+    return await session.run(
+        Message(
+            uuid4().hex,
+            "user",
+            f"Use the {selected['name']} Skill. Read {selected['path']} for its instructions.\n"
+            f"Task arguments: {selected['arguments']}",
+            provider_metadata={"skill_request": selected},
+        )
+    )
 
 
 @pytest.mark.parametrize("decision", ["approve", "deny"])
@@ -50,7 +64,7 @@ async def test_skill_script_uses_bash_and_never_registers_python_tools(
             "s1", create=True, refresh_models=False
         )
         try:
-            waiting = await session.load_skill("check")
+            waiting = await run_skill(session, "check")
             assert waiting.outcome == "needs_input"
             assert waiting.pending[0]["call"]["name"] == "bash"
             assert not (tmp_path / "ran.txt").exists()

@@ -11,10 +11,13 @@ from pycode.context.summary import (
     turn_prefix_prompt,
 )
 from pycode.kernel import EventStream, ModelError
-from pycode.models.adapters.failures import ProviderFailureClassifier
-from pycode.models.adapters.model_requests import ModelRequestRunner
-from pycode.models.domain.requests import RetryPolicy
-from pycode.models.module import ModelsModule
+from pycode.models import (
+    ModelRequestRunner,
+    ProviderFailureClassifier,
+    RetryPolicy,
+    model_request_step,
+    stop_reason,
+)
 from tests.context.test_summary import Generator, setup
 from tests.support.model import ScriptedChatModel
 from tests.support.requests import MemoryRequestStore, TestTiming
@@ -85,8 +88,8 @@ async def test_split_turn_summary_is_two_framework_requests_with_usage_and_no_to
         model = ScriptedChatModel(responses=[response, response])
         workflow = SummaryWorkflow(
             model,
-            request_step=ModelsModule.model_request_step,
-            stop_reason=ModelsModule.stop_reason,
+            request_step=model_request_step,
+            stop_reason=stop_reason,
         )
         records = MemoryRequestStore()
         timing = TestTiming()

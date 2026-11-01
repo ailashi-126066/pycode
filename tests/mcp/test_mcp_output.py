@@ -3,12 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Message
-from tests.hooks.adapters.test_hooks import hook_file
+from tests.hooks.test_hooks import hook_file
 from tests.mcp.test_mcp import mcp_config
-from tests.skills.adapters.test_skills_http import skill_reply
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
@@ -77,7 +76,13 @@ async def test_dispatch_uses_target_name_for_hook_rejection_and_never_calls_serv
             "s1", create=True, refresh_models=False
         )
         try:
-            assert (await session.run(Message("u1", "user", "change"))).outcome == "completed"
+            waiting = await session.run(Message("u1", "user", "change"))
+            assert waiting.outcome == "needs_input"
+            assert not (tmp_path / "effects.txt").exists()
+            done = await session.resume(
+                {"operation_id": waiting.pending[0]["operation_id"], "decision": "approve"}
+            )
+            assert done.outcome == "completed"
             assert not (tmp_path / "effects.txt").exists() and len(requests) == 2
             state = await session.inspect()
             result = next(

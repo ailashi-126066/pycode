@@ -2,12 +2,11 @@ import pytest
 
 from pycode.kernel import EventStream, Message, ToolCall, ToolContext, ToolResult
 from pycode.mcp import MCPService
-from pycode.tools.adapters.schema import JsonSchemaValidator
-from pycode.tools.adapters.tool_errors import execute_tool_errors
-from pycode.tools.services.permissions import ReadOnlyToolGate
-from pycode.tools.services.tool_executor import ToolExecutor
-from pycode.tools.services.tool_registry import ToolRegistry
+from pycode.tools import JsonSchemaValidator
+from pycode.tools.executor import ToolExecutor, ToolRegistry
+from pycode.tools.permissions import ReadOnlyToolGate
 from tests.models.test_control import store_for
+from tests.tools.test_tool_executor import run_scope
 
 
 class Connections:
@@ -67,8 +66,7 @@ async def test_dispatch_checks_target_schema_and_parent_permission_before_call(
             registry,
             validator,
             ReadOnlyToolGate(),
-            EventStream("s1", "r1", ()),
-            error_boundary=execute_tool_errors,
+            run_scope(EventStream("s1", "r1", ())),
         ).execute(
             context,
             ToolCall(

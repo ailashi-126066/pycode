@@ -7,31 +7,31 @@ pycode 的底层照 Pi（HEAD `2c8d1fe`）翻译成 Python，用 LangChain / Lan
 
 ## 包与依赖
 
-`src/pycode/` 下按功能分包：kernel（消息、事件、记录、状态机、work_graph）、models（LangChain provider 适配）、
-context（投影、压缩、驱逐、任务板投影）、agent（Deep Agents 图和 middleware）、tools（注册、执行、结算、
-发现）、sandbox（Seatbelt、bash）、snapshot（Git 快照）、session（SQLite 会话、恢复、回退）、plans（Plan 与
-任务板工具）、memory、skills、mcp、hooks、subagents、ui（Textual TUI、控制台）、app（CLI、配置、组装）。
+核心包按 kernel ← models ← context ← tools ← agent ← session 单向依赖。
+业务模块为 sandbox、snapshot、memory、skills、mcp、hooks、plans、tasks、subagents、loopguard；
+各模块按职责平铺，不再分 domain/ports/services/adapters。ui 和 app 在上层。
 
-分层包是 domain/ports/services/adapters/module；skills、mcp、hooks、subagents 是扁平包（types/contracts）。
-跨包只能经包的 `__init__` 导出。允许的依赖在 `docs/design/feature-dependencies.json`，每个 Protocol 的生产实现
-在 `docs/design/port-implementations.json`，两者都由 `scripts/check_architecture.py` 强制。pycode 不 import
-evals 和 scripts。
+`app/composition.py` 明确创建具体服务并连接函数、工具、挂载和 framework middleware；
+不使用 Feature 基类、通用注册器或按类型查找服务。AgentSession 暴露具体 memory/skills/plans/tasks 等入口。
+会话与运行分别使用 AsyncExitStack 关闭资源，初始化失败时先释放已经获得的资源。
 
-组装只有一个入口 `app/bootstrap.py::compose_application`，返回带 `ApplicationModules` 的 Application；CLI、TUI、
-评测都用它。`app/composition/` 连接各模块，`app/lifecycle/` 管会话和运行的资源生命周期。
+架构脚本只检查依赖方向及跨包从包根导出导入；品牌检查独立保留。
+不再维护 feature-dependencies.json、port-implementations.json，不规定 Protocol 数量。
+共享 AgentTool、ToolGate、EventConsumer 保留，其他调用优先具体类型或函数。
+纯类型引用允许 TYPE_CHECKING，不产生运行时反向依赖。pycode 不 import evals/scripts。
 
 ## 一次运行
 
-1. `AgentSession.run` 写用户消息，`ConfiguredRuntimeLauncher` 组装 `AgentRuntime`（`agent/adapters/agent.py`，
+1. `AgentSession.run` 写用户消息，app 组装 `AgentRuntime`（`agent/runtime.py`，
    唯一的 `create_deep_agent` 图）和 `RunContext`。
-2. 循环由 LangGraph 跑，`HistoryMiddleware`（`agent/adapters/history.py`）提供 Pi `AgentLoopConfig` 的几个钩子：
+2. 循环由 LangGraph 跑，`HistoryMiddleware`（`agent/loop.py`）提供 Pi `AgentLoopConfig` 的几个钩子：
    `abefore_model`（维护上下文、轮次预算、防打转）、`awrap_model_call`（投影、注入、请求、保存回复）、
    `aafter_model` / `aafter_agent`（结束一轮、steering 与 follow-up、任务板结束前检查）。
-   `RunState`（`agent/domain/run_state.py`）显式记录 `starting → model_turn ⇄ tool_turn → awaiting_input →
+   `RunState`（`agent/context.py`）显式记录 `starting → model_turn ⇄ tool_turn → awaiting_input →
    verifying → finished`。
-3. 工具调用由 `ToolSettlementMiddleware`（`tools/adapters/settlement.py`）包住 tools 节点：准备阶段按顺序串行
-   （校验、Hook、审批一次一个），执行阶段并发；有工具声明 `sequential` 时整批串行。`ToolExecutor`
-   （`tools/services/tool_executor.py`）负责校验、`pre_tool_use`、授权、快照和执行。每个调用有
+3. 工具调用由 `ToolSettlementMiddleware`（`tools/settlement.py`）包住 tools 节点：准备阶段按顺序串行
+   （校验、审批一次一个、执行前钩子），执行阶段并发；有工具声明 `sequential` 时整批串行。`ToolExecutor`
+   （`tools/executor.py`）负责校验、授权、明确注册的执行前后钩子和工具执行。每个调用有
    `ToolCallState`（issued → validating → awaiting_approval → running → settled），`begin` / `settle` 是唯一出入口。
 4. 审批用 LangGraph `interrupt` 暂停，`AgentRuntime.resume` 用 `Command(resume)` 送回答案；同一时间只有一个
    待答问题。
@@ -40,7 +40,7 @@ evals 和 scripts。
 
 ## 转移 → 记录 → 事件 → Hook
 
-先持久化，再发事件，最后触发 Hook：
+工具结果经过执行后钩子修改后统一持久化，再发完成事件；生命周期 Hook 在明确的边界调用：
 
 | 转移 | 记录（session.sqlite） | 事件 | Hook |
 |---|---|---|---|
@@ -48,16 +48,16 @@ evals 和 scripts。
 | 一轮开始 / 结束 | — | `turn_start` / `turn_end{turn, message_id, tool_result_ids}` | `turn_start` / `turn_end` |
 | 请求模型 | — | `message_start{attempt}`、`message_update` | `pre_send` |
 | 收到回复 | `message`（assistant，含 stop_reason） | `message_end{message, entry_id}` | `post_receive` |
-| ToolCall issued → validating | — | `tool_execution_start` | `pre_tool_use` |
+| ToolCall issued → validating | — | `tool_execution_start` | — |
 | validating → awaiting_approval | — | `needs_input`（运行停下等待时） | `permission_request` |
 | 审批决定 | `custom{tool_approval}` | — | — |
-| → running | `custom{tool_started}` | `tool_execution_update` | — |
+| 授权通过 → running | `custom{tool_started}` | `tool_execution_update` | 执行前 `pre_tool_use` |
 | → settled | `message`（tool_result，改文件时 details 带 file_snapshot） | `tool_execution_end{status, outcome}` | `post_tool_use`、`file_change`、`error` |
 | 压缩采用 | `compaction` | `compaction` | `compact` |
 | 子 agent 状态 | `custom{subagent_start}` | `subagent` | — |
 | 运行结束 | `custom{run_end}` | `agent_end{reason}` | `run_end` |
 
-事件共 18 种（`kernel/domain/events.py`），每个事件信封带 `turn`、`agent_id`、`parent_call_id`。订阅者抛异常会让
+事件共 18 种（`kernel/events.py`），每个事件信封带 `turn`、`agent_id`、`parent_call_id`。订阅者抛异常会让
 本次运行失败；只有 `BrokenPipeError` 例外，禁用该订阅者并抛 `OutputClosed`。Hook 共 14 种
 （`hooks/types.py`），旧名字在加载配置时报错并提示新名字；`pre_tool_use` 出错按拦截处理。
 
@@ -67,14 +67,15 @@ evals 和 scripts。
 ToolSearch、TaskWrite/TaskUpdate、ExitPlanMode、AskUserQuestion、Agent/SendMessage/StopAgent、Skill 与 MCP
 工具、记忆工具。延迟加载见 [design/tool-discovery.md](design/tool-discovery.md)。
 
-文件访问走 `tools/module.py::composite` 构造的 `CompositeBackend`，虚拟路由有 `/workspace/`、`/plans/`、
-`/skills/<source>/`、`/memory/user/`、`/memory/project/` 和大输出临时目录；write/edit 只能写 `/workspace/` 和
-`/plans/`。授权链是 Interrupt（或 ReadOnly）→ Memory → Plan，嵌入方的 `AppConfig.tool_gate` 和 Skill 的
-allowed-tools 范围包在链外层，先判断再交给默认链。
+文件访问由 app 构造 CompositeBackend，虚拟路由有 `/workspace/`、`/plans/`、
+`/skills/<source>/`、`/memory/user/`、`/memory/project/` 和大输出临时目录。
+授权依次检查用户 gate 和实际业务 gate；任一拒绝优先，有 allow 也不能跳过后续 gate。
+没有自动放行时再进入核心审批。授权后运行 hooks/snapshot/skills 等实际准备函数；被拦截不执行工具，
+不运行 after。执行后 snapshot、skills、plans、hooks 按显式顺序处理结果，后者看到前者修改后的值。
 
 ## 任务板与 Plan
 
-任务板（`kernel/domain/work_graph.py`）是简单任务和 Plan 共用的模型：`Board` 和 `Step` 两个类，两张转移表，
+任务板（`kernel/work_graph.py` 的值及 `tasks/` 服务）是简单任务和 Plan 共用的模型：`Board` 和 `Step` 两个类，两张转移表，
 `validate` / `apply` / `derived` 三个函数。`depends_on` 可选，写了就做环和悬空校验，依赖没完成的步骤不能开始；
 同一时间只有一个 in_progress；完成要有证据：有 `check` 的验收项由系统在步骤开始之后找完全相同且成功的 bash
 调用，引用的证据必须在步骤开始之后、而且是成功的调用。任务板的出口是 completed / failed / blocked
@@ -88,7 +89,7 @@ allowed-tools 范围包在链外层，先判断再交给默认链。
 
 ## 防打转与预算
 
-`tools/domain/progress_guard.py` 按指纹计数：动作（工具名 + 参数哈希）加结果（是否出错、error_code、
+`loopguard/loopguard.py` 按指纹计数：动作（工具名 + 参数哈希）加结果（是否出错、error_code、
 exit_code、把连续数字换成 `#` 后的输出哈希）。阈值默认 3：
 - 会改东西或执行命令的工具：同一指纹出现 3 次；
 - 只读工具（read、grep、find、ls、ToolSearch 等）：同一指纹连续出现 3 次，中间没有其他工具调用；
@@ -114,4 +115,4 @@ AGENTS.md（`~/.pycode/AGENTS.md`，加 `--trust-project` 时还有项目根目�
 
 Seatbelt profile 默认拒绝：读允许工作区、系统目录、临时目录、解释器前缀和 git 全局配置，拒绝 ~/.ssh、~/.aws、
 ~/.gnupg、~/.config、~/.pycode 和 .env 文件；写只允许工作区（.git、.pycode、.env 除外）。`on-auto` 只自动批准
-每一段都通过白名单（`sandbox/domain/command_policy.py::auto_approvable`）的命令，其余走正常审批。
+每一段都通过白名单（`sandbox/policy.py::auto_approvable`）的命令，其余走正常审批。

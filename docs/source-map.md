@@ -23,50 +23,50 @@ Pi、OpenCode、Exercism 都是 MIT，完整声明在 `licenses/pi-MIT.txt`、`l
 
 | pycode 文件 | Pi 文件 |
 |---|---|
-| `agent/domain/run_state.py` | `packages/agent/src/agent-loop.ts` |
-| `context/adapters/summary.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
-| `context/adapters/summary.py` | `packages/coding-agent/src/core/compaction/utils.ts` |
-| `context/domain/compaction.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
-| `context/domain/context_meter.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
-| `context/domain/file_ops.py` | `packages/coding-agent/src/core/compaction/utils.ts` |
-| `context/domain/summary_source.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
-| `context/domain/tasks.py` | `packages/coding-agent/examples/extensions/todo.ts` |
-| `context/services/context_projector.py` | `packages/coding-agent/src/core/session-manager.ts` |
-| `kernel/domain/events.py` | `packages/agent/src/types.ts` |
-| `kernel/domain/history.py` | `packages/coding-agent/src/core/session-manager.ts` |
-| `kernel/domain/messages.py` | `packages/ai/src/types.ts` |
-| `kernel/domain/messages.py` | `packages/coding-agent/src/core/messages.ts` |
-| `kernel/services/events.py` | `packages/agent/src/agent.ts` |
-| `models/adapters/messages.py` | `packages/ai/src/api/transform-messages.ts` |
-| `plans/adapters/tools/task_board.py` | `packages/coding-agent/examples/extensions/todo.ts` |
-| `tools/adapters/builtin/edit.py` | `packages/coding-agent/src/core/tools/edit.ts` |
-| `tools/adapters/builtin/edit.py` | `packages/coding-agent/src/core/tools/edit-diff.ts` |
-| `tools/adapters/builtin/find.py` | `packages/coding-agent/src/core/tools/find.ts` |
-| `tools/adapters/builtin/grep.py` | `packages/coding-agent/src/core/tools/grep.ts` |
-| `tools/adapters/builtin/ls.py` | `packages/coding-agent/src/core/tools/ls.ts` |
-| `tools/adapters/builtin/path_utils.py` | `packages/coding-agent/src/core/tools/path-utils.ts` |
-| `tools/adapters/builtin/read.py` | `packages/coding-agent/src/core/tools/read.ts` |
-| `tools/adapters/builtin/write.py` | `packages/coding-agent/src/core/tools/write.ts` |
-| `tools/adapters/discovery.py` | `packages/coding-agent/src/core/system-prompt.ts` |
-| `tools/adapters/file_mutation_queue.py` | `packages/coding-agent/src/core/tools/file-mutation-queue.ts` |
-| `tools/adapters/output_store.py` | `packages/coding-agent/src/core/tools/output-accumulator.ts` |
-| `tools/adapters/output_store.py` | `packages/coding-agent/src/core/tools/bash.ts` |
-| `tools/adapters/schema.py` | `packages/ai/src/utils/validation.ts` |
+| `agent/context.py` | `packages/agent/src/agent-loop.ts` |
+| `context/summary.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
+| `context/summary.py` | `packages/coding-agent/src/core/compaction/utils.ts` |
+| `context/compaction.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
+| `context/budget.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
+| `context/compaction.py` | `packages/coding-agent/src/core/compaction/utils.ts` |
+| `context/summary.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
+| `tasks/types.py` | `packages/coding-agent/examples/extensions/todo.ts` |
+| `context/projector.py` | `packages/coding-agent/src/core/session-manager.ts` |
+| `kernel/events.py` | `packages/agent/src/types.ts` |
+| `kernel/history.py` | `packages/coding-agent/src/core/session-manager.ts` |
+| `kernel/messages.py` | `packages/ai/src/types.ts` |
+| `kernel/messages.py` | `packages/coding-agent/src/core/messages.ts` |
+| `kernel/events.py` | `packages/agent/src/agent.ts` |
+| `models/messages.py` | `packages/ai/src/api/transform-messages.ts` |
+| `tasks/tools.py` | `packages/coding-agent/examples/extensions/todo.ts` |
+| `tools/builtin/edit.py` | `packages/coding-agent/src/core/tools/edit.ts` |
+| `tools/builtin/edit.py` | `packages/coding-agent/src/core/tools/edit-diff.ts` |
+| `tools/builtin/find.py` | `packages/coding-agent/src/core/tools/find.ts` |
+| `tools/builtin/grep.py` | `packages/coding-agent/src/core/tools/grep.ts` |
+| `tools/builtin/ls.py` | `packages/coding-agent/src/core/tools/ls.ts` |
+| `tools/builtin/path_utils.py` | `packages/coding-agent/src/core/tools/path-utils.ts` |
+| `tools/builtin/read.py` | `packages/coding-agent/src/core/tools/read.ts` |
+| `tools/builtin/write.py` | `packages/coding-agent/src/core/tools/write.ts` |
+| `tools/discovery.py` | `packages/coding-agent/src/core/system-prompt.ts` |
+| `tools/builtin/paths.py` | `packages/coding-agent/src/core/tools/file-mutation-queue.ts` |
+| `tools/output.py` | `packages/coding-agent/src/core/tools/output-accumulator.ts` |
+| `tools/output.py` | `packages/coding-agent/src/core/tools/bash.ts` |
+| `tools/schema.py` | `packages/ai/src/utils/validation.ts` |
 
 各概念的对照和用到的框架机制见 [pi-map.md](pi-map.md)。
 
 ## 其他复用边界
 
-- Agent 循环：Deep Agents 0.7.32 的 `create_deep_agent` 是唯一的图（`agent/adapters/agent.py`），Pi 的循环钩子由
+- Agent 循环：Deep Agents 0.7.32 的 `create_deep_agent` 是唯一的图（`agent/runtime.py`），Pi 的循环钩子由
   middleware 实现，不另写调度循环。
-- 会话树：Pi session-manager 的树结构存进 LangGraph `SqliteStore`（`session/adapters/storage/session.py`）。
+- 会话树：Pi session-manager 的树结构存进 LangGraph `SqliteStore`（`session/store.py`）。
 - 后台摘要：MewCode 的两阶段后台摘要（何时压缩）加上 Pi 的摘要写法（怎么压缩）。
 - Skills：目录、可信来源和 GitHub 安装来自 MewCode，加载与校验照 Pi；Deep Agents `SkillsMiddleware` 负责披露。
 - MCP：LangChain `MCPAdapter` 是唯一的连接与协议实现。
 - Hooks：MewCode 的条件、模板和 command/prompt 动作；条件在进程内求值。
 - 记忆：LangMem 的 Store Manager 和 manage 工具，底层 BaseStore 是一条一个 Markdown 文件。
 - Subagent：照 Claude Code 的行为自己写管理层（`subagents/`），子 agent 内部仍用同一个 Deep Agents 图。
-- TUI / CLI：MewCode 的 Textual 设计；`ui/adapters/commands.py`、`completion.py` 参考
+- TUI / CLI：MewCode 的 Textual 设计；`ui/commands.py`、`completion.py` 参考
   `code-python/mewcode/commands/{registry,parser,completion}.py`。
 - 评测（`evals/`，独立于 pycode 包）：本项目自己的流水线。
 
@@ -77,10 +77,12 @@ Pi、OpenCode、Exercism 都是 MIT，完整声明在 `licenses/pi-MIT.txt`、`l
 
 ### Provider 的最小适配
 
-LangChain 负责 HTTP、SSE、消息转换和工具绑定。`models/adapters/observation.py` 只观察 SDK 已解码的对象，
-补回流式归一化后丢失的用量（DeepSeek cache miss、Anthropic message_start 输入用量）。
-`ManagedChatAnthropic` 是 `ChatAnthropic` 的子类，只重载两个惰性 client 访问器以注入有生命周期所有者的
-client。升级 LangChain 集成时要重跑四种 HTTP 协议测试和 usage 回归。
+LangChain 负责 HTTP、SSE、消息转换和工具绑定。`models/messages.py` 只读
+`usage_metadata` / `response_metadata`，不再用 SDK 代理补用量。
+`models/factory.py::ReasoningDeepSeek` 只补历史 assistant 消息的 reasoning_content 回传。
+`OwnedChatAnthropic` 仅在注入自有 HTTP transport 时覆写 SDK client 构造，避免关闭共享缓存的 client；不代理或观测响应。
+流中断且未收到最终用量时记 usage=None，允许这部分用量未知。
+升级集成时重跑离线 payload/usage 和本地 HTTP 协议测试；本轮真实 provider 请求经用户豁免，未验证。
 
 ## 本地来源 SHA-256 清单
 

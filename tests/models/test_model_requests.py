@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage
 from pycode.kernel import Message
 from pycode.models.requests import ModelRequestRunner, ProviderFailureClassifier
 from pycode.models.types import RetryPolicy
-from tests.agent.adapters.test_agent import assemble, tool_response
+from tests.agent.test_runtime import assemble, tool_response
 from tests.models.test_failures import status_error
 from tests.support.model import ScriptedChatModel
 from tests.support.requests import MemoryRequestStore, TestTiming
@@ -166,6 +166,21 @@ async def test_provider_network_finish_reason_retries_without_executing_its_call
     assert tool.executed == []
     assert [message.role for message in journal.messages] == ["user", "assistant"]
     assert (await store.list_requests())[0].error_code == "provider_stream_error"
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"model_provider": "openai", "finish_reason": "stop"},
+        {"model_provider": "openai", "finish_reason": "tool_calls"},
+        {"model_provider": "anthropic", "stop_reason": "end_turn"},
+        {"model_provider": "anthropic", "stop_reason": "tool_use"},
+        {"model_provider": "openai", "status": "completed"},
+        {},
+    ],
+)
+def test_terminal_metadata_accepts_empty_text_and_tool_responses(metadata):
+    assert ProviderFailureClassifier(TestTiming()).response_failure(metadata) is None
 
 
 async def test_implementation_error_is_recorded_and_propagated_without_retry():

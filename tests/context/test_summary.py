@@ -23,7 +23,7 @@ from pycode.kernel import (
     UsageRecord,
     plain_data,
 )
-from pycode.session.adapters.storage.session import SqliteSessionStore
+from pycode.session import SqliteSessionStore
 from tests.support.requests import TestTiming
 
 
@@ -554,7 +554,7 @@ async def test_compaction_callback_receives_the_adopted_snapshot_before_event(tm
         await service.prepare()
         assert seen == []
         await service.collect(cancel=False)
-        await service.prepare()
+        await service.prepare(manual=True)
         assert len(seen) == 1
         adopted = seen[0]
         assert adopted.entries[-1].type == "compaction"

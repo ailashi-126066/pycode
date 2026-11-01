@@ -4,19 +4,15 @@ import json
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from pycode.context.adapters.storage.prompts import InstructionFileBackend
+from pycode.app import AppConfig, compose_application
+from pycode.context import InstructionFileBackend, instruction_files
 from pycode.kernel import Message, StorageError
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
 
 def instruction_paths(config):
-    application = compose_application(config)
-    paths, _ = application._modules.context.instructions(
-        config.workspace, config.user_data, trusted=config.project_trusted
-    )
+    paths, _ = instruction_files(config.workspace, config.user_data, trusted=config.project_trusted)
     return paths
 
 

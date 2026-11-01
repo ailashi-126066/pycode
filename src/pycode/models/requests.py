@@ -140,6 +140,17 @@ class ProviderFailureClassifier:
 
     def response_failure(self, metadata: dict[str, Any]) -> ModelFailure | None:
         reason = metadata.get("finish_reason") or metadata.get("stop_reason")
+        if (
+            metadata.get("model_provider") in {"openai", "deepseek", "anthropic"}
+            and reason is None
+            and metadata.get("status") not in {"completed", "incomplete", "failed", "cancelled"}
+        ):
+            return ModelFailure(
+                "provider_connection",
+                "Provider stream ended before its final response",
+                True,
+                metadata={**metadata, "stream_interrupted": True},
+            )
         if reason in {"network_error", "server_error", "overloaded_error"}:
             return ModelFailure(
                 "provider_stream_error",
@@ -275,8 +286,16 @@ class ModelMessages:
 def model_request_step(requests, handler, *, logical_id):
     """Expose the existing retry/accounting boundary as one LCEL step."""
 
+    attempt_offset = 0
+
     async def invoke(request):
-        return await requests.invoke(request, handler, logical_id=logical_id)
+        nonlocal attempt_offset
+        try:
+            return await requests.invoke(
+                request, handler, logical_id=logical_id, attempt_offset=attempt_offset
+            )
+        finally:
+            attempt_offset = requests.active_attempt + 1
 
     return RunnableLambda(invoke, name="pycode_model_request")
 
@@ -314,17 +333,25 @@ class ModelRequestRunner:
     def selection(self):
         return self._selection
 
-    async def invoke(self, request, handler, *, logical_id: str | None = None):
+    async def invoke(
+        self, request, handler, *, logical_id: str | None = None, attempt_offset: int = 0
+    ):
         # active_request_id names one request at a time; native components may
         # issue concurrent queries within the same job.
         async with self._invocation_lock:
-            return await self._invoke(request, handler, logical_id=logical_id)
+            return await self._invoke(
+                request, handler, logical_id=logical_id, attempt_offset=attempt_offset
+            )
 
-    async def _invoke(self, request, handler, *, logical_id: str | None = None):
+    async def _invoke(
+        self, request, handler, *, logical_id: str | None = None, attempt_offset: int = 0
+    ):
         total = self._policy.max_retries + 1
         for index in range(total):
             try:
-                return await self.invoke_attempt(request, handler, logical_id, index)
+                return await self.invoke_attempt(
+                    request, handler, logical_id, index + attempt_offset
+                )
             except ModelError as error:
                 if not error.retryable or index >= total - 1:
                     raise
@@ -431,6 +458,16 @@ class ModelRequestRunner:
         )
 
     async def settle_failure(self, record: RequestRecord, failure: ModelFailure) -> None:
+        if failure.metadata.get("stream_interrupted"):
+            await self._store.settle(
+                replace(
+                    record,
+                    status="interrupted",
+                    settled_at=self._timing.now(),
+                    error_code=failure.code,
+                )
+            )
+            return
         metadata = {
             **failure.metadata,
             "pycode_request_id": record.request_id,

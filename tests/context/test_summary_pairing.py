@@ -2,7 +2,7 @@ from pycode.context.compaction import valid_kept_boundary
 from pycode.context.projector import ContextProjector
 from pycode.context.summary import capture_source
 from pycode.kernel import Message, ModelSelection, SessionHeader, SessionTree, ToolCall, ToolResult
-from pycode.session.adapters.storage.session import SqliteSessionStore
+from pycode.session import SqliteSessionStore
 from tests.support.requests import TestTiming
 
 

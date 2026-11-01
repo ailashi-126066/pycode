@@ -4,8 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Message
 from tests.context.test_summary_http import seed
 from tests.support.execution import provider

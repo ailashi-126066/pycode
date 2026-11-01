@@ -2,13 +2,27 @@ import json
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Message
 from tests.context.test_summary_http import seed
 from tests.skills.test_skills import write_skill
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
+
+
+async def run_skill(session, name, arguments=""):
+    from uuid import uuid4
+
+    selected = await session.skills.load(name, arguments)
+    return await session.run(
+        Message(
+            uuid4().hex,
+            "user",
+            f"Use the {selected['name']} Skill. Read {selected['path']} for its instructions.\n"
+            f"Task arguments: {selected['arguments']}",
+            provider_metadata={"skill_request": selected},
+        )
+    )
 
 
 def skill_reply(name, arguments, call_id):
@@ -95,7 +109,7 @@ async def test_actual_compaction_and_restart_keep_exact_skill_once(tmp_path, mon
             "s1", refresh_models=False
         )
         try:
-            await session.load_skill("example", "exact")
+            await run_skill(session, "example", "exact")
             report = await session.compact()
             assert report.applied_job_id is not None
             state = await session.inspect()
@@ -141,7 +155,7 @@ async def test_root_branch_recreates_catalog_without_restoring_old_activation(
             "s1", create=True, refresh_models=False
         )
         try:
-            await session.load_skill("example", "old")
+            await run_skill(session, "example", "old")
             assert (await session.run(Message("old", "user", "task"))).outcome == "completed"
             await session.branch(None)
             assert (await session.inspect())["snapshot"]["leaf_id"] is None

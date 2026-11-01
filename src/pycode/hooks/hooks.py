@@ -14,6 +14,7 @@ from pycode.kernel import (
     CommandRunner,
     DomainError,
     EntryDraft,
+    Event,
     EventStream,
     RunScope,
     SessionScope,
@@ -225,11 +226,32 @@ class HooksService:
     async def after_tool_call(self, run: RunScope, call: ToolCall, result: ToolResult):
         await self.tool_hook(run, "post_tool_use", call, result)
         snapshot = result.details.get("file_snapshot")
-        if snapshot is not None and snapshot["paths"]:
+        changed = (
+            bool(snapshot["paths"])
+            if snapshot is not None
+            else (
+                not result.is_error and call.name in {"write", "edit"} and "path" in call.arguments
+            )
+        )
+        if changed:
             await self.tool_hook(run, "file_change", call, result)
-        if result.is_error:
-            await self.tool_hook(run, "error", call, result)
         return None
+
+    async def on_event(self, event: Event) -> None:
+        # Failed validation/authorization has no executed after callback, but still reports error.
+        if event.kind == "tool_execution_end" and event.data["is_error"]:
+            result = event.data["result"]
+            await self.engine.fire(
+                HookContext(
+                    event.session_id,
+                    event.run_id,
+                    str(self.session.workspace),
+                    "error",
+                    tool_name=event.data["tool_name"],
+                    message=result["text"],
+                    error=result["error_code"] or "",
+                )
+            )
 
     async def permission_request(self, run: RunScope, call: ToolCall) -> None:
         await self.tool_hook(run, "permission_request", call)

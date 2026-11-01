@@ -2,8 +2,7 @@
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Message
 from tests.skills.test_skills import write_skill
 from tests.skills.test_skills_http import skill_reply

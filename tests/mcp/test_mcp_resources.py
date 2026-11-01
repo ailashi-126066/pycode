@@ -1,7 +1,6 @@
 """MCP discovery exposes tool controls only, even if the server has other capabilities."""
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Message
 from tests.mcp.test_mcp import mcp_config
 from tests.support.execution import provider

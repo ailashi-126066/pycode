@@ -2,53 +2,41 @@
 
 import asyncio
 from dataclasses import replace
-from functools import partial
 from types import SimpleNamespace
 
 import pytest
 from langchain_core.messages import AIMessage
-from pycode.models.module import ModelsModule
 from pydantic import Field
 
-from pycode.agent.adapters.history import HistoryMiddleware, poll_steering
-from pycode.agent.module import AgentModule
-from pycode.app.composition.bindings import build_runtime_bindings
-from pycode.context.domain.summaries import SummaryReport
-from pycode.context.services.context_projector import ContextProjector
+from pycode.agent import AgentRuntime
+from pycode.agent.loop import HistoryMiddleware, poll_steering
+from pycode.app.composition import build_runtime_bindings
+from pycode.context import ContextProjector, SummaryReport
 from pycode.kernel import Message, ModelError, SessionHeader
-from pycode.session.adapters.storage.session import SqliteSessionStore
-from pycode.tools.module import ToolsModule
-from tests.agent.adapters.test_agent import Journal, assemble
+from pycode.session import SqliteSessionStore
+from tests.agent.test_runtime import Journal, assemble
 from tests.support.model import ScriptedChatModel
 from tests.support.requests import TestTiming
 
 
-class MCP:
+class Summary:
     def __init__(self, trace):
         self.trace = trace
         self.started = asyncio.Event()
         self.blocked = False
         self.failure = None
 
-    async def refresh(self, registry):
-        self.trace.append("refresh")
+    def set_tools(self, tools):
+        assert tools
+        self.trace.append("tools")
+
+    async def prepare(self, *, tail=()):
+        self.trace.append("summary")
         self.started.set()
         if self.failure is not None:
             raise self.failure
         if self.blocked:
             await asyncio.Event().wait()
-
-
-class Summary:
-    def __init__(self, trace):
-        self.trace = trace
-
-    def set_tools(self, tools):
-        assert tools
-        self.trace.append("tools")
-
-    async def prepare(self):
-        self.trace.append("summary")
         return SummaryReport(1, "cached", ("protected-source",), "applied")
 
 
@@ -65,8 +53,8 @@ class Hooks:
     def __init__(self, trace):
         self.trace = trace
 
-    async def fire(self, context):
-        self.trace.append(context.event_name)
+    async def run_hook(self, run, event, **fields):
+        self.trace.append(event)
 
 
 class SteeringJournal(Journal):
@@ -82,30 +70,23 @@ class SteeringJournal(Journal):
 def preparation():
     trace = []
     _, context, _, _, _, _ = assemble([])
-    refresh = MCP(trace)
     context.summary = Summary(trace)
     context.eviction = Eviction(trace)
-    context.hooks = Hooks(trace)
     context.journal = SteeringJournal(trace)
+    context.history_store = context.journal
     context.inputs.submit(Message("steer", "user", "new instruction"), "steer")
-    return context, trace, refresh
+    return context, trace, Hooks(trace)
 
 
-async def test_preparation_keeps_refresh_summary_protection_steering_and_turn_order():
-    context, trace, refresh = preparation()
+async def test_preparation_keeps_summary_protection_steering_and_turn_order():
+    context, trace, hooks = preparation()
     # Pi polls steering at loop start (abefore_agent); the first turn delivers it after
     # maintenance.
     context.steering = await poll_steering(context)
     updates = await HistoryMiddleware(
-        build_runtime_bindings(
-            agent=AgentModule(),
-            models=ModelsModule,
-            tools=ToolsModule(),
-            before_model=(partial(refresh.refresh, context.registry),),
-        )
+        build_runtime_bindings(run_hook=hooks.run_hook)
     ).abefore_model({"turn": 1}, SimpleNamespace(context=context))
     assert trace == [
-        "refresh",
         "tools",
         "summary",
         "compact",
@@ -114,35 +95,29 @@ async def test_preparation_keeps_refresh_summary_protection_steering_and_turn_or
         "turn_start",
     ]
     assert updates["turn"] == 1
-    assert len(updates["messages"]) == 1
-    assert updates["messages"][0].content == "new instruction"
+    assert updates["messages"][-1].content == "new instruction"
     assert len(context.journal.messages) == 1
     assert not context.inputs.has("steer")
 
 
 @pytest.mark.parametrize("cancel", [False, True])
-async def test_failed_or_cancelled_refresh_does_not_execute_dependent_steps(cancel):
-    context, trace, refresh = preparation()
-    refresh.blocked = cancel
+async def test_failed_or_cancelled_maintenance_does_not_execute_dependent_steps(cancel):
+    context, trace, hooks = preparation()
+    context.summary.blocked = cancel
     if not cancel:
-        refresh.failure = ModelError("refresh_failed", "test")
+        context.summary.failure = ModelError("summary_failed", "test")
     running = asyncio.create_task(
-        HistoryMiddleware(
-            build_runtime_bindings(
-                agent=AgentModule(),
-                models=ModelsModule,
-                tools=ToolsModule(),
-                before_model=(partial(refresh.refresh, context.registry),),
-            )
-        ).abefore_model({"turn": 0}, SimpleNamespace(context=context))
+        HistoryMiddleware(build_runtime_bindings(run_hook=hooks.run_hook)).abefore_model(
+            {"turn": 0}, SimpleNamespace(context=context)
+        )
     )
     try:
-        await asyncio.wait_for(refresh.started.wait(), 5)
+        await asyncio.wait_for(context.summary.started.wait(), 5)
         if cancel:
             running.cancel()
         with pytest.raises(asyncio.CancelledError if cancel else ModelError):
             await running
-        assert trace == ["refresh"]
+        assert trace == ["tools", "summary"]
         assert context.inputs.has("steer")
         assert context.journal.messages == []
     finally:
@@ -185,16 +160,14 @@ async def test_dynamic_tools_after_skills_disclosure_are_in_final_budget_snapsho
 
     refresh = RefreshingMCP()
     model = ToolCapturingModel(responses=[AIMessage(content="done")])
-    runtime = AgentModule().runtime(
-        model,
-        bindings=build_runtime_bindings(
-            agent=AgentModule(),
-            models=ModelsModule,
-            tools=ToolsModule(),
-            before_model=(partial(refresh.refresh, context.registry),),
-        ),
-    )
+
+    async def run_hook(run, event, **fields):
+        pass
+
+    runtime = AgentRuntime(model, bindings=build_runtime_bindings(run_hook=run_hook))
     try:
+        # App explicitly refreshes server catalogs before constructing/running the graph.
+        await refresh.refresh(context.registry)
         result = await runtime.run((Message("user", "user", "inspect"),), context)
         assert result.outcome == "completed"
         assert "dynamic" in model.declared_tools[-1]

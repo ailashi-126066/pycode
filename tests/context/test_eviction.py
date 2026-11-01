@@ -2,7 +2,7 @@ from pycode.context.budget import estimate_messages
 from pycode.context.eviction import EvictionBudget, ToolEvictionService
 from pycode.context.projector import ContextProjector
 from pycode.kernel import Message, SessionHeader, ToolCall, ToolContext, ToolResult
-from pycode.session.adapters.storage.session import SqliteSessionStore
+from pycode.session import SqliteSessionStore
 from tests.support.requests import TestTiming
 
 

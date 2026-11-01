@@ -11,7 +11,7 @@
 - [上下文组成](docs/context-request.md)：每次发给模型的内容、四道转换边界、任务板注入、压缩。
 - [存储格式](docs/storage-format.md)：会话记录类型、工具调用、运行与任务板记录。
 - [工具发现](docs/design/tool-discovery.md)、[Subagents](docs/design/subagents.md)、[源码来源](docs/source-map.md)。
-- 各包的 README.md；组装从 `src/pycode/app/bootstrap.py` 开始。
+- 各包的 README.md；组装从 `src/pycode/app/composition.py` 开始。
 
 ## 安装
 
@@ -57,7 +57,7 @@ PowerShell 中用 `Copy-Item` 复制示例，用 `$env:DEEPSEEK_API_KEY = '自�
 也支持从工作区的本地 `.env` 加载凭据；凭据不会复制到子 agent 的 worktree。
 
 `--trust-project` 启用项目 `AGENTS.md` 和项目 Skill 来源；用户 `~/.pycode/AGENTS.md` 默认加载。
-长期记忆默认 auto：模型用 `manage_user_memory` / `manage_project_memory` 主动记，压缩被采用后后台整理一次；
+长期记忆默认 auto：模型用 `manage_user_memory` / `manage_project_memory` 主动记，压缩被采用后从本次被摘要掉的 user 原文后台整理（摘要仅作背景）；
 `--memory-mode off` 关闭。`--max-turns`（默认 100）限制一次运行的轮数。
 
 ## 工具
@@ -85,7 +85,7 @@ bash 调用。任务板以 completed、failed、blocked（把问题交给用户�
 | 子 agent | TUI `/agents`、`/agents cancel AGENT_ID` |
 | 查看/编辑记忆 | TUI `/memory`（edit/delete/clear/extract/mode） |
 | 压缩上下文 | TUI `/compact` |
-| 文件与对话回退 | TUI `/revert ENTRY_ID both`，先预览后确认 |
+| 文件与对话回退 | TUI `/revert` 选择目标和模式后确认一次；CLI `revert TARGET --mode dialogue|code|both` |
 | Skill | TUI `/skill create NAME DESCRIPTION`、`/skill read NAME`、`/skill install URL`、`/skill:NAME` |
 | 存储清理 | `storage gc --dry-run` 预览，`storage gc` 直接删除未引用对象 |
 | 删除会话 | `storage delete-session ID`（确认后直接删除，不能恢复） |
@@ -119,7 +119,34 @@ API Key、token、密码和 AWS 凭据形态的变量仍拒绝透传。
 `task`、`notification`），`--output-format stream-json` 原样输出。Hook 共 14 种：`startup`、`shutdown`、
 `run_start`、`run_end`、`turn_start`、`turn_end`、`pre_send`、`post_receive`、`pre_tool_use`、`post_tool_use`、
 `compact`、`permission_request`、`file_change`、`error`；配置里用旧名字会报错并提示新名字。`pre_tool_use`
-出错时按拦截处理。
+出错时按拦截处理。工具执行前 Hook 在授权通过后运行。
+
+## 嵌入调用
+
+嵌入入口显式接收会话存储；调用方负责打开和关闭 store，运行容器只关闭自己创建的资源。
+
+```python
+from pathlib import Path
+from uuid import uuid4
+
+from pycode.app import AppConfig, RunOptions, SessionResources, compose_application
+from pycode.kernel import Message
+
+
+async def run_task(store, provider, workspace: Path, user_data: Path):
+    app = compose_application(AppConfig(workspace, user_data, memory_mode="off"))
+    session_id = (await store.snapshot()).header.session_id
+    container = await app.runtime(
+        SessionResources(session_id=session_id, history_store=store),
+        RunOptions(provider=provider, run_id=uuid4().hex),
+    )
+    try:
+        return await container.runtime.run(
+            (Message(uuid4().hex, "user", "分析项目结构"),), container.context
+        )
+    finally:
+        await container.aclose()
+```
 
 ## 开发与评测
 

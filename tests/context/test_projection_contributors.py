@@ -141,3 +141,18 @@ def test_incremental_missing_tool_result_is_deeply_immutable():
         .details["status"]
         == "unknown"
     )
+
+
+def test_real_business_projections_use_disjoint_checkpoint_keys():
+    from pycode.mcp import mcp_projection
+    from pycode.plans import PlanProjection
+    from pycode.tasks import task_contribution
+
+    current = snapshot()
+    claimed = set()
+    for contribute in (PlanProjection().contribute, task_contribution, mcp_projection):
+        contribution = contribute(current, (), {})
+        keys = set(contribution.checkpoint_updates) | set(contribution.checkpoint_removals)
+        assert not claimed & keys
+        claimed.update(keys)
+    assert claimed == {"plan", "task_board", "mcp"}

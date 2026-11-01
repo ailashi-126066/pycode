@@ -58,7 +58,7 @@ def test_violations_are_reported(tmp_path, relative, source, error):
     [
         ("kernel/io.py", "import os\nfrom pathlib import Path\n"),
         (
-            "kernel/feature.py",
+            "kernel/runtime.py",
             "from typing import TYPE_CHECKING\n"
             "if TYPE_CHECKING:\n"
             "    from pathlib import Path\n"
@@ -82,7 +82,7 @@ def test_type_checking_imports_still_need_the_package_root(tmp_path):
         "from typing import TYPE_CHECKING\n"
         "if TYPE_CHECKING:\n    from pycode.session.store import SqliteSessionStore\n"
     )
-    errors = tree(tmp_path, {"src/pycode/kernel/feature.py": source})
+    errors = tree(tmp_path, {"src/pycode/kernel/runtime.py": source})
     assert len(errors) == 1 and "import from pycode.session" in errors[0], errors
 
 
@@ -97,3 +97,7 @@ def test_scripts_and_evals_use_package_roots(tmp_path, relative):
         },
     )
     assert len(errors) == 1 and "import from pycode.kernel" in errors[0], errors
+
+
+def test_real_project_obeys_dependency_direction_and_public_imports():
+    assert check_dependencies() == []

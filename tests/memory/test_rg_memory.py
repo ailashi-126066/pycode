@@ -4,7 +4,7 @@ import tracemalloc
 
 import pytest
 
-from pycode.tools.adapters.backend import PycodeBackend
+from pycode.tools import PycodeBackend
 
 pytestmark = pytest.mark.requires_rg
 

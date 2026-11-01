@@ -5,13 +5,12 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.context.projector import ContextProjector
 from pycode.context.summary import SUMMARIZATION_SYSTEM_PROMPT
 from pycode.kernel import Message
-from pycode.models.adapters.storage.requests import SQLiteRequestStore
-from pycode.session.adapters.storage.layout import StorageLayout
+from pycode.models import SQLiteRequestStore
+from pycode.session import StorageLayout
 from tests.support.execution import provider
 from tests.support.http_provider import HTTPResponse, chat_completion, protocol_server
 
@@ -240,7 +239,7 @@ async def test_next_turn_continues_while_summary_runs_then_reuses_it_without_new
             assert "this arrived during compression" in latest
             assert "continue after compression" in latest
             assert "old task 0" not in latest
-            attempts = await session.usage()
+            attempts = await session.view.usage()
             assert attempts["by_purpose"]["summary"]["request_count"] == 2
             assert attempts["by_purpose"]["agent"]["request_count"] == 3
         finally:
@@ -288,12 +287,12 @@ async def test_default_auto_memory_does_not_hide_capacity_or_interrupt_backgroun
         )
         pending = None
         try:
-            assert (await session.memory_list())["mode"] == "auto"
+            assert (await session.memory.list())["mode"] == "auto"
             assert (
                 await session.run(Message("trigger", "user", "continue"))
             ).outcome == "completed"
             assert await asyncio.to_thread(started.wait, 5)
-            await session.collect_memory()
+            await session.memory.collect()
             assert (
                 await asyncio.wait_for(
                     session.run(
@@ -303,7 +302,7 @@ async def test_default_auto_memory_does_not_hide_capacity_or_interrupt_backgroun
                 )
             ).outcome == "completed"
             assert not release.is_set() and len(main_requests) == 2
-            await session.collect_memory()
+            await session.memory.collect()
             pending = asyncio.create_task(
                 session.run(Message("capacity", "user", "preserve this new input " + "y" * 8500))
             )
@@ -311,13 +310,13 @@ async def test_default_auto_memory_does_not_hide_capacity_or_interrupt_backgroun
             assert not pending.done() and len(main_requests) == 2
             release.set()
             assert (await asyncio.wait_for(pending, 5)).outcome == "completed"
-            await session.collect_memory()
+            await session.memory.collect()
             assert len(main_requests) == 3
             latest = str(main_requests[-1]["body"]["messages"])
             assert "small input during background compression" in latest
             assert "preserve this new input" in latest
             assert "old task 0" not in latest
-            usage = await session.usage()
+            usage = await session.view.usage()
             assert usage["by_purpose"]["summary"]["request_count"] == 2
             assert usage["by_purpose"]["memory_extract"]["request_count"] == len(memory_requests)
             assert len(memory_requests) > 0

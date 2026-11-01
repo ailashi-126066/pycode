@@ -10,7 +10,7 @@ import pytest
 
 from pycode.mcp.client import MCPAdapterConnection, MCPAdapterConnections
 from pycode.mcp.types import MCPServer
-from pycode.tools.adapters.schema import JsonSchemaValidator
+from pycode.tools import JsonSchemaValidator
 
 SERVER = Path(__file__).parents[1] / "support/mcp_server.py"
 
@@ -139,7 +139,7 @@ async def test_one_discovery_snapshot_and_explicit_refresh(tmp_path, monkeypatch
     from fastmcp.client import Client
 
     from pycode.mcp.client import MCPAdapterConnections
-    from pycode.tools.adapters.schema import JsonSchemaValidator
+    from pycode.tools import JsonSchemaValidator
 
     calls = []
     original = Client.list_tools

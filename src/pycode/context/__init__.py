@@ -12,7 +12,7 @@ from pycode.context.summary import (
     SummaryService,
     SummaryWorkflow,
 )
-from pycode.context.types import SummaryReport, SummarySettings
+from pycode.context.types import SummaryReport, SummarySettings, SummarySource
 
 __all__ = [
     "ConfiguredSummaryGenerator",
@@ -26,6 +26,7 @@ __all__ = [
     "SummaryReport",
     "SummaryService",
     "SummarySettings",
+    "SummarySource",
     "SummaryWorkflow",
     "ToolEvictionService",
     "estimate_messages",

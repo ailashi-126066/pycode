@@ -2,11 +2,11 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.context.services.context_projector import ContextProjector
+from pycode.context import ContextProjector
 from pycode.kernel import EntryDraft, EventStream, Message, ModelError, SessionHeader
 from pycode.models.catalog import FileCatalogStore, ModelCatalog
 from pycode.models.control import ModelControl
-from pycode.session.adapters.storage.session import SqliteSessionStore
+from pycode.session import SqliteSessionStore
 from tests.models.test_catalog import FixedDirectory
 from tests.models.test_factory import configuration
 from tests.support.requests import TestTiming

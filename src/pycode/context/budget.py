@@ -115,7 +115,7 @@ class ContextMeter:
                 )
             )
             tokens += projection.checkpoint.get("harness_system_tokens", 0)
-            # Messages that features append to each request (for example the task board view).
+            # Messages that services append to each request (for example the task board view).
             tokens += estimate_messages(tail)
         budget = self._settings.budget
         return {

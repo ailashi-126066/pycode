@@ -7,10 +7,9 @@ from dataclasses import replace
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 from pycode.kernel import Message
-from tests.skills.adapters.test_skills_http import skill_reply
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import HTTPResponse, chat_completion, protocol_server
 from tests.support.probe import Probe
@@ -44,7 +43,7 @@ async def test_retry_exhaustion_does_not_switch_but_manual_selection_still_works
             assert (await session.run(Message("first", "user", "inspect"))).outcome == "model_error"
             assert len(requests) == 4
             assert all(item["body"]["model"] == "wire-model" for item in requests)
-            records = await session.request_records()
+            records = await session.view.request_records()
             assert [record.attempt for record in records] == [0, 1, 2, 3]
             assert all(
                 record.provider == "test" and record.status == "failed" for record in records
@@ -65,7 +64,10 @@ async def test_retry_recovers_on_the_same_model(tmp_path, monkeypatch):
         try:
             assert (await session.run(Message("u", "user", "inspect"))).outcome == "completed"
             assert len(requests) == 2 and all(r["body"]["model"] == "wire-model" for r in requests)
-            assert [r.status for r in await session.request_records()] == ["failed", "completed"]
+            assert [r.status for r in await session.view.request_records()] == [
+                "failed",
+                "completed",
+            ]
         finally:
             await session.aclose()
 

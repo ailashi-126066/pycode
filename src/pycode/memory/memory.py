@@ -28,7 +28,7 @@ from pycode.memory.store import MAX_ENTRIES, MarkdownMemoryStore
 from pycode.memory.tools import ManageMemoryTool
 from pycode.memory.types import NAMESPACES, BackgroundModel, MemoryNote, Scope
 from pycode.models import RetryPolicy
-from pycode.tools.adapters.backend import PycodeBackend
+from pycode.tools import PycodeBackend
 
 logger = logging.getLogger(__name__)
 

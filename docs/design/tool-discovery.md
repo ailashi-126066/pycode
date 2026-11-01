@@ -9,7 +9,7 @@
   `MCP / <server>`）。模型先用 `ToolSearch` 按名字或关键词搜索，成功的搜索结果在
   `details.loaded_tools` 记下工具名，下一次请求起这些工具带上完整定义。
 
-拼装在 `tools/adapters/discovery.py::ToolDiscovery.disclose`，每次模型请求前执行，读当前分支已完成的
+拼装在 `tools/discovery.py::ToolDiscovery.disclose`，每次模型请求前执行，读当前分支已完成的
 ToolSearch 结果；失败的搜索、同一批里猜测的调用都不能加载工具。权限和 Skill 的 allowed-tools
 范围先过滤再拼装。
 
