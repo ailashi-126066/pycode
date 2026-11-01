@@ -3,7 +3,7 @@
 import pytest
 
 from pycode.kernel import ToolError
-from pycode.skills.catalog import parse_skill
+from pycode.skills.store import parse_skill
 
 
 @pytest.mark.parametrize("context", ["full", "recent", "none"])

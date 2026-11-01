@@ -1,4 +1,5 @@
-"""Skills types: component-owned implementation."""
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/skills.ts
+"""Skill entries, documents, the active skills on a branch and the per-run selection."""
 
 from dataclasses import dataclass
 from typing import Literal
@@ -66,9 +67,10 @@ def active_skills(path):
     return tuple(active[name] for name in sorted(active))
 
 
-def skill_scope(path):
+def skill_scope(active):
+    """The tool names every active skill allows, or None when none declares allowed-tools."""
     allowed = None
-    for item in active_skills(path):
+    for item in active:
         declared = item.get("allowed_tools", ())
         if declared:
             allowed = set(declared) if allowed is None else allowed.intersection(declared)

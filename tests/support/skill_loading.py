@@ -8,9 +8,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from pycode.kernel import Message, SessionTree, ToolCall, ToolResult, plain_data
-from pycode.skills.framework import SkillBackend
+from pycode.skills.skills import SkillBackend
 from pycode.skills.types import active_skills
-from pycode.tools.adapters.backend import PycodeBackend
 
 
 async def read_skill(store, catalog, name):
@@ -22,7 +21,7 @@ async def read_skill(store, catalog, name):
             break
     assert selected is not None
     path = catalog.virtual_path(selected)
-    backend = SkillBackend(PycodeBackend(Path(selected.path).parent.parent, read_only=True))
+    backend = SkillBackend(Path(selected.path).parent.parent)
     read = await backend.aread(
         "/" + Path(selected.path).parent.name + "/SKILL.md", offset=0, limit=2000
     )

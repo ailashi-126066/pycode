@@ -1,16 +1,16 @@
-"""Local authoring has explicit scope, revision checks and no implicit model execution."""
+"""Local authoring has explicit scope, create/update intent and no implicit model execution."""
 
 import pytest
 
 from pycode.kernel import ToolError
-from tests.skills.services.test_skills import prepare
+from tests.skills.test_skills import prepare
 
 
 def definition(body="First version"):
     return "---\nname: authored\ndescription: A local Skill\n---\n" + body + "\n"
 
 
-async def test_create_read_prepare_update_and_conflict(tmp_path):
+async def test_create_read_prepare_and_update(tmp_path):
     skills, store, _ = await prepare(tmp_path)
     try:
         created = await skills.create("authored", definition())
@@ -21,14 +21,11 @@ async def test_create_read_prepare_update_and_conflict(tmp_path):
         request = await skills.load("authored", "review this")
         assert request["arguments"] == "review this"
         assert (await store.snapshot()).leaf_id == before.leaf_id
-        updated = await skills.update(
-            "authored", definition("Second version"), expected_revision=created["revision"]
-        )
+        updated = await skills.update("authored", definition("Second version"))
         assert updated["revision"] != created["revision"]
-        with pytest.raises(ToolError, match="changed"):
-            await skills.update(
-                "authored", definition("Overwrite"), expected_revision=created["revision"]
-            )
+        with pytest.raises(ToolError) as error:
+            await skills.update("missing", definition().replace("authored", "missing"))
+        assert error.value.code == "unknown_skill"
         with pytest.raises(ToolError, match="exists"):
             await skills.create("authored", definition())
         assert "Second version" in (await skills.read("authored")).body

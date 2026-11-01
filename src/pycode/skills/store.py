@@ -1,13 +1,12 @@
-"""Skills catalog: component-owned implementation."""
-
-# Source: MewCode local skills/parser.py; SHA-256:
-# eba23547c0b392cd13211b38d1f45bc71a86c7de21a05b9998a3cd227ca3a11d
-# Adaptation: native immutable data, line-delimited frontmatter and strict metadata types.
-# Source: MewCode local skills/loader.py; SHA-256:
-# 5888d912116f3a08cca7d75e54234299d6d2e8aa2789ca42c017d804390cc9b3
-# Adaptation: ordered trusted roots, recursive discovery, hashes and no resource imports.
 # Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/skills.ts
 # (frontmatter validation, first-found collisions, disable-model-invocation).
+# 参照 MewCode local skills/parser.py; SHA-256:
+# eba23547c0b392cd13211b38d1f45bc71a86c7de21a05b9998a3cd227ca3a11d
+# Adaptation: native immutable data, line-delimited frontmatter and strict metadata types.
+# 参照 MewCode local skills/loader.py; SHA-256:
+# 5888d912116f3a08cca7d75e54234299d6d2e8aa2789ca42c017d804390cc9b3
+# Adaptation: ordered trusted roots, recursive discovery, hashes and no resource imports.
+"""Skill files on disk: parsing, discovery across trusted roots and local authoring."""
 
 import hashlib
 import os
@@ -124,8 +123,8 @@ class FileSkillCatalog:
                 return "/skills/" + source + "/" + relative
         raise ToolError("skill_not_accessible", "Skill has no trusted virtual mount")
 
-    async def write(self, name, content, *, scope="user", expected_revision=None):
-        """Create or update one definition without executing or registering resources."""
+    async def write(self, name, content, *, scope="user", replace=False):
+        """Create (or with replace, overwrite) one definition without running its resources."""
         if scope not in {"user", "project"}:
             raise ToolError("invalid_skill_scope", "Choose user or project scope")
         if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_SKILL_BYTES:
@@ -158,25 +157,18 @@ class FileSkillCatalog:
                     raise ToolError(
                         "skill_not_accessible", "Linked Skill directories are not writable"
                     )
-                if expected_revision is None:
+                if not replace:
                     directory.mkdir(exist_ok=True)
                 target = directory / "SKILL.md"
                 if target.is_symlink():
                     raise ToolError(
                         "skill_not_accessible", "Linked Skill documents are not writable"
                     )
-                if expected_revision is None:
-                    if target.exists():
-                        raise ToolError(
-                            "skill_exists", "Skill exists; update it with its current revision"
-                        )
-                elif (
-                    not target.is_file()
-                    or hashlib.sha256(target.read_bytes()).hexdigest() != expected_revision
-                ):
-                    raise ToolError(
-                        "skill_conflict", "Skill changed; read it again before updating"
-                    )
+                if replace:
+                    if not target.is_file():
+                        raise ToolError("unknown_skill", "Skill does not exist; create it first")
+                elif target.exists():
+                    raise ToolError("skill_exists", "Skill exists; update it instead")
                 atomic_write(target, content.encode("utf-8"))
                 return self.document(target, scope).entry
             finally:

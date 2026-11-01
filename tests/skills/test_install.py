@@ -11,7 +11,7 @@ from pycode.kernel import ToolError
 from pycode.skills.install import GitHubSkillInstaller, parse_skill_url
 
 VECTORS = json.loads(
-    (Path(__file__).parents[2] / "fixtures/skill-install-baselines.json").read_text(
+    (Path(__file__).parents[1] / "fixtures/skill-install-baselines.json").read_text(
         encoding="utf-8"
     )
 )
