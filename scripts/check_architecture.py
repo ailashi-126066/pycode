@@ -22,9 +22,18 @@ FEATURE_DEPENDENCIES = {
     "memory": {"kernel", "context", "models"},
     "tools": {"kernel", "sandbox", "snapshot", "plans"},
     "agent": {"kernel", "models", "context", "tools", "plans", "hooks"},
-    "team": {"kernel", "snapshot", "tools", "plans"},
-    "session": {"kernel", "context", "models", "skills", "snapshot", "tools", "memory", "team"},
-    "ui": {"kernel", "tools", "plans", "team", "mcp"},
+    "subagents": {"kernel"},
+    "session": {
+        "kernel",
+        "context",
+        "models",
+        "skills",
+        "snapshot",
+        "tools",
+        "memory",
+        "subagents",
+    },
+    "ui": {"kernel", "tools", "plans", "mcp"},
 }
 FEATURE_DEPENDENCIES["app"] = set(FEATURE_DEPENDENCIES)
 LEGACY = {"core", "ports", "services", "workflows", "adapters"}
@@ -62,7 +71,7 @@ FORBIDDEN_IMPORTS = {
 EVAL_GENERATED = {"cache", "work", "results"}
 EVAL_ARCHIVED = {"memory_rules"}
 RANK = {"domain": 0, "ports": 1, "services": 2, "adapters": 3, "io": 3, "module": 4}
-FLAT_FEATURES = frozenset({"skills", "mcp", "hooks", "team"})
+FLAT_FEATURES = frozenset({"skills", "mcp", "hooks", "subagents"})
 FLAT_IO_MODULES = frozenset(
     {
         "catalog",

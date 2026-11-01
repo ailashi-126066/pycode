@@ -18,7 +18,7 @@ from pycode.models import ProviderConfig, RetryPolicy
 from pycode.plans import PlanService
 from pycode.session import DurableInputs, SessionStore
 from pycode.skills.module import SkillsRun
-from pycode.team import TeamMember
+from pycode.subagents import SubagentManager
 from pycode.tools import ToolOutputStore
 
 
@@ -37,7 +37,7 @@ class SessionResources:
     plan_backend: object | None = None  # Opaque framework backend, only passed to assembly.
     durable_inputs: DurableInputs | None = None
     memory: MemoryService | None = None
-    team_member: TeamMember | None = None
+    subagents: SubagentManager | None = None
     outputs: ToolOutputStore | None = None
     summary_service: SummaryService | None = None
 

@@ -36,7 +36,7 @@ async def build_configured_run(
         journal=store,
         tools=launcher.tools,
         memory=launcher.memory,
-        team_member=launcher.team_member,
+        subagents=launcher.subagents,
         consumers=launcher.consumers,
         history_store=store,
         summary_service=launcher.summary,

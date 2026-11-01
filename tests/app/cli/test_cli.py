@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -53,14 +53,12 @@ def test_module_entry_point(tmp_path):
     assert result.stdout.strip() == "pycode 0.1.0"
 
 
-async def test_cli_prints_forwarded_child_approval_and_exits_two(tmp_path, monkeypatch, capsys):
-
+async def test_cli_waits_for_background_subagents_and_runs_their_results(tmp_path, monkeypatch):
     session = SimpleNamespace(
         run=AsyncMock(return_value=RunResult("completed", "lead finished", ())),
-        wait_team=AsyncMock(return_value="blocked"),
-        inspect=AsyncMock(
-            return_value={"team": {"approvals": [{"agent_id": "12345678", "role": "tester"}]}}
-        ),
+        wait_subagents=AsyncMock(),
+        wake_pending=Mock(side_effect=[True, False]),
+        wake=AsyncMock(return_value=RunResult("completed", "subagent result handled", ())),
         publish_result=AsyncMock(),
         aclose=AsyncMock(),
     )
@@ -81,8 +79,11 @@ async def test_cli_prints_forwarded_child_approval_and_exits_two(tmp_path, monke
         prompt="task",
         input_id="u1",
     )
-    assert await command(args, config) == 2
-    assert "12345678" in capsys.readouterr().out
+    assert await command(args, config) == 0
+    session.wake.assert_awaited_once()
+    assert session.wait_subagents.await_count == 2
+    # Nobody can answer a subagent's approval in a non-interactive run.
+    assert selected.open_session.await_args.kwargs["interactive"] is False
     session.aclose.assert_awaited_once()
 
 

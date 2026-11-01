@@ -101,28 +101,17 @@ async def test_first_resource_error_is_preserved_when_caller_then_cancels():
     assert calls == ["usage", "events", "history"]
 
 
-@pytest.mark.parametrize("cancel_error", [RuntimeError("cancel failed"), asyncio.CancelledError()])
-async def test_team_cancel_failure_does_not_skip_launcher_team_view_or_history(cancel_error):
+@pytest.mark.parametrize("close_error", [RuntimeError("close failed"), asyncio.CancelledError()])
+async def test_subagent_close_failure_does_not_skip_launcher_view_or_history(close_error):
     calls = []
 
-    class Team:
-        closing = False
-        stopping = True
-        _closing_delegate = False
-
-        async def cancel_all(self, reason):
-            assert reason == "close"
-            calls.append("cancel_team")
-            raise cancel_error
-
+    class Subagents:
         async def aclose(self):
-            calls.append("team")
-
-    team = Team()
+            calls.append("subagents")
+            raise close_error
 
     class Launcher:
         async def aclose(self):
-            assert team.closing and team._closing_delegate and not team.stopping
             calls.append("launcher")
             raise OSError("launcher failed later")
 
@@ -134,16 +123,13 @@ async def test_team_cancel_failure_does_not_skip_launcher_team_view_or_history(c
         None,
         view=Resource("view", calls),
         memory=Resource("memory", calls),
-        team=team,
+        subagents=Subagents(),
     )
-    with pytest.raises(type(cancel_error)) as caught:
+    with pytest.raises(type(close_error)) as caught:
         await session.aclose()
-    assert caught.value is cancel_error
-    assert calls == ["memory", "cancel_team", "launcher", "team", "view", "history"]
-    assert session._memory is None and session._team is None and session._view is None
-    with pytest.raises(type(cancel_error)):
-        await session.aclose()
-    assert len(calls) == 6
+    assert caught.value is close_error
+    assert calls == ["memory", "subagents", "launcher", "view", "history"]
+    assert session._memory is None and session._subagents is None and session._view is None
     with pytest.raises(StorageError, match="closing or closed"):
         async with session.execution():
             pass

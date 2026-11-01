@@ -8,7 +8,6 @@ from pycode.kernel import (
     ProjectedContext,
     RunResult,
     SessionSnapshot,
-    ToolResult,
 )
 
 InputKind = Literal["steer", "follow_up"]
@@ -35,11 +34,6 @@ class RequestTracking(Protocol):
 
     @property
     def selection(self) -> ModelSelection: ...
-
-
-class TeamMailbox(Protocol):
-    async def flush_inbox(self, context: object) -> None: ...
-    async def settle_tool(self, result: ToolResult | str, *, accepted: bool) -> None: ...
 
 
 class TitleAssignment(Protocol):

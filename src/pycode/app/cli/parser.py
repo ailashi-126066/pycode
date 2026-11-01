@@ -30,11 +30,10 @@ def build_parser():
     parser.add_argument("--workspace", help="Project directory")
     parser.add_argument("--data-dir", help="User configuration and storage directory")
     parser.add_argument("--memory-mode", choices=("auto", "off"))
-    parser.add_argument("--max-agents", type=int, choices=range(1, 5), default=4)
+    parser.add_argument(
+        "--max-agents", type=int, choices=range(1, 5), default=4, help="Concurrent subagents"
+    )
     parser.add_argument("--max-turns", type=int, default=100, help="Turns before a run stops")
-    parser.add_argument("--team-idle-timeout", type=float, default=180)
-    parser.add_argument("--team-stop-timeout", type=float, default=15)
-    parser.add_argument("--team-max-handoffs", type=int, default=1)
     parser.add_argument(
         "--pass-env",
         action="append",
@@ -172,15 +171,6 @@ def build_parser():
         item = actions.add_parser(action)
         item.add_argument("session_id")
     sub = sessions.add_subparsers(dest="session_command", required=True)
-    worktrees = commands.add_parser("worktree", help="Inspect and confirm explicit integration")
-    worktree_actions = worktrees.add_subparsers(dest="worktree_command", required=True)
-    inspect_worktree = worktree_actions.add_parser("inspect")
-    inspect_worktree.add_argument("worktree_id")
-    confirm_worktree = worktree_actions.add_parser("confirm-integration")
-    confirm_worktree.add_argument("worktree_id")
-    confirm_worktree.add_argument("--validated", action="store_true", required=True)
-    confirm_worktree.add_argument("--worker-stopped", action="store_true", required=True)
-    worktree_actions.add_parser("scan")
     sub.add_parser("list")
     for name in ("show", "tree"):
         view = sub.add_parser(name)

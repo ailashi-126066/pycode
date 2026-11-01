@@ -363,5 +363,5 @@ class AgentRuntime:
         for task in pending:
             if not task.done() and not task.cancelling():
                 task.cancel()
-        # Cancelled calls settle themselves (team mailbox included) on the way out.
+        # Cancelled calls settle themselves on the way out.
         await asyncio.gather(*pending, return_exceptions=True)

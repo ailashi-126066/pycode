@@ -45,10 +45,6 @@ from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
 from pycode.tools.ports.publication import MessagePublisher
 
 
-class SettlementMailbox(Protocol):
-    async def settle_tool(self, result: ToolResult | str, *, accepted: bool) -> None: ...
-
-
 class WorkspaceTools(Protocol):
     receipts: dict[str, str]
 
@@ -60,7 +56,6 @@ class SettlementContext(Protocol):
     session_id: str
     run_id: str
     workspace: str
-    handoff_pending: bool
     agent_id: str
     selection: ModelSelection
     assistant: Message | None
@@ -80,7 +75,6 @@ class SettlementContext(Protocol):
     model_tools: tuple[ToolSpec, ...]
     disclosed_tool_names: tuple[str, ...] | None
     plans: PlanService | None
-    team: SettlementMailbox | None
     workspace_files: WorkspaceTools | None
 
 
@@ -154,8 +148,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         call = issued_call(context, raw)
         async with context.settlement:
             pending = call.id not in context.ready_results and call.id not in context.settled_calls
-            # A handoff reruns calls that never started in the replacement runtime.
-            if pending and not context.handoff_pending:
+            if pending:
                 # Waiting behind a serial barrier or still preparing: nothing was executed.
                 tool_context = operation_context(context, call)
                 await context.executor.begin(tool_context, call)
@@ -272,17 +265,13 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 tool_context, call, context.assistant.stop_reason, spec=spec, invoke=invoke
             )
         except asyncio.CancelledError:
-            # A started call may have partial effects. A handoff reruns replay-safe calls.
-            if state.status == "running" and not (
-                context.handoff_pending and spec.replay == "safe"
-            ):
-                cause = (
-                    "task handoff interrupted this operation"
-                    if context.handoff_pending
-                    else "the run was cancelled while this call was running"
-                )
+            # A started call may have partial effects.
+            if state.status == "running":
                 cancelled = await self.finalize_result(
-                    context, call, tool_context, interrupted_result(call, cause)
+                    context,
+                    call,
+                    tool_context,
+                    interrupted_result(call, "the run was cancelled while this call was running"),
                 )
                 async with context.settlement:
                     context.ready_results[call.id] = (call, cancelled, framework_updates)
@@ -606,8 +595,6 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         )
         for extension in self.tool_extensions:
             await extension.after_persist(tool_context, call, result, entry_id)
-        if context.team is not None:
-            await context.team.settle_tool(result, accepted=True)
         await context.executor.emit_tool_execution_end(tool_context, call, result)
         async with context.duplicate_calls:
             context.dispatched_calls.add(call.id)

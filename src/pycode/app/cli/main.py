@@ -30,10 +30,7 @@ def main(argv: list[str] | None = None) -> int:
         project_trusted=args.trust_project,
         memory_mode=args.memory_mode,
         max_turns=args.max_turns,
-        team_max_agents=args.max_agents,
-        team_idle_timeout=args.team_idle_timeout,
-        team_stop_timeout=args.team_stop_timeout,
-        team_max_handoffs=args.team_max_handoffs,
+        max_agents=args.max_agents,
         subprocess_passthrough=tuple(args.pass_env),
     )
     if args.p is not None:

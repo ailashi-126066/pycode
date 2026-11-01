@@ -5,7 +5,7 @@ from functools import partial
 from pycode.app.composition.factories import build_memory_service, skill_settings
 from pycode.app.composition.hooks import build_lifecycle_hook_engine
 from pycode.app.composition.run import build_configured_run
-from pycode.app.composition.team import build_team, build_worktree_manager
+from pycode.app.composition.subagents import build_subagents
 from pycode.app.configuration.credentials import credential_environment
 from pycode.app.lifecycle.session import ConfiguredRuntimeLauncher
 from pycode.context import InputBudget, SummarySettings
@@ -37,7 +37,7 @@ async def open_agent_session(
     refresh_models=True,
     startup_hooks=True,
     connect_mcp=True,
-    team_member=None,
+    interactive=True,
     prompt_suffix="",
     modules,
 ) -> AgentSession:
@@ -62,8 +62,6 @@ async def open_agent_session(
             pending_execution.run_id
         )
         await recover_conversation(store, started_only=resumable, finish_runs=not resumable)
-        if config.agent_id == "lead" and (modules.sessions.layout.project / "worktrees").exists():
-            await build_worktree_manager(config, modules=modules).scan()
         plan_session = modules.plans.session(session_id, store)
         plans = plan_session.service
         await plans.initialize()
@@ -86,6 +84,23 @@ async def open_agent_session(
         models = modules.models.control(catalog, modules.projector(), store)
         durable_inputs = DurableInputs(store)
         memory = build_memory_service(config, store, providers[0], consumers, modules=modules)
+        subagents = (
+            build_subagents(
+                config,
+                store,
+                session_id,
+                models,
+                providers[0],
+                consumers,
+                event_journal,
+                plans,
+                interactive=interactive,
+                session_opener=open_agent_session,
+                modules=modules,
+            )
+            if config.allow_delegation
+            else None
+        )
         launcher = ConfiguredRuntimeLauncher(
             config,
             tools,
@@ -107,7 +122,7 @@ async def open_agent_session(
             hook_factory=partial(build_lifecycle_hook_engine, modules=modules),
             lifecycle_provider=providers[0],
             memory=memory,
-            team_member=team_member,
+            subagents=subagents,
             prompt_factory=lambda history: modules.context.prompt(
                 history, config.workspace, suffix=prompt_suffix, sections=(memory.prompt_index,)
             ),
@@ -135,7 +150,10 @@ async def open_agent_session(
             plans=plans,
             storage=modules.sessions.storage(owned_session_id=session_id),
             memory=memory,
+            subagents=subagents,
         )
+        if subagents is not None:
+            subagents.notify = session.notify_subagent
     except BaseException as error:
         closers = []
         if memory is not None:
@@ -154,22 +172,6 @@ async def open_agent_session(
         await rollback.close(tuple(closers))
         raise
     try:
-        if config.allow_delegation and config.agent_id == "lead" and team_member is None:
-            team = await build_team(
-                config,
-                providers,
-                catalog,
-                store,
-                consumers,
-                event_journal,
-                plans,
-                session_opener=open_agent_session,
-                repository_factory=lambda selected: modules.scoped(selected).sessions.repository(),
-                modules=modules,
-            )
-            session._team = team
-            launcher.team_member = team.member("lead")
-            await team.initialize()
         await session.initialize_memory()
         if startup_hooks:
             await launcher.startup(store)

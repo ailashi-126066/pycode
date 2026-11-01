@@ -28,6 +28,7 @@ from pycode.kernel import (
 from pycode.kernel.adapters.file_lease import FileLease
 from pycode.kernel.adapters.path_io import owned_io
 from pycode.session.adapters.storage.session_codec import (
+    decode_entries,
     decode_entry,
     decode_header,
     encode_entry,
@@ -60,7 +61,9 @@ def read_records(path):
                 break
             offset += len(page)
         entries.sort(key=lambda item: item.value["sequence"])
-        return metadata, tuple(decode_entry(encode_entry(item.value["entry"])) for item in entries)
+        decoded, skipped = decode_entries(item.value["entry"] for item in entries)
+        leaf = metadata["leaf_id"]
+        return {**metadata, "leaf_id": skipped.get(leaf, leaf)}, decoded, len(entries)
     finally:
         store.conn.close()
 
@@ -102,7 +105,7 @@ class SqliteSessionStore:
         if self._loaded:
             return
         if self._log.exists():
-            metadata, entries = read_records(self._log)
+            metadata, entries, stored = read_records(self._log)
             header = decode_header(encode_header(metadata["header"]))
             if (header.session_id, header.workspace) != (
                 self._header.session_id,
@@ -113,7 +116,8 @@ class SqliteSessionStore:
             self._entries_by_id = {entry.id: freeze_value(entry) for entry in entries}
             self._leaf = metadata["leaf_id"]
             self._revision = metadata["revision"]
-            self._record_count = len(entries)
+            # Skipped records keep their sequence numbers, so new ones follow all stored records.
+            self._record_count = stored
             self._active_path_ids = [
                 entry.id for entry in SessionTree(self._entries_by_id).path(self._leaf)
             ]
@@ -322,14 +326,14 @@ class SqliteSessionStore:
 
     def write_entry(self, entry):
         pending = [*self._entries_by_id.values(), entry] if not self._persisted else [entry]
-        start = 0 if not self._persisted else len(self._entries_by_id)
+        start = self._record_count if self._persisted else 0
         writes = [
             PutOp(("entries",), row.id, {"sequence": start + i, "entry": plain_data(row)})
             for i, row in enumerate(pending)
         ]
         self.database().batch([*writes, self.position(entry.id, self._revision + 1)])
         self._persisted = True
-        self._record_count = len(self._entries_by_id) + 1
+        self._record_count = start + len(pending)
 
     async def branch(self, leaf_id):
         def change():

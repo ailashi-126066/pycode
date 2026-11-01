@@ -54,11 +54,8 @@
       "plans",
       "tools"
     ],
-    "team": [
-      "kernel",
-      "plans",
-      "snapshot",
-      "tools"
+    "subagents": [
+      "kernel"
     ],
     "session": [
       "context",
@@ -67,14 +64,13 @@
       "models",
       "skills",
       "snapshot",
-      "team",
+      "subagents",
       "tools"
     ],
     "ui": [
       "kernel",
       "mcp",
       "plans",
-      "team",
       "tools"
     ],
     "app": [
@@ -90,7 +86,7 @@
       "session",
       "skills",
       "snapshot",
-      "team",
+      "subagents",
       "tools",
       "ui"
     ]

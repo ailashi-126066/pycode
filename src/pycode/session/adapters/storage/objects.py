@@ -141,7 +141,7 @@ class FileStorageObjects:
                 finally:
                     probe.close()
             header = read_header(log)
-            _, entries = read_records(log)
+            _, entries, _ = read_records(log)
             if (
                 header.session_id != session.name
                 or StorageLayout(Path(header.workspace), self.root).project.name != project.name
@@ -263,7 +263,7 @@ class FileStorageObjects:
                     for filename in files:
                         if Path(filename).name != "session.sqlite":
                             continue
-                        _, entries = read_records(Path(filename))
+                        _, entries, _ = read_records(Path(filename))
                         for entry in entries:
                             references.extend(string_values(plain_data(entry)))
                     scan.tokens_by_object[identifier] = references

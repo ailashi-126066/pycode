@@ -1,6 +1,6 @@
 > 当前存储与恢复行为以 [存储格式](storage-format.md) 为准：完整记录使用 SqliteStore，执行位置使用 AsyncSqliteSaver。
 
-> 当前 TeamState、任务验收、无活动续期和交接以 [TeamState 设计](design/team-state-handoff.md) 为准。
+> 子 agent 的行为以 [Subagents 设计](design/subagents.md) 为准。
 
 # 当前工具发现流程
 
@@ -86,20 +86,9 @@ tool definitions and system-prompt footprint are recorded for runtime/UI capacit
 Project prompt snapshots refresh only at new tasks. Store entries are immutable, indexed once
 by ID; active-path IDs and projection revision caches avoid deep-copying complete history.
 
-AgentTeam owns asyncio child AgentSessions, a bounded atomic task board and durable inboxes.
-A dedicated team JSONL contains atomic transitions, separate from the lead branch leaf;
-child JSONL sessions link their lead and remain available after worktree removal.
-HistoryMiddleware flushes inboxes before model calls and before closing input admission.
-Wait delivery is acknowledged only after a successful ToolResult with message IDs is persisted;
-idle wake inputs are confirmed from JSONL. Restart marks active children interrupted without reruns.
-Readonly children expose read-only tools. Worker file tools target an owned worktree;
-commands need an available strict sandbox and explicit approval, and unisolated MCP/Hook actions
-are not loaded. Parent custom/Skill denials remain effective. Every merge has source-tree and
-target-HEAD-bound approval outside Auto Plan, then guarded Git integration and cleanup.
-Fork Skills and Hook delegates share this coordinator, preserving full/recent/no parent context.
-Usage retains purpose/agent/session identity and sums children from durable team_agent links.
-See [the reviewed design](design/inproc-team.md) for cancellation, conflict recovery and limits.
-
+Subagents (Agent/SendMessage/StopAgent) each run in their own child AgentSession; the main
+agent sees only their final results, and worktree-mode changes are merged by an approved bash
+`git merge`. See [the subagent design](design/subagents.md).
 Plan is an exact writable document with run-bound approved hash; restart expires approvals.
 
 Memory has two parts. AGENTS.md instructions (`~/.pycode/AGENTS.md`, plus the project's

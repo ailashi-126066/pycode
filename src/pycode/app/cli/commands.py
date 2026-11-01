@@ -84,6 +84,8 @@ async def command(args, config):
         refresh_models=not args.cached if args.command == "run" else False,
         startup_hooks=args.command != "hooks",
         connect_mcp=args.command != "hooks",
+        # Nobody can answer a subagent's approval here (11.1 section 36 Q2).
+        interactive=False,
     )
     try:
         handler = _EXECUTION_COMMANDS.get(name)
@@ -98,21 +100,6 @@ async def command(args, config):
         raise
     finally:
         await session.aclose()
-
-
-async def worktree_command(args, config, output):
-    worktrees = compose_application(config).worktrees()
-    if args.worktree_command == "inspect":
-        value = await worktrees.inspect(args.worktree_id)
-    elif args.worktree_command == "confirm-integration":
-        await worktrees.mark_integration(
-            args.worktree_id, validated=args.validated, worker_stopped=args.worker_stopped
-        )
-        value = await worktrees.cleanup(args.worktree_id)
-    else:
-        value = await worktrees.scan()
-    output.value(value)
-    return 0
 
 
 async def storage_command(args, config, output):
@@ -245,22 +232,13 @@ async def execute_memory(args, session, output):
 
 
 async def finish_execution(session, output, result):
+    # Background subagents report back as a new run once the main run has finished.
     while result.outcome == "completed":
-        state = await session.wait_team()
-        if state == "blocked":
-            output.value(
-                {
-                    "agent_needs_input": (await session.inspect())
-                    .get("team", {})
-                    .get("approvals", [])
-                }
-            )
-            await session.publish_result(result, collect_background=True)
-            return 2
-        if state != "input":
+        await session.wait_subagents()
+        if not session.wake_pending():
             break
         await session.publish_result(result)
-        next_result = await session.wake_team()
+        next_result = await session.wake()
         if next_result is None:
             break
         result = next_result
@@ -338,7 +316,6 @@ async def view_command(args, config, output):
 
 
 _LOCAL_COMMANDS = {
-    "worktree": worktree_command,
     "storage": storage_command,
     "usage": view_command,
     "session": view_command,

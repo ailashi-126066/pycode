@@ -1,6 +1,4 @@
-"""Compact local team status, task board and retained worktree references."""
-
-import time
+"""Subagent status for /agents."""
 
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
@@ -12,28 +10,16 @@ class AgentsPanel(VerticalScroll):
 
     def __init__(self, report):
         super().__init__(id="agents-panel")
-        self.report = report or {"agents": [], "tasks": [], "running": 0, "limit": 4}
+        self.report = report
 
     def compose(self) -> ComposeResult:
         yield Static(f"Agents {self.report['running']}/{self.report['limit']}", markup=False)
         for agent in self.report["agents"]:
-            activity = ""
-            if agent.get("last_activity_at") is not None:
-                elapsed = max(0, int(time.time() - agent["last_activity_at"]))
-                activity = f"\n{agent.get('phase', '')} · last activity {elapsed}s ago"
+            worktree = agent["worktree"]
             yield Static(
-                f"{agent['agent_id']} · {agent['mode']} · {agent['status']} · "
-                f"{agent['role'][:120]}\n" + str(agent.get("workspace", "")) + activity,
-                markup=False,
-            )
-        for task in self.report["tasks"]:
-            yield Static(
-                f"{task['task_id']} · {task['status']} · "
-                f"{task.get('assignee') or 'unclaimed'} · {task['title']}"
-                + (
-                    " · blocked by " + ", ".join(task["blocked_by"])
-                    if task.get("blocked_by")
-                    else ""
-                ),
+                f"{agent['agent_id']} · {agent['mode']} · {agent['status']}"
+                + (" · background" if agent["background"] else "")
+                + f" · {agent['description'][:120]}\n{agent['workspace']}"
+                + (f" ({worktree['branch']})" if worktree else ""),
                 markup=False,
             )

@@ -21,6 +21,6 @@ finally:
     await store.aclose()
 ```
 
-AgentSession 的功能产物由统一应用根连接。会话拥有 launcher、team、view、store；关闭会
+AgentSession 的功能产物由统一应用根连接。会话拥有 launcher、subagents、view、store；关闭会
 清除所有权并等待各资源完成，前序失败/取消不跳过后续资源。重启不自动恢复执行或旧审批。
 `scoped()` 保留所选实现及时钟，重新绑定工作区；子 Agent 不偷偷切回默认仓库。

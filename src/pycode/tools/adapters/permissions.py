@@ -1,7 +1,5 @@
 """Live framework interrupts own per-operation approval decisions."""
 
-from dataclasses import replace
-
 from langgraph.func import task
 from langgraph.types import interrupt
 
@@ -71,31 +69,3 @@ class InterruptToolGate:
         answer = await permission_answer(question)
         if answer.get("decision") == "deny":
             raise ToolError("permission_denied", "User denied this tool operation")
-
-
-class TeamToolGate:
-    """Every merge uses its own source/target-bound approval outside Auto Plan."""
-
-    def __init__(self, team, parent, constraints, plans=None):
-        self.team, self.parent, self.constraints, self.plans = team, parent, constraints, plans
-        self.mandatory = InterruptToolGate()
-
-    async def authorize(self, context, spec, call):
-        if spec.name != "merge_agent" or spec.source != "team":
-            await self.parent.authorize(context, spec, call)
-            return
-        await self.constraints.authorize(context, spec, call)
-        if self.plans is not None:
-            await self.plans.guard(context, spec, call)
-        action = call.arguments.get("action", "merge")
-        preview = await self.team.merge_preview(call.arguments["id"], action)
-        previous = self.team.previews.get(context.operation_id)
-        if previous is not None and previous != preview:
-            self.team.previews.pop(context.operation_id, None)
-            raise ToolError(
-                "merge_preview_stale", "Source or target changed; review and request approval again"
-            )
-        self.team.previews[context.operation_id] = preview
-        await self.mandatory.authorize(
-            context, replace(spec, approval_details={"merge": preview}), call
-        )

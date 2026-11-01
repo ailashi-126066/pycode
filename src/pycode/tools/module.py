@@ -32,7 +32,7 @@ from pycode.tools.adapters.builtin.write import Write
 from pycode.tools.adapters.discovery import ToolDiscovery
 from pycode.tools.adapters.framework_tool import make_framework_tool
 from pycode.tools.adapters.output_store import TempOutputStore
-from pycode.tools.adapters.permissions import InterruptToolGate, TeamToolGate
+from pycode.tools.adapters.permissions import InterruptToolGate
 from pycode.tools.adapters.questions import InterruptQuestionPrompt
 from pycode.tools.adapters.schema import JsonSchemaValidator
 from pycode.tools.adapters.settlement import ToolSettlementMiddleware
@@ -43,12 +43,7 @@ from pycode.tools.ports.outputs import ToolOutputStore
 from pycode.tools.ports.publication import MessagePublisher
 from pycode.tools.ports.questions import QuestionPrompt
 from pycode.tools.ports.tools import ToolGate
-from pycode.tools.services.permissions import (
-    MemoryToolGate,
-    NoOpToolGate,
-    ReadOnlyToolGate,
-    WorkerBoundaryGate,
-)
+from pycode.tools.services.permissions import MemoryToolGate, ReadOnlyToolGate
 from pycode.tools.services.plan_gate import PlanToolGate
 from pycode.tools.services.tool_executor import ToolExecutor
 from pycode.tools.services.tool_registry import ToolRegistry
@@ -154,10 +149,6 @@ class ToolsModule:
         memory_specs: tuple[ToolSpec, ...] = (),
         plans: PlanService | None = None,
         scope: ToolGate | None = None,
-        worker: bool = False,
-        worker_sandbox: SandboxBackend | None = None,
-        isolated_worker: bool = False,
-        team: object | None = None,
     ) -> ToolGate:
         gate: ToolGate = (
             InterruptToolGate(sandbox, settings)
@@ -172,20 +163,6 @@ class ToolsModule:
             gate = custom
         if scope is not None:
             gate = _ScopedGate(scope, gate)
-        constraints: ToolGate = custom or NoOpToolGate()
-        if scope is not None:
-            constraints = _ScopedGate(scope, constraints)
-        if worker:
-            strict = worker_sandbox or sandbox
-            return WorkerBoundaryGate(
-                constraints,
-                InterruptToolGate(strict, settings),
-                readonly=read_only,
-                sandbox=strict if isolated_worker else None,
-                settings=settings,
-            )
-        if team is not None:
-            return TeamToolGate(team, gate, constraints, plans)
         return gate
 
     def executor(

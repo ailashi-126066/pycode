@@ -96,7 +96,7 @@ def build_profile(workspace, network_enabled, home=None, *, skill_read_roots=(),
     subpaths = " ".join(f"(subpath {quote(path)})" for path in sorted(readable))
     literals = " ".join(f"(literal {quote(path)})" for path in SYSTEM_READ_LITERALS)
     private = [home / name for name in PRIVATE_HOME_DIRECTORIES]
-    # A workspace may itself live under private state (Team worktrees under
+    # A workspace may itself live under private state (subagent worktrees under
     # ~/.pycode); private directories inside the workspace are denied again.
     nested = [path for path in private if path.is_relative_to(root)]
 

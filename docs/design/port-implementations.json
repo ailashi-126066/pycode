@@ -22,11 +22,6 @@
       "kind": "class"
     },
     {
-      "port": "pycode.agent.ports.runtime.TeamMailbox",
-      "implementation": "pycode.team.engine.TeamMember",
-      "kind": "class"
-    },
-    {
       "port": "pycode.agent.ports.runtime.TitleAssignment",
       "implementation": "pycode.app.composition.runtime.BoundTitleAssignment",
       "kind": "class"
@@ -247,29 +242,19 @@
       "kind": "class"
     },
     {
-      "port": "pycode.team.contracts.ChildSession",
+      "port": "pycode.subagents.contracts.SubagentSession",
       "implementation": "pycode.session.services.agent_session.AgentSession",
       "kind": "class"
     },
     {
-      "port": "pycode.team.contracts.ChildSessions",
-      "implementation": "pycode.app.composition.team.ConfiguredChildSessions",
+      "port": "pycode.subagents.contracts.SubagentSessions",
+      "implementation": "pycode.app.composition.subagents.ConfiguredSubagentSessions",
       "kind": "class"
     },
     {
-      "port": "pycode.team.contracts.Worktrees",
-      "implementation": "pycode.team.worktrees.WorktreeManager",
+      "port": "pycode.subagents.contracts.Worktrees",
+      "implementation": "pycode.subagents.worktrees.GitWorktrees",
       "kind": "class"
-    },
-    {
-      "port": "pycode.team.contracts.WorktreeSnapshot",
-      "implementation": "pycode.snapshot.adapters.git_tree.GitSnapshotStore",
-      "kind": "class"
-    },
-    {
-      "port": "pycode.team.contracts.WorktreeSnapshotFactory",
-      "implementation": "pycode.snapshot.adapters.git_tree.GitSnapshotStore",
-      "kind": "factory"
     },
     {
       "port": "pycode.tools.ports.hooks.ToolHooks",

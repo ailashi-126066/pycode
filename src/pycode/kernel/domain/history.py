@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pycode.kernel.domain.messages import Message
 from pycode.kernel.domain.model_identity import ModelSelection
 
-# Every SessionEntry.type that is written today; team_* goes away with the team package.
+# Every SessionEntry.type that is written today.
 EntryType = Literal[
     "message",
     "custom",
@@ -41,9 +41,6 @@ EntryType = Literal[
     "skill_load",
     "skill_install",
     "system_prompt",
-    "team_agent",
-    "team_parent",
-    "team_transition",
 ]
 
 # data["kind"] of a "custom" entry.
@@ -63,6 +60,7 @@ CustomKind = Literal[
     "revert_recovery",
     "skill_created",
     "skill_updated",
+    "subagent_start",
 ]
 
 

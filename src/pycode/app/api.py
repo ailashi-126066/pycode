@@ -10,7 +10,6 @@ from pycode import __version__
 from pycode.app.composition import factories
 from pycode.app.composition import runtime as runtime_scope
 from pycode.app.composition import session as session_scope
-from pycode.app.composition import team as team_scope
 from pycode.app.composition import ui as ui_scope
 from pycode.app.composition.inputs import RunOptions, SessionResources
 from pycode.app.composition.modules import ApplicationModules
@@ -65,9 +64,6 @@ class Application:
 
     def storage(self, owned_session_id=None):
         return self._modules.sessions.storage(owned_session_id=owned_session_id)
-
-    def worktrees(self):
-        return team_scope.build_worktree_manager(self.config, modules=self._modules)
 
     def console(self, output_format):
         return self._modules.ui.console(output_format)

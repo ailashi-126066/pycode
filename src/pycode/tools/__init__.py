@@ -15,12 +15,7 @@ from pycode.tools.ports.outputs import OutputWriter, ToolOutputStore
 from pycode.tools.ports.publication import MessagePublisher
 from pycode.tools.ports.questions import QuestionPrompt
 from pycode.tools.ports.tools import ToolGate
-from pycode.tools.services.permissions import (
-    MemoryToolGate,
-    NoOpToolGate,
-    ReadOnlyToolGate,
-    WorkerBoundaryGate,
-)
+from pycode.tools.services.permissions import MemoryToolGate, ReadOnlyToolGate
 from pycode.tools.services.plan_gate import PlanToolGate
 from pycode.tools.services.tool_executor import ToolExecutor
 from pycode.tools.services.tool_registry import ToolRegistry
@@ -36,7 +31,6 @@ __all__ = [
     "ArgumentValidator",
     "MemoryToolGate",
     "MessagePublisher",
-    "NoOpToolGate",
     "OutputWriter",
     "PlanToolGate",
     "QuestionPrompt",
@@ -46,7 +40,6 @@ __all__ = [
     "ToolHooks",
     "ToolOutputStore",
     "ToolRegistry",
-    "WorkerBoundaryGate",
     "validate_operation_answer",
     "validate_question_answer",
 ]

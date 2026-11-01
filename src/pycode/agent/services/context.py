@@ -9,7 +9,6 @@ from pycode.agent.ports import (
     HistoryProjector,
     InputQueue,
     RequestTracking,
-    TeamMailbox,
     WorkspaceReadback,
 )
 from pycode.context import ProjectedContext, SummaryService, ToolEvictionService
@@ -42,7 +41,6 @@ class RunContext:
     requests: RequestTracking
     max_turns: int
     initial_inputs: tuple[Message, ...] = ()
-    handoff_pending: bool = False
     one_at_a_time: bool = False
     completed: list[Message] = field(default_factory=list)
     history_store: HistoryJournal | None = None
@@ -66,7 +64,6 @@ class RunContext:
     dispatched_calls: set[str] = field(default_factory=set)
     # Calls that finished preparing (executing or settled); parallel preparation waits on it.
     prepared_calls: set[str] = field(default_factory=set)
-    team: TeamMailbox | None = None
     hooks: Hooks | None = None
     ready_results: dict[str, tuple[ToolCall, ToolResult, dict]] = field(default_factory=dict)
     settled_calls: set[str] = field(default_factory=set)

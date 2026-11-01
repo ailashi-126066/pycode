@@ -6,7 +6,6 @@ from pycode.agent.ports.runtime import (
     InputQueue,
     RequestTracking,
     Runtime,
-    TeamMailbox,
     TitleAssignment,
     WorkspaceReadback,
 )
@@ -18,6 +17,5 @@ __all__ = [
     "HistoryProjector",
     "InputQueue",
     "RequestTracking",
-    "TeamMailbox",
     "TitleAssignment",
 ]

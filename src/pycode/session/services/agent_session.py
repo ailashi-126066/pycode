@@ -31,7 +31,7 @@ from pycode.session.services.revert import RevertService
 from pycode.session.services.session_view import SessionView
 from pycode.session.services.sessions import name_session
 from pycode.skills import Skills
-from pycode.team import team_message_text
+from pycode.subagents import SubagentManager
 
 
 class AgentSession:
@@ -49,7 +49,7 @@ class AgentSession:
         plans=None,
         storage=None,
         memory=None,
-        team=None,
+        subagents: SubagentManager | None = None,
     ) -> None:
         self._store = store
         self._projector = projector
@@ -66,10 +66,11 @@ class AgentSession:
         self._plans = plans
         self._storage = storage
         self._memory = memory
-        self._team = team
+        self._subagents = subagents
+        # Results of background subagents that finished while no run could take them.
+        self._notifications: list[Message] = []
         self._closing = False
         self._cleanup = SessionCleanup()
-        self._handoff_requested = False
 
     async def submit_input(self, message: Message, kind: InputKind) -> bool:
         if self._durable_inputs is None:
@@ -110,18 +111,8 @@ class AgentSession:
                 yield
             finally:
                 self._active_task = None
-                current = asyncio.current_task()
-                if self._team is not None and current is not None and current.cancelling():
-                    await self._team.cancel_all("lead_cancelled")
 
     async def cancel(self) -> bool:
-        try:
-            return await self._cancel()
-        finally:
-            if self._team is not None:
-                await self._team.cancel_all("lead_cancelled")
-
-    async def _cancel(self) -> bool:
         running = self._active_task
         if running is None:
             async with self.execution():
@@ -141,28 +132,6 @@ class AgentSession:
         except asyncio.CancelledError:
             pass
         return True
-
-    def prepare_handoff(self):
-        self._handoff_requested = True
-        self._launcher.prepare_handoff()
-
-    def reassign_team(self, member, agent_id, prompt_factory, consumer):
-        self._launcher.reassign_team(member, agent_id, prompt_factory, consumer)
-
-    async def continue_handoff(self):
-        async with self.execution():
-            start = self.pending_run(await self._store.snapshot())
-            if start is None:
-                raise StorageError("no_pending_run", "Task has no pending execution to hand off")
-            provider = await self._models.restore(self._default)
-            self._handoff_requested = False
-            result = await self._launcher.continue_handoff(
-                provider, self._store, self.require_run_id(start)
-            )
-            return await self.settle_run(start, result)
-
-    async def task_evidence(self):
-        return await self._store.snapshot()
 
     async def select_model(self, provider: str, model_id: str):
         if self._execution.locked():
@@ -286,10 +255,7 @@ class AgentSession:
             raise ValueError("A task starts with an identified user input")
         if self._execution.locked():
             raise StorageError("session_busy", "This session already has an active executor")
-        if self._team is not None:
-            self._team.stopping = False
         async with self.execution():
-            self._handoff_requested = False
             return await self._run_locked(message)
 
     async def _run_locked(self, message):
@@ -376,8 +342,7 @@ class AgentSession:
         try:
             result = await self._launcher.run(provider, self._store, (message,), history)
         except asyncio.CancelledError:
-            if not self._handoff_requested:
-                await recover_conversation(self._store, reason="aborted")
+            await recover_conversation(self._store, reason="aborted")
             raise
         except Exception:
             # Settles a failure raised outside the runtime's own finish (G5).
@@ -418,8 +383,7 @@ class AgentSession:
                 provider, self._store, self.require_run_id(start), answers
             )
         except asyncio.CancelledError:
-            if not self._handoff_requested:
-                await recover_conversation(self._store, reason="aborted")
+            await recover_conversation(self._store, reason="aborted")
             raise
         return await self.settle_run(start, result)
 
@@ -442,8 +406,6 @@ class AgentSession:
                 )
             )
             return result
-        if result.outcome == "error" and self._launcher.has_live_task():
-            return result
         # The runtime already wrote run_end when the run entered finished.
         if self._plans is not None:
             await self._plans.finish(self.require_run_id(start))
@@ -457,29 +419,10 @@ class AgentSession:
         memory, self._memory = self._memory, None
         if memory is not None:
             closers.append(memory.aclose)
-        team = self._team
-        if team is not None:
-            team.closing = True
-
-            async def stop_team():
-                try:
-                    await team.cancel_all("close")
-                finally:
-                    # SessionEnd Hooks may still use the explicitly allowed
-                    # readonly delegate before launcher shutdown completes.
-                    team.stopping = False
-                    team._closing_delegate = True
-
-            async def close_team():
-                try:
-                    await team.aclose()
-                finally:
-                    self._team = None
-
-            closers.append(stop_team)
+        subagents, self._subagents = self._subagents, None
+        if subagents is not None:
+            closers.append(subagents.aclose)
         closers.append(self._launcher.aclose)
-        if team is not None:
-            closers.append(close_team)
         view, self._view = self._view, None
         if view is not None:
             closers.append(view.aclose)
@@ -495,57 +438,53 @@ class AgentSession:
             if self._plans is not None and self._plans.state is not None
             else None
         )
-        state["team"] = await self._team.view() if self._team is not None else None
+        state["subagents"] = self._subagents.view() if self._subagents is not None else None
         return state
 
-    async def record_team_parent(self, data):
-        async with self.execution():
-            await self._store.append_entry(EntryDraft("team_parent", data=data))
+    def require_subagents(self) -> SubagentManager:
+        if self._subagents is None:
+            raise StorageError("subagents_unavailable", "This session has no subagents")
+        return self._subagents
 
     async def answer_agent(self, agent_id, answer):
-        if self._team is None:
-            raise StorageError("team_unavailable", "This session has no team")
-        return await self._team.answer(agent_id, answer)
+        await self.require_subagents().answer(agent_id, answer)
 
     async def cancel_agent(self, agent_id):
-        if self._team is None:
-            raise StorageError("team_unavailable", "This session has no team")
-        return await self._team.cancel(agent_id)
+        return await self.require_subagents().stop(agent_id)
 
-    def team_wake_pending(self):
-        return (
-            self._team is not None
-            and not self._team.stopping
-            and not self._team.closing
-            and bool(self._team.inbox.pending("lead", wake_only=True))
-        )
+    async def notify_subagent(self, message: Message) -> None:
+        """A background subagent finished: queue it as follow_up input, or wake the session."""
+        async with self._submission:
+            start = self.pending_run(await self._store.snapshot())
+            if start is not None and self._durable_inputs is not None:
+                try:
+                    await self._durable_inputs.submit(
+                        message, "follow_up", self.require_run_id(start)
+                    )
+                    return
+                except StorageError as error:
+                    # The run is ending; the result starts the next run instead.
+                    if error.code != "input_admission_closed":
+                        raise
+            self._notifications.append(message)
 
-    async def wait_team(self):
-        return "idle" if self._team is None else await self._team.wait_lead_input()
+    def wake_pending(self) -> bool:
+        return bool(self._notifications)
 
-    async def wake_team(self):
-        team = self._team
-        if team is None or not self.team_wake_pending() or self._execution.locked():
+    async def wait_subagents(self) -> None:
+        if self._subagents is not None:
+            await self._subagents.wait_background()
+
+    async def wake(self):
+        """Start a run with the results of background subagents that finished while idle."""
+        if not self._notifications or self._execution.locked():
             return None
         async with self.execution():
             if self.pending_run(await self._store.snapshot()) is not None:
                 return None
-            input_id = "team-wake-" + uuid4().hex
-            messages = await team.inbox.reserve("lead", "wake", input_id)
-            if not messages:
-                return None
-            message = Message(
-                input_id,
-                "user",
-                "\n\n".join(team_message_text(m) for m in messages),
-                provider_metadata={"team_wake": [m["id"] for m in messages]},
-            )
-            try:
-                return await self._run_locked(message)
-            finally:
-                accepted = await team.input_accepted("lead", input_id)
-                ids = [m["id"] for m in messages]
-                await (team.inbox.acknowledge(ids) if accepted else team.inbox.release(ids))
+            messages, self._notifications = self._notifications, []
+            text = "\n\n".join(message.text for message in messages)
+            return await self._run_locked(Message(uuid4().hex, "user", text))
 
     async def usage(self, run_id=None):
         if self._view is None:

@@ -35,8 +35,6 @@ BOARD_EXIT_REMINDER = (
 
 async def poll_steering(context):
     """Pi: getSteeringMessages. Polled at loop start, at each turn end, and after preparation."""
-    if context.team is not None:
-        await context.team.flush_inbox(context)
     if context.durable_inputs is not None:
         context.inputs = await context.durable_inputs.pending(context.run_id)
     return context.inputs.take("steer", one_at_a_time=context.one_at_a_time)
@@ -325,8 +323,6 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
     @hook_config(can_jump_to=["model"])
     async def aafter_agent(self, state, runtime):
         context = runtime.context
-        if context.team is not None:
-            await context.team.flush_inbox(context)
         if context.summary is not None:
             report = await context.summary.prepare(wait_for_capacity=False)
             if report.applied_job_id is not None:

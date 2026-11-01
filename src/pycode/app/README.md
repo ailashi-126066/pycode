@@ -24,7 +24,7 @@ app/
 
 依赖方向：CLI → bootstrap → composition → lifecycle/configuration/功能模块。
 生命周期通过显式工厂接收组装动作；功能模块不导入 app，app 不直接导入框架或功能 adapters。
-团队的框架消息转换属于 `team/adapters/delegate.py`，由 TeamModule 创建。
+子 agent 在 `composition/subagents.py` 里各开一个完整的 AgentSession，由 SubagentsModule 管理。
 架构检查同时强制真实目录布局、包入口只含说明和上述方向，禁止把零散文件重新堆回根目录。
 
 ```python

@@ -40,12 +40,10 @@ async def build_runtime(
         )
         outputs = session.outputs or build_outputs(modules, session.session_id)
         memory_tools = modules.memory.tools(session.memory, read_only=config.read_only)
-        team_tools = (
-            modules.team.tools(session.team_member, provider)
-            if session.team_member is not None
-            else ()
+        subagent_tools = (
+            modules.subagents.tools(session.subagents) if session.subagents is not None else ()
         )
-        supplied = (*session.tools, *memory_tools, *team_tools)
+        supplied = (*session.tools, *memory_tools, *subagent_tools)
         workspace_files = modules.tools.backend(
             config.workspace,
             read_only=config.read_only,
@@ -113,10 +111,6 @@ async def build_runtime(
             memory_specs=tuple(tool.spec for tool in memory_tools),
             plans=session.plans,
             scope=skills_run.permission_constraint if skills_run else None,
-            worker=config.agent_id != "lead",
-            worker_sandbox=modules.sandbox.worker(),
-            isolated_worker=config.isolated_worker,
-            team=session.team_member.team if session.team_member else None,
         )
         hooks = None
         if session.configured_hooks and session.history_store is not None:
@@ -193,7 +187,6 @@ async def build_runtime(
             workspace_files=workspace_files,
             model_tools=options.effective_tools,
             read_only=config.read_only,
-            team=session.team_member,
         )
         if session.history_store is not None:
             settings = SummarySettings(

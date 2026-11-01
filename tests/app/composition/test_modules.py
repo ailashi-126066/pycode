@@ -10,7 +10,7 @@ from tests.support.skill_loading import read_skill
 
 from pycode.app.api import RunOptions, SessionResources
 from pycode.app.bootstrap import compose_application, default_modules
-from pycode.app.composition.team import ConfiguredChildSessions
+from pycode.app.composition.subagents import ConfiguredSubagentSessions
 from pycode.app.configuration.settings import AppConfig
 from pycode.app.lifecycle.session import ConfiguredRuntimeLauncher
 from pycode.kernel import Message, ToolCall, ToolContext, ToolResult, ToolSpec
@@ -18,6 +18,8 @@ from pycode.models.module import ModelsModule
 from pycode.session import SessionCatalogWriteGuard
 from pycode.session.module import SessionsModule
 from pycode.skills.module import SkillsSettings
+from pycode.subagents import Subagent
+from pycode.tools import ReadOnlyToolGate
 
 
 def configuration(tmp_path):
@@ -53,14 +55,7 @@ async def test_selected_modules_and_credential_source_survive_child_scope(tmp_pa
     class SelectedSessions(SessionsModule):
         def repository(self):
             repository_workspaces.append(self.workspace)
-
-            async def fork(*args):
-                async def close():
-                    return None
-
-                return SimpleNamespace(aclose=close)
-
-            return SimpleNamespace(fork=fork)
+            return SimpleNamespace()
 
     sessions = SelectedSessions(config.workspace, config.user_data, selected.sessions.timing)
     credentials = {"INDEPENDENT_PROVIDER_KEY": "test-only"}
@@ -68,30 +63,33 @@ async def test_selected_modules_and_credential_source_survive_child_scope(tmp_pa
     selected = replace(selected, sessions=sessions, models=models, skills=None, mcp=None)
     roster = provider("http://127.0.0.1:9")
     observed = {}
+    recorded = []
 
     async def open_child(config, providers, session_id, **options):
-        observed.update(options)
+        observed.update(options, config=config, providers=providers)
+        options["modules"].sessions.repository()
         return SimpleNamespace()
 
-    children = ConfiguredChildSessions(
+    async def restore(default):
+        return roster
+
+    async def append_entry(draft):
+        recorded.append(draft)
+
+    children = ConfiguredSubagentSessions(
         config,
-        (roster,),
-        SimpleNamespace(resolve=lambda *args: roster),
+        SimpleNamespace(append_entry=append_entry),
+        SimpleNamespace(restore=restore),
+        roster,
+        interactive=False,
         session_opener=open_child,
-        repository_factory=lambda derived: selected.scoped(derived).sessions.repository(),
         modules=selected,
     )
     child_workspace = tmp_path / "child"
-    record = {
-        "workspace": str(child_workspace),
-        "mode": "readonly",
-        "agent_id": "a1",
-        "session_id": "child",
-        "role": "review",
-        "provider": roster.name,
-        "model_id": roster.model_id,
-    }
-    await children.open(record, SimpleNamespace(), create=True, fork_from=("parent", None))
+    agent = Subagent(
+        "a1", "agent-1", "review", "readonly", False, 5, "call", "run", str(child_workspace)
+    )
+    await children.open(agent, SimpleNamespace())
     derived = observed["modules"]
     assert isinstance(derived.sessions, SelectedSessions)
     assert derived.sessions.workspace == child_workspace
@@ -99,6 +97,12 @@ async def test_selected_modules_and_credential_source_survive_child_scope(tmp_pa
     assert derived.models.environment is credentials
     assert derived.skills is None and derived.mcp is None
     assert derived.tools is selected.tools and derived.context is selected.context
+    child = observed["config"]
+    assert child.read_only and not child.allow_delegation and child.max_turns == 5
+    # Non-interactive: nobody can answer a subagent's approval.
+    assert isinstance(child.tool_gate, ReadOnlyToolGate)
+    assert observed["providers"] == (roster,)
+    assert recorded[0].data["kind"] == "subagent_start" and recorded[0].run_id == "run"
 
 
 async def test_replaced_mcp_owns_exactly_the_session_it_created(tmp_path):

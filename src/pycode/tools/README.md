@@ -29,9 +29,9 @@ preview (head for read, tail for bash) and a notice, the full text goes to
 `read`; Seatbelt already allows reading `$TMPDIR`.
 
 `gate` preserves the policy sequence: ordinary approval, memory and Plan gates, optional custom gate,
-then the injected feature scope. Worker mode always installs the mandatory worker boundary outside
-the custom/scope constraints. Team merge approval remains a specialized Tools policy. The injected
-scope is an independent `ToolGate`; it cannot replace its parent or enlarge worker permissions.
+then the injected feature scope. Subagents use the same chain: readonly ones get `ReadOnlyToolGate`,
+and in non-interactive runs every subagent gets it, so approval-needing calls fail. The injected
+scope is an independent `ToolGate`; it cannot replace its parent.
 
 `executor` installs the official tool-error boundary. `settlement` and `framework_tool` receive ordered
 `tool_extensions` and `native_bindings`, leaving Skill and MCP lookup/normalization with their owners.

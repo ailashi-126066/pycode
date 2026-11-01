@@ -95,7 +95,6 @@ class ToolExecutionUpdateEvent(TypedDict):
     tool_name: str
     # "running" when the tool body starts; replaces tool_action_start.
     state: NotRequired[Literal["running"]]
-    timeout: NotRequired[float | None]
     # Pi sends the accumulated partialResult; pycode streams each new output chunk.
     delta: NotRequired[str]
 
@@ -149,9 +148,12 @@ class ModelChangeEvent(TypedDict):
 
 
 class SubagentEvent(TypedDict):
-    """Until step 11 replaces team, this carries the team engine's {type, ...} updates."""
+    """A subagent's status, and one of its own events when forwarded; the envelope's
+    agent_id and parent_call_id name the subagent and the Agent call that started it."""
 
-    type: str
+    status: str
+    description: str
+    event: NotRequired[dict[str, Any]]
 
 
 class TaskEvent(TypedDict):

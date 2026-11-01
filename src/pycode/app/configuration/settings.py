@@ -18,10 +18,8 @@ class AppConfig:
     project_trusted: bool = False
     skill_index_budget: int = 2000
     memory_mode: str | None = None
-    team_max_agents: int = 4
-    team_idle_timeout: float = 180
-    team_stop_timeout: float = 15
-    team_max_handoffs: int = 1
+    # Subagents running or waiting for approval at the same time.
+    max_agents: int = 4
     read_only: bool = False
     allow_delegation: bool = True
     agent_id: str = "lead"
@@ -35,14 +33,8 @@ class AppConfig:
     subprocess_passthrough: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if (
-            isinstance(self.team_max_agents, bool)
-            or not isinstance(self.team_max_agents, int)
-            or not 1 <= self.team_max_agents <= 4
-        ):
-            raise ValueError("Team concurrency must be 1–4")
-        if self.team_idle_timeout <= 0 or self.team_stop_timeout <= 0 or self.team_max_handoffs < 0:
-            raise ValueError("Team timeouts must be positive and handoff count nonnegative")
+        if not 1 <= self.max_agents <= 4:
+            raise ValueError("Subagent concurrency must be 1–4")
         validate_passthrough(self.subprocess_passthrough)
         if self.memory_mode not in {None, "auto", "off"}:
             raise ValueError("Memory mode must be auto or off")

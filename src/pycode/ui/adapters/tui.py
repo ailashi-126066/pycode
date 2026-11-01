@@ -180,7 +180,7 @@ class PyApp(App):
         self.last_error = None
         self._memory_report = None
         self._show_agents = False
-        self._team_tasks = set()
+        self._answer_tasks = set()
         self._operation = None
         self._closed = False
         self._live_text = ""
@@ -278,10 +278,12 @@ class PyApp(App):
         if self._closed or event.session_id != self.session_id:
             return
         if event.kind == "subagent":
-            await self.refresh_state()
-            if event.data["type"] == "wake":
-                self.maybe_wake_team()
-        elif event.kind == "message_start" and event.data["message"]["role"] == "assistant":
+            # Forwarded child events are not drawn; a status change redraws once.
+            if "event" not in event.data:
+                await self.refresh_state()
+                self.maybe_wake()
+            return
+        if event.kind == "message_start" and event.data["message"]["role"] == "assistant":
             self._live_text = self._live_thinking = ""
             await self.start_live_reply()
         elif event.kind == "message_update" and event.data["kind"] == "text":
@@ -482,11 +484,10 @@ class PyApp(App):
         await self.query_one("#pending", Vertical).remove_children()
         pending = self.view_state["pending"]
         child_source = None
-        team = self.view_state.get("team") or {}
-        if team.get("degraded"):
-            self.notice("Team persistence failed; reopen the session to recover", "error")
-        if not pending and team.get("approvals"):
-            child_source = team["approvals"][0]
+        subagents = self.view_state["subagents"]
+        if not pending and subagents is not None and subagents["approvals"]:
+            # A subagent's approval is answered in the main session.
+            child_source = subagents["approvals"][0]
             pending = child_source["pending"]
         if pending:
             payload = pending[0]
@@ -504,7 +505,7 @@ class PyApp(App):
                         indent=2,
                     ),
                     agent_id=child_source["agent_id"] if child_source else None,
-                    source=(child_source["agent_id"] + " · " + child_source["role"][:80])
+                    source=(child_source["agent_id"] + " · " + child_source["description"][:80])
                     if child_source
                     else "",
                 )
@@ -529,10 +530,8 @@ class PyApp(App):
             )
         elif self._pending_plan is not None:
             await self.query_one("#pending", Vertical).mount(RevertPanel(self._pending_plan))
-        elif not pending and self._show_agents:
-            await self.query_one("#pending", Vertical).mount(
-                AgentsPanel(self.view_state.get("team"))
-            )
+        elif not pending and self._show_agents and subagents is not None:
+            await self.query_one("#pending", Vertical).mount(AgentsPanel(subagents))
         elif not pending and self._memory_report is not None:
             await self.query_one("#pending", Vertical).mount(MemoryPanel(self._memory_report))
         self.query_one("#chat-input", ChatInput).disabled = bool(
@@ -573,17 +572,18 @@ class PyApp(App):
         finally:
             if not self._closed:
                 await self.refresh_state()
-                self.call_later(self.maybe_wake_team)
+                self.call_later(self.maybe_wake)
 
-    def maybe_wake_team(self):
+    def maybe_wake(self):
+        """Start a run with background subagent results that arrived while idle."""
         if (
             self.session is not None
             and not self._closed
             and not self.busy
             and not (self.state or {}).get("pending_run_id")
-            and getattr(self.session, "team_wake_pending", lambda: False)()
+            and self.active_session.wake_pending()
         ):
-            self.start_operation(self.active_session.wake_team)
+            self.start_operation(self.active_session.wake)
 
     async def wait_idle(self):
         if self._operation is not None:
@@ -646,8 +646,8 @@ class PyApp(App):
         self.collapse_parent(panel)
         if event.agent_id is not None:
             task = asyncio.create_task(self.answer_child(event.agent_id, event.answer))
-            self._team_tasks.add(task)
-            task.add_done_callback(self._team_tasks.discard)
+            self._answer_tasks.add(task)
+            task.add_done_callback(self._answer_tasks.discard)
         else:
             self.respond(event.answer)
 
@@ -719,9 +719,9 @@ class PyApp(App):
             return
         self._closed = True
         await self.stop_active()
-        for task in tuple(self._team_tasks):
+        for task in tuple(self._answer_tasks):
             task.cancel()
-        await asyncio.gather(*self._team_tasks, return_exceptions=True)
+        await asyncio.gather(*self._answer_tasks, return_exceptions=True)
         if self.session is not None:
             await self.active_session.aclose()
 

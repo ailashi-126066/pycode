@@ -93,6 +93,27 @@ def upgrade_entry(payload: dict) -> dict:
     return payload
 
 
+# 11.1 section 10: records of the removed team feature are skipped on read.
+REMOVED_ENTRY_TYPES = frozenset({"team_agent", "team_parent", "team_transition"})
+
+
+def decode_entries(records) -> tuple[tuple[SessionEntry, ...], dict[str, str | None]]:
+    """Decode stored records in order; children of a skipped record move to its parent."""
+    skipped: dict[str, str | None] = {}
+    entries = []
+    for record in records:
+        try:
+            parent = skipped.get(record["parent_id"], record["parent_id"])
+            removed = record["type"] in REMOVED_ENTRY_TYPES
+        except (KeyError, TypeError) as error:
+            raise StorageError("invalid_session_entry", "Invalid native session entry") from error
+        if removed:
+            skipped[record["id"]] = parent
+            continue
+        entries.append(decode_entry(encode_entry({**record, "parent_id": parent})))
+    return tuple(entries), skipped
+
+
 def decode_entry(data: bytes) -> SessionEntry:
     try:
         payload = json.loads(data)

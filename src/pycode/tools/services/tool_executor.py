@@ -113,14 +113,12 @@ class ToolExecutor:
             async def action():
                 nonlocal accepting_updates
                 assert spec is not None
-                timeout = arguments.get("timeout", 120) if spec.name == "bash" else None
                 await self.events.emit(
                     "tool_execution_update",
                     {
                         "tool_call_id": call.id,
                         "tool_name": call.name,
                         "state": "running",
-                        "timeout": timeout,
                     },
                     operation_id=context.operation_id,
                 )

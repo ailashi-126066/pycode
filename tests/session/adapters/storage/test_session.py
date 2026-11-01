@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 import pytest
+from langgraph.store.base import PutOp
 
 from pycode.context.services.context_projector import ContextProjector
 from pycode.kernel import ModelSelection
@@ -29,7 +30,7 @@ async def test_setup_is_lazy_and_first_user_publishes_header_setup_and_input(tmp
     assert snapshot.leaf_id == user_id
     from pycode.session.adapters.storage.session import read_records
 
-    metadata, entries = read_records(tmp_path / "session/session.sqlite")
+    metadata, entries, _ = read_records(tmp_path / "session/session.sqlite")
     assert metadata["leaf_id"] == user_id
     assert [entry.type for entry in entries] == ["model_change", "message"]
     await store.aclose()
@@ -129,15 +130,13 @@ async def test_compaction_cannot_split_tool_call_and_result(tmp_path):
 
 
 async def test_record_and_position_commit_atomically(tmp_path):
-    from langgraph.store.base import PutOp
-
     from pycode.session.adapters.storage.session import open_database, read_records
 
     store = open_store(tmp_path)
     root = await store.append_message(Message("u1", "user", "start"))
     await store.aclose()
     database = open_database(tmp_path / "session/session.sqlite")
-    before, entries = read_records(tmp_path / "session/session.sqlite")
+    before, entries, _ = read_records(tmp_path / "session/session.sqlite")
     # The second invalid value aborts the whole official Store batch transaction.
     with pytest.raises(TypeError):
         database.batch(
@@ -147,8 +146,46 @@ async def test_record_and_position_commit_atomically(tmp_path):
             ]
         )
     database.conn.close()
-    after, saved = read_records(tmp_path / "session/session.sqlite")
+    after, saved, _ = read_records(tmp_path / "session/session.sqlite")
     assert after["leaf_id"] == root and saved == entries
+
+
+async def test_old_team_records_are_skipped_and_their_children_reattached(tmp_path):
+    from pycode.session.adapters.storage.session import open_database
+
+    store = open_store(tmp_path)
+    root = await store.append_message(Message("u1", "user", "start"))
+    await store.aclose()
+    database = open_database(tmp_path / "session/session.sqlite")
+    stored = database.get(("entries",), root).value["entry"]
+    team = {**stored, "id": "team", "parent_id": root, "type": "team_agent", "message": None}
+    reply = {
+        **stored,
+        "id": "reply",
+        "parent_id": "team",
+        "message": {**stored["message"], "id": "a1", "role": "assistant"},
+    }
+    position = database.get(("session",), "position").value
+    database.batch(
+        [
+            PutOp(("entries",), "team", {"sequence": 1, "entry": team}),
+            PutOp(("entries",), "reply", {"sequence": 2, "entry": reply}),
+            PutOp(("session",), "position", {**position, "leaf_id": "team"}),
+        ]
+    )
+    database.conn.close()
+    reopened = open_store(tmp_path)
+    try:
+        snapshot = await reopened.snapshot()
+        assert [entry.id for entry in snapshot.entries] == [root, "reply"]
+        assert snapshot.index["reply"].parent_id == root and snapshot.leaf_id == root
+        latest = await reopened.append_message(Message("u2", "user", "next"))
+    finally:
+        await reopened.aclose()
+    database = open_database(tmp_path / "session/session.sqlite")
+    # New records follow every stored record, including the skipped one.
+    assert database.get(("entries",), latest).value["sequence"] == 3
+    database.conn.close()
 
 
 async def test_unknown_schema_is_rejected(tmp_path):

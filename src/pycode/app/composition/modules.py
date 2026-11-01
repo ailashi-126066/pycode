@@ -25,7 +25,7 @@ from pycode.session.module import SessionsModule
 from pycode.skills import SkillsProjection
 from pycode.skills.module import SkillsModule
 from pycode.snapshot.module import SnapshotModule
-from pycode.team.module import TeamModule
+from pycode.subagents.module import SubagentsModule
 from pycode.tools.module import ToolsModule
 from pycode.ui.module import UIModule
 
@@ -42,7 +42,7 @@ class ApplicationModules:
     context: ContextModule
     memory: MemoryModule
     agent: AgentModule
-    team: TeamModule
+    subagents: SubagentsModule
     ui: UIModule
     skills: SkillsModule | None
     mcp: MCPModule | None
@@ -131,7 +131,7 @@ def default_modules(config: AppConfig) -> ApplicationModules:
         context=context,
         memory=memory,
         agent=AgentModule(),
-        team=TeamModule(),
+        subagents=SubagentsModule(),
         ui=UIModule(sys.stdout),
         skills=skills,
         mcp=MCPModule(schema=tools.validator()),

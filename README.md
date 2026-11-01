@@ -147,6 +147,6 @@ Team 邮箱、worktree 和合并不变。旧配置使用已移除模式时明确
 
 工具发现：本地与 MCP 统一通过 ToolSearch。模型先看分类名称和一句话用途，再按需加载完整定义；无额外模型工具选择器。参见 [工具发现设计](docs/design/tool-discovery.md)。
 
-Team 任务状态、无活动超时与进程内 A→B 交接见 [TeamState 设计](docs/design/team-state-handoff.md)。完整记录使用官方 SqliteStore，执行图使用本地 AsyncSqliteSaver。
+子 agent（Agent/SendMessage/StopAgent、readonly/worktree、后台、恢复、停止）见 [Subagents 设计](docs/design/subagents.md)。完整记录使用官方 SqliteStore，执行图使用本地 AsyncSqliteSaver。
 
-框架基线：Deep Agents 0.7.32、LangChain 1.4.7 / Core 1.7.0、LangGraph 1.2.18 / Checkpoint 4.3.1、FastMCP 4.1.4。具体开发依赖见 `requirements-dev.lock`。Team 继续使用进程内执行与邮箱，不引入 Agent Server；会话持久化已迁移为 SqliteStore + AsyncSqliteSaver。
+框架基线：Deep Agents 0.7.32、LangChain 1.4.7 / Core 1.7.0、LangGraph 1.2.18 / Checkpoint 4.3.1、FastMCP 4.1.4。具体开发依赖见 `requirements-dev.lock`。子 agent 在进程内运行，不引入 Agent Server；会话持久化已迁移为 SqliteStore + AsyncSqliteSaver。

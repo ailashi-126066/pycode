@@ -19,11 +19,10 @@ class ConsoleOutput:
         if self._format == "stream-json":
             self.write_json({"type": event.kind, **plain_data(event)})
         elif event.kind == "subagent":
-            if event.data.get("type") == "approval":
-                self.write_json({"agent_needs_input": event.data})
-            elif self._format == "text" and event.data.get("type") == "agent":
+            # Only status changes; the subagent's own events stay in stream-json.
+            if self._format == "text" and "event" not in event.data:
                 self._stream.write(
-                    f"[team] {event.data['agent_id']} ({event.data['role'][:80]}): "
+                    f"[subagent] {event.agent_id} ({event.data['description'][:80]}): "
                     f"{event.data['status']}\n"
                 )
                 self._stream.flush()

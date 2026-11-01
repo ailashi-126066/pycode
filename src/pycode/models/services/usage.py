@@ -30,11 +30,11 @@ class UsageService:
         records = await self._records.list_requests(snapshot.header.session_id)
         child_sessions = {}
         for entry in snapshot.entries:
-            if entry.type == "team_agent":
+            if entry.data.get("kind") == "subagent_start":
                 child_sessions[entry.data["session_id"]] = entry.run_id
-        team_records = []
+        subagent_records = []
         for session_id in child_sessions:
-            team_records.extend(await self._records.list_requests(session_id))
+            subagent_records.extend(await self._records.list_requests(session_id))
         linked_runs = {run_id} if run_id is not None else set()
         tree = SessionTree(snapshot.index)
         for entry in snapshot.entries:
@@ -51,10 +51,10 @@ class UsageService:
             if run_id is not None and parent_run == run_id:
                 linked_runs.add(entry.data["job_id"])
         turn = tuple(record for record in records if record.run_id in linked_runs)
-        team_turn = []
-        for record in team_records:
+        subagent_turn = []
+        for record in subagent_records:
             if child_sessions[record.session_id] in linked_runs:
-                team_turn.append(record)
+                subagent_turn.append(record)
         main = tuple(
             record
             for record in turn
@@ -71,10 +71,10 @@ class UsageService:
             "by_origin_purpose": self.groups(records, origin_purpose),
             "turn_by_purpose": self.groups(turn, lambda record: record.purpose),
             "by_agent": self.groups(records, lambda record: record.agent_id),
-            "team": plain_data(aggregate_requests(tuple(team_records))),
-            "team_turn": plain_data(aggregate_requests(tuple(team_turn))),
-            "team_by_agent": self.groups(team_records, lambda record: record.agent_id),
-            "total_with_team": plain_data(aggregate_requests((*records, *team_records))),
+            "subagents": plain_data(aggregate_requests(tuple(subagent_records))),
+            "subagents_turn": plain_data(aggregate_requests(tuple(subagent_turn))),
+            "subagents_by_agent": self.groups(subagent_records, lambda record: record.agent_id),
+            "total_with_subagents": plain_data(aggregate_requests((*records, *subagent_records))),
         }
 
     def groups(self, records, key):
