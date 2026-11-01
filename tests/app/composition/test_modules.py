@@ -86,7 +86,7 @@ async def test_selected_modules_and_credential_source_survive_child_scope(tmp_pa
     )
     child_workspace = tmp_path / "child"
     agent = Subagent(
-        "a1", "agent-1", "review", "readonly", False, 5, "call", "run", str(child_workspace)
+        "a1", "a1", "agent-1", "review", "readonly", False, 5, "call", "run", str(child_workspace)
     )
     await children.open(agent, SimpleNamespace())
     derived = observed["modules"]

@@ -7,6 +7,7 @@ tool lacks: background runs, SendMessage continuation, StopAgent and worktrees.
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from itertools import count
 from uuid import uuid4
 
 from pycode.kernel import DomainError, Event, EventSink, Message, RunResult, ToolError, plain_data
@@ -40,9 +41,19 @@ class SubagentManager:
         self.notify: Callable[[Message], Awaitable[None]] | None = None
 
     def require(self, agent_id: str) -> Subagent:
-        if agent_id not in self.agents:
-            raise ToolError("unknown_agent", "Unknown subagent: " + agent_id)
-        return self.agents[agent_id]
+        """A subagent by id or by name."""
+        for agent in self.agents.values():
+            if agent_id in {agent.agent_id, agent.name}:
+                return agent
+        raise ToolError("unknown_agent", "Unknown subagent: " + agent_id)
+
+    def unique_name(self, name: str | None) -> str:
+        used = {key for agent in self.agents.values() for key in (agent.agent_id, agent.name)}
+        if name is None:
+            return next(f"a{n}" for n in count(1) if f"a{n}" not in used)
+        if name in used:
+            raise ToolError("agent_name_taken", f"A subagent is already called {name}")
+        return name
 
     def active(self) -> int:
         return sum(agent.status not in FINISHED for agent in self.agents.values())
@@ -61,14 +72,17 @@ class SubagentManager:
         max_turns: int | None,
         parent_call_id: str,
         run_id: str,
+        name: str | None = None,
     ) -> Subagent:
         self.require_capacity()
+        name = self.unique_name(name)
         if mode == "worktree" and not self._can_write():
             raise ToolError("worktree_unavailable", "This session cannot start a modifying agent")
         agent_id = uuid4().hex[:8]
         worktree = await self._worktrees.create(agent_id) if mode == "worktree" else None
         agent = Subagent(
             agent_id,
+            name,
             "agent-" + uuid4().hex,
             description,
             mode,
@@ -90,6 +104,7 @@ class SubagentManager:
     async def send(self, agent_id: str, text: str, *, parent_call_id: str, run_id: str):
         """SendMessage: continue a finished or partial subagent in its own history."""
         agent = self.require(agent_id)
+        agent_id = agent.agent_id
         if agent.status not in FINISHED:
             raise ToolError("agent_busy", "The subagent is still running")
         if agent.mode == "worktree" and agent.worktree is None:
@@ -118,7 +133,7 @@ class SubagentManager:
         agent = self.require(agent_id)
         if agent.status in FINISHED:
             raise ToolError("agent_finished", "The subagent has already finished")
-        task = self._tasks[agent_id]
+        task = self._tasks[agent.agent_id]
         task.cancel()
         await asyncio.wait({task})
         return agent
@@ -182,7 +197,11 @@ class SubagentManager:
         await self.emit(agent)
 
     async def emit(self, agent: Subagent, event: Event | None = None) -> None:
-        data: dict[str, object] = {"status": agent.status, "description": agent.description}
+        data: dict[str, object] = {
+            "name": agent.name,
+            "status": agent.status,
+            "description": agent.description,
+        }
         if event is not None:
             data["event"] = {"kind": event.kind, "data": event.data}
         await self._streams[agent.agent_id].emit("subagent", data)
@@ -251,8 +270,8 @@ def worktree_note(agent: Subagent) -> str:
 def result_text(agent: Subagent) -> str:
     """What the main agent sees: only the subagent's final result, never its context."""
     if agent.status == "running":
-        return f"Subagent {agent.agent_id} is running in the background; you will be notified."
-    lines = [f"Subagent {agent.agent_id} {agent.status}."]
+        return f"Subagent {agent.name} is running in the background; you will be notified."
+    lines = [f"Subagent {agent.name} {agent.status}."]
     if agent.status == "partial":
         lines.append("It reached max_turns; continue it with SendMessage.")
     if agent.error_code is not None:
@@ -261,4 +280,4 @@ def result_text(agent: Subagent) -> str:
 
 
 def notification_text(agent: Subagent) -> str:
-    return f"[subagent {agent.agent_id}: {agent.description}]\n" + result_text(agent)
+    return f"[subagent {agent.name}: {agent.description}]\n" + result_text(agent)

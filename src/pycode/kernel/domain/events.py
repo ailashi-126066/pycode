@@ -151,6 +151,7 @@ class SubagentEvent(TypedDict):
     """A subagent's status, and one of its own events when forwarded; the envelope's
     agent_id and parent_call_id name the subagent and the Agent call that started it."""
 
+    name: str
     status: str
     description: str
     event: NotRequired[dict[str, Any]]

@@ -248,3 +248,31 @@ async def test_worktree_mode_is_rejected_when_the_session_cannot_write():
     with pytest.raises(ToolError) as error:
         await agent.execute(context(), {"description": "d", "prompt": "p", "mode": "worktree"})
     assert error.value.code == "worktree_unavailable"
+
+
+async def test_names_are_given_or_generated_unique_and_accepted_by_send_and_stop():
+    # 11.1 section 39 #5.
+    manager, sessions, events, notified, (agent, send, stop) = setup(
+        RunResult("turn_limit", "half", ()), completed("done"), completed("never")
+    )
+    named = await agent.execute(
+        context(), {"name": "n3", "description": "d", "prompt": "p", "mode": "readonly"}
+    )
+    assert named.details["subagent"]["name"] == "n3" and "Subagent n3 partial" in named.text
+    with pytest.raises(ToolError) as taken:
+        await agent.execute(
+            context("c2"), {"name": "n3", "description": "d", "prompt": "p", "mode": "readonly"}
+        )
+    assert taken.value.code == "agent_name_taken"
+    resumed = await send.execute(context("c3"), {"agent_id": "n3", "message": "go on"})
+    assert resumed.details["subagent"]["status"] == "completed"
+    generated = await agent.execute(
+        context("c4"), {"description": "bg", "prompt": "p", "mode": "readonly", "background": True}
+    )
+    assert generated.details["subagent"]["name"] == "a1"
+    sessions.opened[1].release.clear()
+    await asyncio.sleep(0)
+    stopped = await stop.execute(context("c5"), {"agent_id": "a1"})
+    assert stopped.details["subagent"]["status"] == "cancelled"
+    assert notified[0].startswith("[subagent a1: bg]")
+    assert {data["name"] for (*_, kind, data) in events} == {"n3", "a1"}

@@ -56,6 +56,7 @@ class ConfiguredSubagentSessions:
                 data={
                     "kind": "subagent_start",
                     "agent_id": agent.agent_id,
+                    "name": agent.name,
                     "session_id": agent.session_id,
                     "mode": agent.mode,
                     "description": agent.description,

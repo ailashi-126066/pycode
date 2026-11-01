@@ -40,6 +40,8 @@ class Worktree:
 @dataclass
 class Subagent:
     agent_id: str
+    # 11.1 section 39 #5: given by the main agent (a step id such as n3) or a1, a2, ...
+    name: str
     session_id: str
     description: str
     mode: SubagentMode
@@ -67,7 +69,7 @@ def child_prompt(agent: Subagent) -> str:
         else f"You work in your own git worktree {agent.workspace}; edit files only there."
     )
     return (
-        f"## Subagent rules\nYou are subagent {agent.agent_id} ({agent.mode}). {rule}\n"
+        f"## Subagent rules\nYou are subagent {agent.name} ({agent.mode}). {rule}\n"
         "You cannot start other agents. Do not git push or merge; the main agent merges.\n"
         "When done, report the result, changed files and anything left unverified."
     )

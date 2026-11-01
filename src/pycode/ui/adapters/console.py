@@ -22,7 +22,7 @@ class ConsoleOutput:
             # Only status changes; the subagent's own events stay in stream-json.
             if self._format == "text" and "event" not in event.data:
                 self._stream.write(
-                    f"[subagent] {event.agent_id} ({event.data['description'][:80]}): "
+                    f"[subagent] {event.data['name']} ({event.data['description'][:80]}): "
                     f"{event.data['status']}\n"
                 )
                 self._stream.flush()

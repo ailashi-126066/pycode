@@ -4,7 +4,10 @@ from pycode.kernel import ToolContext, ToolResult, ToolSpec, plain_data
 from pycode.subagents.manager import SubagentManager, result_text
 from pycode.subagents.types import Subagent
 
-_AGENT_ID = {"type": "string", "pattern": "^[0-9a-f]{8}$"}
+# Slug: lowercase letters, digits and hyphens, at most 64 characters.
+_NAME = {"type": "string", "pattern": "^[a-z0-9-]{1,64}$"}
+# The name shown in results; the 8-character agent id also works.
+_AGENT = {**_NAME, "description": "The subagent's name (or its agent id)"}
 
 
 def schema(properties, required):
@@ -58,8 +61,10 @@ class AgentTool:
             "background=true returns at once and you are notified when it finishes. "
             "At max_turns it returns a partial result that SendMessage can continue. "
             "In non-interactive runs (pycode run / -p) subagent calls that need approval "
-            "fail with approval_required.",
+            "fail with approval_required. name is unique in this session; for a task board "
+            "step use the step id (for example n3); without it the system names it a1, a2, ...",
             {
+                "name": _NAME,
                 "description": {"type": "string", "maxLength": 200},
                 "prompt": {"type": "string", "maxLength": 20000},
                 "mode": {"enum": ["readonly", "worktree"]},
@@ -80,6 +85,7 @@ class AgentTool:
             max_turns=arguments.get("max_turns"),
             parent_call_id=context.call_id,
             run_id=context.run_id,
+            name=arguments.get("name"),
         )
         if not agent.background:
             agent = await self.manager.wait(agent.agent_id)
@@ -93,7 +99,7 @@ class SendMessageTool:
             "SendMessage",
             "Continue a finished or partial subagent with a follow-up message, in its own "
             "history. It runs in the foreground or background as it was started.",
-            {"agent_id": _AGENT_ID, "message": {"type": "string", "maxLength": 20000}},
+            {"agent_id": _AGENT, "message": {"type": "string", "maxLength": 20000}},
             ("agent_id", "message"),
             "SendMessage: continue or ask a subagent again",
         )
@@ -116,7 +122,7 @@ class StopAgentTool:
         self.spec = spec(
             "StopAgent",
             "Stop a running subagent; it ends as cancelled.",
-            {"agent_id": _AGENT_ID},
+            {"agent_id": _AGENT},
             ("agent_id",),
             "StopAgent: stop a running subagent",
         )

@@ -17,7 +17,7 @@ class AgentsPanel(VerticalScroll):
         for agent in self.report["agents"]:
             worktree = agent["worktree"]
             yield Static(
-                f"{agent['agent_id']} · {agent['mode']} · {agent['status']}"
+                f"{agent['name']} · {agent['mode']} · {agent['status']}"
                 + (" · background" if agent["background"] else "")
                 + f" · {agent['description'][:120]}\n{agent['workspace']}"
                 + (f" ({worktree['branch']})" if worktree else ""),

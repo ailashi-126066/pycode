@@ -499,7 +499,7 @@ class PyApp(App):
                         indent=2,
                     ),
                     agent_id=child_source["agent_id"] if child_source else None,
-                    source=(child_source["agent_id"] + " · " + child_source["description"][:80])
+                    source=(child_source["name"] + " · " + child_source["description"][:80])
                     if child_source
                     else "",
                 )

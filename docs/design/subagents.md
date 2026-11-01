@@ -2,8 +2,11 @@
 
 照 Claude Code 的 subagent 做，不做 agent teams（子 agent 之间不通信，不共享任务板）。
 
-- 工具：`Agent(description, prompt, mode: readonly|worktree, background, max_turns)`、
+- 工具：`Agent(description, prompt, mode: readonly|worktree, name?, background, max_turns)`、
   `SendMessage(agent_id, message)`、`StopAgent(agent_id)`，都在 `src/pycode/subagents/tools.py`。
+- 名字（11.1 第 39 节第 5 条）：`name` 由主 agent 指定，同一会话内唯一，格式是 slug（小写字母、数字、连字符，
+  最长 64）；对应任务板步骤时建议用步骤 id（如 `n3`）。不给就由系统生成 `a1`、`a2`……`SendMessage` /
+  `StopAgent` 的 `agent_id` 参数接受名字或 8 位 id。完成通知、`/agents` 和 `subagent` 事件都显示名字。
 - 每个子 agent 是一个完整的 `AgentSession`，由 `app/composition/subagents.py` 打开，有自己的历史和
   checkpoint，内部照常用 `create_deep_agent` 运行。主 agent 只看到最终结果。
 - 管理层 `SubagentManager` 是自己写的：Deep Agents 0.7.32 的 `task` 子代理是同步一次性调用，
@@ -17,7 +20,7 @@
 - 审批：子 agent 的待审批项出现在主会话 `inspect()["subagents"]["approvals"]`，TUI 弹出审批面板，
   用 `answer_agent` 回答。**非交互模式（`pycode run` / `-p`）没人能回答，子 agent 使用
   `ReadOnlyToolGate`，需要审批的调用直接得到 `approval_required` 错误结果，子 agent 继续运行。**
-- 事件：子 agent 的每个事件包成一条 `subagent` 事件转发，`data = {status, description, event}`，
+- 事件：子 agent 的每个事件包成一条 `subagent` 事件转发，`data = {name, status, description, event}`，
   信封的 `agent_id`、`parent_call_id` 指向子 agent 和启动它的 Agent 调用；状态变化时不带 `event`。
 - worktree 模式：在 `<项目状态目录>/worktrees/<agent_id>` 建临时 worktree（分支 `pycode/agent/<id>`），
   命令必须在可用的系统沙箱里运行。每用 TaskUpdate 完成一个步骤，就在 worktree 里提交一次。
