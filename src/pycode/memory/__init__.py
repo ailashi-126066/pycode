@@ -1,6 +1,7 @@
-"""Public native contracts, policies and services for memory."""
+# Pi 没有，pycode 新增
+"""Memory public API: the Feature and the background model it is assembled with."""
 
-from pycode.memory.ports.memory import MemoryUpdater
-from pycode.memory.services.memory import MemoryService
+from pycode.memory.memory import MemoryFeature
+from pycode.memory.types import BackgroundModel
 
-__all__ = ["MemoryUpdater", "MemoryService"]
+__all__ = ["BackgroundModel", "MemoryFeature"]

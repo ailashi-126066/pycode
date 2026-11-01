@@ -3,7 +3,7 @@
 import pytest
 
 from pycode.kernel import StorageError, ToolError
-from pycode.memory.domain.memory import (
+from pycode.memory.store import (
     MAX_ENTRIES,
     MAX_ENTRY_CHARS,
     check_memory_write,

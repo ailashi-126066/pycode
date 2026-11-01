@@ -1,10 +1,11 @@
+# Pi 没有，pycode 新增
 """LangMem's manage tool per scope; the model reads memories with read under /memory/."""
 
 from langmem import create_manage_memory_tool
 from pydantic import BaseModel
 
 from pycode.kernel import ToolError, ToolResult, ToolSpec
-from pycode.memory.domain.memory import MemoryNote
+from pycode.memory.types import MemoryNote
 
 INSTRUCTIONS = (
     "Create, update or delete one short durable memory: lasting user preferences, "
@@ -14,11 +15,11 @@ INSTRUCTIONS = (
 
 
 class ManageMemoryTool:
-    def __init__(self, service, namespace, scope):
-        self.service = service
+    def __init__(self, memory, namespace, scope):
+        self.memory = memory
         self.native = create_manage_memory_tool(
             namespace,
-            store=service.store,
+            store=memory.store,
             name=f"manage_{scope}_memory",
             schema=MemoryNote,
             instructions=INSTRUCTIONS,
@@ -35,7 +36,7 @@ class ManageMemoryTool:
         )
 
     async def execute(self, context, arguments):
-        if self.service.mode == "off" or context.agent_id != "lead":
+        if self.memory.mode == "off" or context.agent_id != "lead":
             raise ToolError("memory_disabled", "Memory tools are disabled for this execution")
         try:
             response = await self.native.ainvoke(arguments)
@@ -43,11 +44,3 @@ class ManageMemoryTool:
             # LangMem rejects invalid action/id combinations with ValueError.
             raise ToolError("invalid_memory_arguments", str(error)[:300]) from error
         return ToolResult("", "", str(response))
-
-
-def memory_tools(service, *, read_only=False):
-    if service is None or service.mode == "off" or read_only:
-        return ()
-    return tuple(
-        ManageMemoryTool(service, namespace, scope) for namespace, scope in service.scopes.items()
-    )

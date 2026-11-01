@@ -3,8 +3,8 @@
 import pytest
 
 from pycode.kernel import StorageError, ToolError
-from pycode.memory.adapters.storage.markdown_memory import MarkdownMemoryStore
-from pycode.memory.domain.memory import NAMESPACES
+from pycode.memory.store import MarkdownMemoryStore
+from pycode.memory.types import NAMESPACES
 
 USER, PROJECT = NAMESPACES["user"], NAMESPACES["project"]
 
