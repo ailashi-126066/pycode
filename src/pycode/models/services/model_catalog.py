@@ -133,15 +133,6 @@ class ModelCatalog:
     def snapshot(self) -> CatalogSnapshot:
         return clone_value(self._snapshot)
 
-    def provider_hash(self, provider_name: str) -> str:
-        provider = self._providers.get(provider_name)
-        if provider is None:
-            raise ModelError("unknown_provider", f"Provider is not configured: {provider_name}")
-        fields = plain_data(provider)
-        fields["timeout_seconds"] = float(provider.timeout_seconds)
-        encoded = json_dumps(fields, sort_keys=True, ensure_ascii=False).encode()
-        return hashlib.sha256(encoded).hexdigest()
-
     def resolve(self, provider_name: str, model_id: str) -> ProviderConfig:
         provider = self._providers.get(provider_name)
         if provider is None:

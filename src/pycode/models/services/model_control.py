@@ -25,8 +25,8 @@ class ModelControl:
         self,
         catalog: ModelCatalog,
         projector: Projector,
-        store: "SqliteSessionStore | None" = None,
-        events: EventStream | None = None,
+        store: "SqliteSessionStore | None",
+        events: EventStream,
     ) -> None:
         self._catalog = catalog
         self._projector = projector
@@ -62,33 +62,12 @@ class ModelControl:
         selected = model_selection(configured)
         snapshot = await self._store.snapshot()
         path = SessionTree(snapshot.index).path(snapshot.leaf_id)
-        recorded_hash = None
-        for previous in reversed(path):
-            if (
-                previous.type == "model_change"
-                and previous.selection is not None
-                and previous.selection.provider == provider
-            ):
-                recorded_hash = previous.data.get("provider_hash")
-                break
-        if await self.current() != selected or recorded_hash != self._catalog.provider_hash(
-            provider
-        ):
+        if await self.current() != selected:
             had_level = any(item.type == "thinking_level_change" for item in path)
-            entry = await self._store.append_entry(
-                EntryDraft(
-                    "model_change",
-                    selection=selected,
-                    data={
-                        "catalog_hash": self._catalog.snapshot().config_hash,
-                        "provider_hash": self._catalog.provider_hash(provider),
-                    },
-                )
+            entry = await self._store.append_entry(EntryDraft("model_change", selection=selected))
+            await self._events.emit(
+                "model_change", {"entry_id": entry.id, "selection": plain_data(selected)}
             )
-            if self._events is not None:
-                await self._events.emit(
-                    "model_change", {"entry_id": entry.id, "selection": plain_data(selected)}
-                )
             if had_level:
                 await self._store.append_entry(
                     EntryDraft("thinking_level_change", data={"thinking": selected.thinking})
@@ -102,26 +81,6 @@ class ModelControl:
                 raise ModelError("model_not_selected", "Choose a provider and model before running")
             return self._catalog.resolve(default.name, default.model_id)
         configured = self._catalog.resolve(selected.provider, selected.model_id)
-        store = self._store
-        if store is None:
-            raise ModelError("session_required", "Restoring a selected model requires its session")
-        snapshot = await store.snapshot()
-        path = SessionTree(snapshot.index).path(snapshot.leaf_id)
-        for entry in reversed(path):
-            if (
-                entry.type == "model_change"
-                and entry.selection is not None
-                and entry.selection.provider == selected.provider
-            ):
-                fingerprint = entry.data.get("provider_hash")
-                if fingerprint is not None and fingerprint != self._catalog.provider_hash(
-                    selected.provider
-                ):
-                    raise ModelError(
-                        "provider_configuration_changed",
-                        "Provider configuration changed; select a model again",
-                    )
-                break
         if configured.implementation != selected.implementation:
             raise ModelError(
                 "provider_configuration_changed",

@@ -131,8 +131,8 @@ class ModelsModule:
     def control(
         catalog: ModelCatalog,
         projector: Projector,
-        store: "SqliteSessionStore | None" = None,
-        events: EventStream | None = None,
+        store: "SqliteSessionStore | None",
+        events: EventStream,
     ) -> ModelControl:
         return ModelControl(catalog, projector, store, events)
 

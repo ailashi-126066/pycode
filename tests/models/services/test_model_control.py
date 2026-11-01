@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 
 from pycode.context.services.context_projector import ContextProjector
-from pycode.kernel import EntryDraft, Message, ModelError, SessionHeader
+from pycode.kernel import EntryDraft, EventStream, Message, ModelError, SessionHeader
 from pycode.models.adapters.storage.catalog import FileCatalogStore
 from pycode.models.services.model_catalog import ModelCatalog
 from pycode.models.services.model_control import ModelControl
@@ -13,11 +13,20 @@ from tests.models.services.test_model_catalog import FixedDirectory
 from tests.support.requests import TestTiming
 
 
-def controller(tmp_path, providers, store):
+class Recorder:
+    def __init__(self):
+        self.events = []
+
+    async def on_event(self, event):
+        self.events.append(event)
+
+
+def controller(tmp_path, providers, store, recorder=None):
     catalog = ModelCatalog(
         providers, FixedDirectory({}), FileCatalogStore(tmp_path / "catalog.json"), TestTiming()
     )
-    return ModelControl(catalog, ContextProjector(), store)
+    events = EventStream("s1", "r1", (recorder or Recorder(),))
+    return ModelControl(catalog, ContextProjector(), store, events)
 
 
 def store_for(tmp_path):
@@ -66,16 +75,21 @@ async def test_reselecting_identical_model_does_not_append_duplicate_change(tmp_
     provider = configuration("openai")
     store = store_for(tmp_path)
     await store.append_message(Message("u1", "user", "hello"))
-    control = controller(tmp_path, (provider,), store)
+    recorder = Recorder()
+    control = controller(tmp_path, (provider,), store, recorder)
     await control.list_models(refresh=False)
     await control.select(provider.name, provider.model_id)
     before = await store.snapshot()
     await control.select(provider.name, provider.model_id)
     assert await store.snapshot() == before
+    [event] = recorder.events
+    assert event.kind == "model_change"
+    assert event.data["entry_id"] == before.leaf_id
+    assert event.data["selection"]["model_id"] == provider.model_id
     await store.aclose()
 
 
-async def test_provider_configuration_change_requires_explicit_selection(tmp_path):
+async def test_restore_uses_the_current_provider_configuration(tmp_path):
     provider = configuration("openai")
     store = store_for(tmp_path)
     await store.append_message(Message("u1", "user", "hello"))
@@ -85,10 +99,6 @@ async def test_provider_configuration_change_requires_explicit_selection(tmp_pat
     changed = replace(provider, base_url="https://other.invalid")
     other = controller(tmp_path, (changed,), store)
     await other.list_models(refresh=False)
-    with pytest.raises(ModelError) as error:
-        await other.restore()
-    assert error.value.code == "provider_configuration_changed"
-    await other.select(changed.name, changed.model_id)
     assert (await other.restore()).base_url == changed.base_url
     await store.aclose()
 
