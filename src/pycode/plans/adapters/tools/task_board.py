@@ -110,7 +110,8 @@ class TaskUpdate:
         "(note the question for the user; the run ends), abandoned, active (resume). "
         "evidence_refs are tool call ids or message ids recorded after the step started; cited "
         "tool calls must have succeeded. An acceptance item with a check is proven by running "
-        "that exact command with bash after the step started; the system finds the run.",
+        "that exact command with bash after the step started; the system finds the run. "
+        "decision records a choice worth keeping across compaction (the last 10 are kept).",
         {
             "type": "object",
             "properties": {
@@ -122,6 +123,7 @@ class TaskUpdate:
                 "note": {"type": "string"},
                 "evidence_refs": {"type": "array", "items": TEXT},
                 "expected_revision": {"type": "integer", "minimum": 0},
+                "decision": TEXT,
             },
             "required": ["target", "status"],
             "additionalProperties": False,
@@ -164,5 +166,6 @@ class TaskUpdate:
             evidence=tuple(branch[ref] for ref in refs),
             call_id=context.call_id,
             branch=branch,
+            decision=arguments.get("decision", ""),
         )
         return board_result(context, self.spec.name, updated, f"{target} is now {status}.")

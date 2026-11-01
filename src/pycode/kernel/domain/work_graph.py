@@ -183,8 +183,6 @@ def validate(board: Board) -> None:
         ) from error
     if sum(step.status == "in_progress" for step in board.steps) > 1:
         raise DomainError("invalid_board", "Only one step can be in_progress")
-    if len(board.decisions) > MAX_DECISIONS:
-        raise DomainError("invalid_board", f"At most {MAX_DECISIONS} decisions are kept")
 
 
 def apply(
@@ -196,11 +194,13 @@ def apply(
     evidence: tuple[Evidence, ...] = (),
     call_id: str = "",
     branch: Mapping[str, Evidence] = MappingProxyType({}),
+    decision: str = "",
 ) -> Board:
     """Move the board (target="board") or one step; the result is validated.
 
     call_id is the TaskUpdate call making the change; branch indexes the current branch's
     records by id, so step completion can check where and how its evidence was produced.
+    A decision is appended to the board; only the last MAX_DECISIONS are kept.
     """
     if target == "board":
         status = BOARD_TRANSITIONS.apply(
@@ -223,7 +223,8 @@ def apply(
         updated = replace(
             board, steps=tuple(moved if item.id == target else item for item in board.steps)
         )
-    updated = replace(updated, revision=board.revision + 1)
+    decisions = (*board.decisions, decision)[-MAX_DECISIONS:] if decision else board.decisions
+    updated = replace(updated, revision=board.revision + 1, decisions=decisions)
     validate(updated)
     return updated
 

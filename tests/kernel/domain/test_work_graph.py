@@ -18,7 +18,7 @@ def error_code(call):
 LINE = board(Step("a", "A", ()), Step("b", "B", ("a",)), Step("c", "C", ("b",)))
 
 
-def test_cycle_dangling_duplicate_and_decisions_are_invalid():
+def test_cycle_dangling_and_duplicate_are_invalid():
     assert (
         error_code(
             lambda: work_graph.validate(board(Step("a", "A", ("b",)), Step("b", "B", ("a",))))
@@ -30,8 +30,15 @@ def test_cycle_dangling_duplicate_and_decisions_are_invalid():
         error_code(lambda: work_graph.validate(board(Step("a", "A", ()), Step("a", "A", ()))))
         == "invalid_board"
     )
-    too_many = replace(LINE, decisions=tuple(str(i) for i in range(11)))
-    assert error_code(lambda: work_graph.validate(too_many)) == "invalid_board"
+
+
+def test_a_decision_is_appended_and_only_the_last_ten_are_kept():
+    decided = LINE
+    for index in range(12):
+        decided = work_graph.apply(decided, "a", "start", decision=f"d{index}")
+        decided = work_graph.apply(decided, "a", "fail", note="retry")
+        decided = work_graph.apply(decided, "a", "retry")
+    assert decided.decisions == tuple(f"d{index}" for index in range(2, 12))
 
 
 def test_step_cannot_start_before_dependencies_complete():

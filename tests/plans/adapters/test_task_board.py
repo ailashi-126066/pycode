@@ -85,7 +85,7 @@ async def test_board_exits_completed_and_blocked(tmp_path, monkeypatch):
     replies = [
         write(),
         update("a", "s1", "in_progress"),
-        update("b", "s1", "completed"),
+        update("b", "s1", "completed", decision="keep the session cookie"),
         update("c", "s2", "in_progress"),
         update("d", "s2", "completed"),
         update("e", "board", "completed"),
@@ -102,6 +102,7 @@ async def test_board_exits_completed_and_blocked(tmp_path, monkeypatch):
             saved = await results(session)
             # Completion needs one evidence ref per done_when item.
             assert saved["e"].error_code == "invalid_transition"
+            assert saved["b"].details["task_board"]["decisions"] == ("keep the session cookie",)
             assert saved["f"].details["task_board"]["status"] == "completed"
             assert len(requests) == 8
             assert HEADER not in str(requests[7]["body"]["messages"])
