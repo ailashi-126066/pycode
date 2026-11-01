@@ -60,15 +60,17 @@ class Read:
         start = arguments.get("offset", 1)
         limit = arguments.get("limit")
         page = await self.backend.aread(
-            resolve_to_cwd(self.backend, path), start - 1, limit or MAX_LINES
+            # One line past the limit lets truncation see that more lines follow.
+            resolve_to_cwd(self.backend, path),
+            start - 1,
+            limit or MAX_LINES + 1,
         )
         if page.error:
             raise backend_error(page.error)
         assert page.file_data is not None
         content = page.file_data["content"]
         total = f" of {page.total_lines}" if page.total_lines is not None else ""
-        # Leave room for the notice inside the output store's inline limits.
-        truncation = truncate(content, "head", max_lines=MAX_LINES - 2, max_bytes=MAX_BYTES - 512)
+        truncation = truncate(content, "head")
         details = {}
         if truncation.truncated:
             details["truncation"] = {
@@ -80,7 +82,7 @@ class Read:
                 f"[Line {start} is {size}, exceeds {format_size(MAX_BYTES)} limit. "
                 f"Use bash: sed -n '{start}p' {path} | head -c {MAX_BYTES}]"
             )
-        elif truncation.truncated or (limit is None and page.next_offset is not None):
+        elif truncation.truncated:
             end = start + truncation.output_lines - 1
             limited = (
                 f" ({format_size(MAX_BYTES)} limit)" if truncation.truncated_by == "bytes" else ""

@@ -9,9 +9,7 @@ from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel.domain.messages import Message
 from pycode.models.domain.models import ProviderConfig
-from pycode.session.adapters.storage.header_reader import FileSessionHeaderReader
-from pycode.session.adapters.storage.layout import StorageLayout
-from pycode.tools.adapters.output_store import FileToolOutputStore
+from pycode.tools.adapters.output_store import TempOutputStore
 from tests.support.recovery_tools import WritingEcho
 
 
@@ -66,14 +64,7 @@ class CrashTool(WritingEcho):
         if self._boundary == "effect_written":
             os._exit(73)
         if self._boundary in {"output_published", "stream_output_published"}:
-            workspace = Path(context.workspace)
-            outputs = FileToolOutputStore(
-                StorageLayout(workspace, workspace / "data").sessions,
-                context.session_id,
-                header_reader=FileSessionHeaderReader(
-                    StorageLayout(workspace, workspace / "data").sessions
-                ),
-            )
+            outputs = TempOutputStore(context.session_id)
             if self._boundary == "output_published":
                 await outputs.prepare(context, result, "head")
             else:

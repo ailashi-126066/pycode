@@ -5,14 +5,13 @@ Recovery only writes records: this process never emitted a start for those calls
 
 from dataclasses import replace
 
-from pycode.kernel import EntryDraft, Message, SessionTree, ToolContext
+from pycode.kernel import EntryDraft, Message, SessionTree
 from pycode.session.domain.inputs import pending_input_entries
 from pycode.tools import abandoned_result, interrupted_result
 
 
 async def recover_conversation(
     store,
-    outputs=None,
     *,
     reason="process_exit",
     outcome="interrupted",
@@ -65,40 +64,22 @@ async def recover_conversation(
             # Continuing a run reruns calls that never started and replay-safe calls.
             if started_only and replay in {None, "safe"}:
                 continue
-            context = ToolContext(
-                snapshot.header.session_id,
-                run_id,
-                operation_id,
-                snapshot.header.workspace,
-                call.id,
-                call.name,
-            )
             if operation_id in started_operations:
-                output_id = (
-                    await outputs.interrupted_reference(context) if outputs is not None else None
-                )
                 result = interrupted_result(
                     call, "the previous process ended without a persistent result"
                 )
-                details = {"output_recovered": bool(output_id)}
             else:
-                output_id = None
                 result = abandoned_result(call)
-                details = result.details
             result = replace(
                 result,
                 session_id=snapshot.header.session_id,
                 run_id=run_id,
                 operation_id=operation_id,
-                output_id=output_id,
-                details={**details, "source_assistant_id": message.id},
+                details={**result.details, "source_assistant_id": message.id},
             )
-            result_entry_id = await store.append_message(
+            await store.append_message(
                 Message(f"interrupted:{message.id}:{call.id}", "tool_result", tool_result=result)
             )
-            if output_id is not None:
-                assert outputs is not None
-                await outputs.bind(output_id, result_entry_id)
             paired.add(key)
     if not finish_runs:
         return

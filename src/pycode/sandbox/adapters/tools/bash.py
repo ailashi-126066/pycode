@@ -47,8 +47,8 @@ class Bash:
         description=(
             "Execute a bash command in the current working directory. Returns stdout and stderr. "
             "Output is truncated to last 2000 lines or 50KB (whichever is hit first). If "
-            "truncated, the full output is saved; read it with ReadToolResult. Optionally "
-            "provide a timeout in seconds."
+            "truncated, full output is saved to a temp file. Optionally provide a timeout in "
+            "seconds."
         ),
         category="command",
         input_schema={

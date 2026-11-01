@@ -69,7 +69,7 @@ def test_latest_edit_wins_without_rewriting_raw_message_or_usage():
 
 def test_tool_replacement_preserves_pairing_error_and_output_reference():
     call = Message("m1", "assistant", content=(ToolCall("call-1", "Read", {"path": "file"}),))
-    result = ToolResult("call-1", "Read", "raw output", is_error=True, output_id="output-1")
+    result = ToolResult("call-1", "Read", "raw output", is_error=True)
     entries = [
         SessionEntry("1", None, "message", "t", message=call),
         SessionEntry(
@@ -83,7 +83,6 @@ def test_tool_replacement_preserves_pairing_error_and_output_reference():
     assert projected.messages[1].tool_result.text == "omitted"
     assert projected.messages[1].tool_result.call_id == "call-1"
     assert projected.messages[1].tool_result.is_error
-    assert projected.messages[1].tool_result.output_id == "output-1"
     assert entries[1].message.tool_result.text == "raw output"
 
 

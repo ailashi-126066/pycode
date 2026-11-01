@@ -12,7 +12,6 @@ from pycode.kernel import (
     ArgumentValidator,
     EventSink,
     ExecutableTool,
-    HistoryJournal,
     Message,
     ModelSelection,
     ToolCall,
@@ -22,7 +21,6 @@ from pycode.kernel import (
 from pycode.plans import PlanService
 from pycode.sandbox import SandboxBackend, SandboxSettings
 from pycode.snapshot import SnapshotStore
-from pycode.tools.adapters.artifacts_backend import ToolArtifactsBackend
 from pycode.tools.adapters.ask_user import AskUserQuestion
 from pycode.tools.adapters.backend import PycodeBackend
 from pycode.tools.adapters.builtin.edit import Edit
@@ -33,16 +31,15 @@ from pycode.tools.adapters.builtin.read import Read
 from pycode.tools.adapters.builtin.write import Write
 from pycode.tools.adapters.discovery import ToolDiscovery
 from pycode.tools.adapters.framework_tool import make_framework_tool
-from pycode.tools.adapters.output_store import FileToolOutputStore
+from pycode.tools.adapters.output_store import TempOutputStore
 from pycode.tools.adapters.permissions import InterruptToolGate, TeamToolGate
 from pycode.tools.adapters.questions import InterruptQuestionPrompt
-from pycode.tools.adapters.read_tool_result import ReadToolResult
 from pycode.tools.adapters.schema import JsonSchemaValidator
 from pycode.tools.adapters.settlement import SettlementContext, ToolSettlementMiddleware
 from pycode.tools.adapters.tool_errors import execute_tool_errors
 from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
 from pycode.tools.ports.hooks import ToolHooks
-from pycode.tools.ports.outputs import SessionHeaderReader, ToolOutputStore
+from pycode.tools.ports.outputs import ToolOutputStore
 from pycode.tools.ports.publication import MessagePublisher, ToolLifecycle
 from pycode.tools.ports.questions import QuestionPrompt
 from pycode.tools.ports.tools import ToolGate
@@ -83,14 +80,8 @@ class ToolsModule:
         return ToolRegistry(self._validator, tools)
 
     @staticmethod
-    def output_store(
-        sessions: Path,
-        session_id: str,
-        journal: HistoryJournal | None = None,
-        *,
-        header_reader: SessionHeaderReader | None = None,
-    ) -> FileToolOutputStore:
-        return FileToolOutputStore(sessions, session_id, journal, header_reader=header_reader)
+    def output_store(session_id: str) -> TempOutputStore:
+        return TempOutputStore(session_id)
 
     @staticmethod
     def backend(
@@ -123,10 +114,6 @@ class ToolsModule:
         return PycodeBackend(root, read_only=True, empty_missing_root=True)
 
     @staticmethod
-    def artifacts(outputs: ToolOutputStore, history: HistoryJournal) -> BackendProtocol:
-        return ToolArtifactsBackend(outputs, history)
-
-    @staticmethod
     def composite(routes: Mapping[str, object]) -> CompositeBackend:
         # Assembly carries opaque SDK handles. Validate them here, where the
         # framework types belong, rather than importing the SDK into app inputs.
@@ -154,13 +141,8 @@ class ToolsModule:
         return InterruptQuestionPrompt()
 
     @staticmethod
-    def default_tools(
-        outputs: ToolOutputStore, question_prompt: QuestionPrompt | None = None
-    ) -> tuple[ExecutableTool, ...]:
-        tools: list[ExecutableTool] = [ReadToolResult(outputs)]
-        if question_prompt is not None:
-            tools.append(AskUserQuestion(question_prompt))
-        return tuple(tools)
+    def default_tools(question_prompt: QuestionPrompt | None = None) -> tuple[ExecutableTool, ...]:
+        return (AskUserQuestion(question_prompt),) if question_prompt is not None else ()
 
     @staticmethod
     def gate(

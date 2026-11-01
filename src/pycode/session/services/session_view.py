@@ -6,7 +6,6 @@ from pycode.kernel import (
     EventJournal,
     EventStream,
     SessionTree,
-    StorageError,
     freeze_value,
     plain_data,
 )
@@ -29,7 +28,6 @@ class SessionView:
         *,
         owns_history=False,
         context_settings=None,
-        outputs=None,
     ):
         self._history = history
         self._projector = projector
@@ -39,7 +37,6 @@ class SessionView:
         self._owns_history = owns_history
         self._cleanup = SessionCleanup()
         self._context_settings = context_settings
-        self._outputs = outputs
         self._entry_views = {}
         self._message_views = {}
 
@@ -160,12 +157,6 @@ class SessionView:
 
     async def request_records(self):
         return await self._usage.request_records()
-
-    async def read_tool_result(self, output_id, *, offset=1, limit=2000, byte_offset=0):
-        if self._outputs is None:
-            raise StorageError("output_unavailable", "This view has no output store")
-        result = await self._outputs.read(output_id, offset, limit, 50 * 1024, byte_offset)
-        return plain_data(result)
 
     async def publish_result(self, result):
         snapshot = await self._history.snapshot()

@@ -122,7 +122,6 @@ class FileStorageObjects:
                 if not session.is_dir() or session.is_symlink():
                     continue
                 self.inventory_session_log(project, session, workspaces, scan)
-                self.inventory_outputs(project, session, scan)
         self.inventory_summaries(project, scan)
         self.inventory_snapshots(project, scan)
         self.inventory_restore_references(project, scan)
@@ -161,49 +160,6 @@ class FileStorageObjects:
                             "entry_id": entry.id,
                             "timestamp": entry.timestamp,
                         }
-
-    def inventory_outputs(self, project, session, scan):
-        results = session / "tool-results"
-        if results.exists():
-            for path in sorted(results.glob("output_*.json")):
-                if path.name.endswith(".artifact.json"):
-                    continue
-                data = self.read_json(path)
-                output_id = data["output_id"]
-                if (
-                    not re.fullmatch(r"output_[a-f0-9]{32}", output_id)
-                    or path.stem != output_id
-                    or data["session_id"] != session.name
-                ):
-                    raise StorageError(
-                        "gc_output_identity_conflict",
-                        "Output object identity cannot be verified",
-                    )
-                identifier = f"output:{project.name}:{session.name}:{output_id}"
-                files = [
-                    path,
-                    results / (output_id + ".txt"),
-                    results / (output_id + ".artifact.json"),
-                ]
-                item = self.descriptor(
-                    identifier,
-                    "output",
-                    files,
-                    protected=data.get("source_entry_id") is None
-                    or data.get("status") not in {"completed", "interrupted"},
-                    metadata={"project_id": project.name},
-                )
-                scan.objects[identifier] = item
-                scan.aliases.setdefault(output_id, []).append(identifier)
-            for partial in results.glob("*.partial"):
-                identifier = "partial:" + hashlib.sha256(str(partial).encode()).hexdigest()
-                scan.objects[identifier] = self.descriptor(
-                    identifier,
-                    "partial",
-                    [partial],
-                    protected=True,
-                    metadata={"project_id": project.name},
-                )
 
     def inventory_summaries(self, project, scan):
         summaries = project / "summaries"
@@ -500,9 +456,7 @@ class FileStorageObjects:
                         target = record.parent / (str(index) + path.suffix)
                         moved.append({"original": str(path), "quarantine": str(target)})
                     metadata = dict(item.metadata)
-                    if item.kind == "output":
-                        metadata["alias"] = item.object_id.rsplit(":", 1)[1]
-                    elif item.kind in {"summary", "snapshot", "plan"}:
+                    if item.kind in {"summary", "snapshot", "plan"}:
                         metadata["alias"] = item.object_id.rsplit(":", 1)[1]
                     data = {
                         "object_id": item.object_id,

@@ -113,7 +113,7 @@ class ConfiguredRuntimeLauncher:
     async def cancel_wait(self, run_id):
         container = self._active_container
         if container is None or container.context.run_id != run_id:
-            return None
+            return
         self._active_container = None
         try:
             if container.context.summary is not None:
@@ -121,7 +121,6 @@ class ConfiguredRuntimeLauncher:
         finally:
             container.runtime.discard()
             await container.aclose()
-        return container.context.outputs
 
     async def execute(
         self, provider, store, run_id, *, inputs=(), history=(), resume=False, answers=None

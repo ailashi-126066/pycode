@@ -439,9 +439,7 @@ class PyApp(App):
             if message["tool_result"] is not None:
                 await transcript.mount(
                     Collapsible(
-                        ToolOutputCard(
-                            entry_id, message["tool_result"], self.active_session.read_tool_result
-                        ),
+                        ToolOutputCard(entry_id, message["tool_result"]),
                         title=tool_title(message["tool_result"]),
                         collapsed=True,
                         classes="tool-block",

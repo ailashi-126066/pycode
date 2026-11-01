@@ -15,9 +15,7 @@ async def test_claimed_pass_must_match_actual_result_and_lead_accepts(tmp_path):
         task = await team.board.create_task("check", acceptance=["tests"])
         a = await spawn(team, task_id=task["task_id"])
         child = team.sessions[a["agent_id"]]
-        result = ToolResult(
-            "call", "Bash", "failed", is_error=True, exit_code=1, output_id="output-evidence"
-        )
+        result = ToolResult("call", "Bash", "failed", is_error=True, exit_code=1)
 
         async def evidence():
             return SimpleNamespace(
@@ -27,7 +25,7 @@ async def test_claimed_pass_must_match_actual_result_and_lead_accepts(tmp_path):
             )
 
         child.task_evidence = evidence
-        check = {"name": "tests", "status": "passed", "output_id": "output-evidence"}
+        check = {"name": "tests", "status": "passed", "call_id": "call"}
         with pytest.raises(ToolError, match="saved execution result"):
             await team.board.update_task(
                 task["task_id"],
@@ -37,7 +35,7 @@ async def test_claimed_pass_must_match_actual_result_and_lead_accepts(tmp_path):
                 result="all passed",
                 checks=[check],
             )
-        result = ToolResult("call", "Bash", "passed", exit_code=0, output_id="output-evidence")
+        result = ToolResult("call", "Bash", "passed", exit_code=0)
         await team.board.update_task(
             task["task_id"],
             actor=a["agent_id"],

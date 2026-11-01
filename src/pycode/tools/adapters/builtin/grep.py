@@ -101,9 +101,7 @@ class Grep:
             text, clipped = truncate_line(match["text"])
             lines_truncated = lines_truncated or clipped
             lines.append(f"{relative_to(match['path'], base)}:{match['line']}: {text}")
-        truncation = truncate(
-            "\n".join(lines), "head", max_lines=len(lines), max_bytes=MAX_BYTES - 512
-        )
+        truncation = truncate("\n".join(lines), "head", max_lines=len(lines), max_bytes=MAX_BYTES)
         details = {}
         notices = []
         if len(matches) > limit:

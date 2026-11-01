@@ -53,7 +53,6 @@ class AgentSession:
         plans=None,
         storage=None,
         memory=None,
-        recovery_outputs=None,
         team=None,
     ) -> None:
         self._store = store
@@ -73,7 +72,6 @@ class AgentSession:
         self._plans = plans
         self._storage = storage
         self._memory = memory
-        self._recovery_outputs = recovery_outputs
         self._team = team
         self._closing = False
         self._cleanup = SessionCleanup()
@@ -136,13 +134,8 @@ class AgentSession:
                 start = self.pending_run(await self._store.snapshot())
                 if start is None:
                     return False
-                outputs = await self._launcher.cancel_wait(self.require_run_id(start))
-                await recover_conversation(
-                    self._store,
-                    outputs or self._recovery_outputs,
-                    reason="user_cancel",
-                    outcome="aborted",
-                )
+                await self._launcher.cancel_wait(self.require_run_id(start))
+                await recover_conversation(self._store, reason="user_cancel", outcome="aborted")
                 if self._plans is not None:
                     await self._plans.finish(self.require_run_id(start))
                 return True
@@ -392,18 +385,11 @@ class AgentSession:
             result = await self._launcher.run(provider, self._store, (message,), history)
         except asyncio.CancelledError:
             if not self._handoff_requested:
-                await recover_conversation(
-                    self._store, self._recovery_outputs, reason="user_cancel", outcome="aborted"
-                )
+                await recover_conversation(self._store, reason="user_cancel", outcome="aborted")
             raise
         except DomainError:
             try:
-                await recover_conversation(
-                    self._store,
-                    self._recovery_outputs,
-                    reason="run_error",
-                    outcome="error",
-                )
+                await recover_conversation(self._store, reason="run_error", outcome="error")
             except StorageError:
                 logging.getLogger("pycode.session").exception(
                     "Failed-run recovery was not saved; reopen the session to reconcile"
@@ -445,9 +431,7 @@ class AgentSession:
             )
         except asyncio.CancelledError:
             if not self._handoff_requested:
-                await recover_conversation(
-                    self._store, self._recovery_outputs, reason="user_cancel", outcome="aborted"
-                )
+                await recover_conversation(self._store, reason="user_cancel", outcome="aborted")
             raise
         return await self.settle_run(start, result)
 
@@ -615,13 +599,6 @@ class AgentSession:
         if self._view is None:
             raise StorageError("view_unavailable", "This session has no request view")
         return await self._view.request_records()
-
-    async def read_tool_result(self, output_id, *, offset=1, limit=2000, byte_offset=0):
-        if self._view is None:
-            raise StorageError("view_unavailable", "This session has no view service")
-        return await self._view.read_tool_result(
-            output_id, offset=offset, limit=limit, byte_offset=byte_offset
-        )
 
     async def memory_list(self):
         if self._memory is None:

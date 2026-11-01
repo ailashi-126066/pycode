@@ -142,8 +142,6 @@ class ModelEventCallbacks(AsyncCallbackHandler):
 async def save_message(context, message):
     entry_id = await context.journal.append_message(message)
     result = message.tool_result
-    if result is not None and result.output_id and context.outputs is not None:
-        await context.outputs.bind(result.output_id, entry_id)
     if (
         result is not None
         and result.details.get("file_snapshot")

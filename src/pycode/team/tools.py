@@ -21,14 +21,14 @@ _CHECKS = {
         "properties": {
             "name": {"type": "string", "maxLength": 500},
             "status": {"enum": ["passed", "failed", "not_run"]},
-            "output_id": {"type": "string"},
+            "call_id": {"type": "string"},
         },
         "required": ["name", "status"],
         "additionalProperties": False,
         "allOf": [
             {
                 "if": {"properties": {"status": {"enum": ["passed", "failed"]}}},
-                "then": {"required": ["output_id"]},
+                "then": {"required": ["call_id"]},
             }
         ],
     },

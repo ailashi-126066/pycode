@@ -66,9 +66,7 @@ class Find:
         if not paths:
             return ToolResult(context.call_id, self.spec.name, "No files found matching pattern")
         shown = paths[:limit]
-        truncation = truncate(
-            "\n".join(shown), "head", max_lines=len(shown), max_bytes=MAX_BYTES - 512
-        )
+        truncation = truncate("\n".join(shown), "head", max_lines=len(shown), max_bytes=MAX_BYTES)
         details = {}
         notices = []
         if len(paths) > limit:

@@ -61,7 +61,7 @@ async def test_model_loads_instructions_at_next_boundary_and_all_tools_keep_comm
                 for entry in entries
                 if entry["message"] and entry["message"]["role"] == "tool_result"
             ]
-            assert len(results) == 2 and all(item["output_id"] for item in results)
+            assert len(results) == 2
             assert results[1]["error_code"] == "skill_tool_not_allowed"
             assert all(item["operation_id"] and item["run_id"] for item in results)
         finally:
@@ -185,7 +185,7 @@ async def test_model_install_needs_persisted_approval_and_restart_settles_same_o
                 if entry["message"] and entry["message"]["role"] == "tool_result"
             ]
             assert len(results) == 1 and results[0]["is_error"]
-            assert results[0]["operation_id"] == pending["operation_id"] and results[0]["output_id"]
+            assert results[0]["operation_id"] == pending["operation_id"]
             assert results[0]["error_code"] == (
                 "invalid_skill_source" if decision == "approve" else "permission_denied"
             )

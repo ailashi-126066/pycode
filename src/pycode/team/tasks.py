@@ -216,7 +216,7 @@ class TeamManager:
                     "scope": task["scope"],
                     "dependencies": dependencies,
                     "delivery": "提交 submitted，附验证记录引用；由 lead 验收，不自行标记 done。",
-                    "evidence": "list_tasks.evidence 提供本任务 output_id，不要编造。",
+                    "evidence": "list_tasks.evidence 提供本任务工具调用的 call_id，不要编造。",
                 },
                 ensure_ascii=False,
             )

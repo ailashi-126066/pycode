@@ -61,10 +61,9 @@ def serialize_source(source: SummarySource) -> str:
             )
         if message.tool_result is not None:
             result = message.tool_result
-            sections.append(
-                f"[result {result.call_id} output_id={result.output_id}]\n"
-                + model_tool_text(result)
-            )
+            path = result.details.get("full_output_path")
+            full = f" full_output={path}" if path else ""
+            sections.append(f"[result {result.call_id}{full}]\n" + model_tool_text(result))
         for attachment in message.attachments:
             sections.append(
                 f"[attachment {attachment.media_type} reference={attachment.reference}]"

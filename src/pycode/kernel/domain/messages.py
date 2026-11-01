@@ -75,7 +75,6 @@ class ToolResult:
     text: str
     is_error: bool = False
     error_code: str | None = None
-    output_id: str | None = None
     exit_code: int | None = None
     structured_content: dict[str, Any] | None = None
     details: dict[str, Any] = field(default_factory=dict)

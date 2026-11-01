@@ -18,7 +18,6 @@ from pycode.models.module import ModelsModule
 from pycode.session import SessionCatalogWriteGuard
 from pycode.session.module import SessionsModule
 from pycode.skills.module import SkillsSettings
-from pycode.tools.module import ToolsModule
 
 
 def configuration(tmp_path):
@@ -263,26 +262,6 @@ async def test_view_factory_failure_closes_records_before_returning(tmp_path, mo
     with pytest.raises(RuntimeError, match="view construction failed"):
         await application.open_view("view")
     assert closed == [True]
-
-
-async def test_output_factory_fails_before_request_database_is_opened(tmp_path, monkeypatch):
-    config = configuration(tmp_path)
-    selected = replace(default_modules(config), skills=None, mcp=None)
-    store = await selected.sessions.repository().open("view", create=True)
-    await store.append_message(Message("u", "user", "persist view"))
-    await store.aclose()
-    opened = []
-
-    class BrokenTools(ToolsModule):
-        @staticmethod
-        def output_store(*args, **options):
-            raise RuntimeError("output construction failed")
-
-    monkeypatch.setattr(selected.models, "records", lambda: opened.append(True))
-    selected = replace(selected, tools=BrokenTools())
-    with pytest.raises(RuntimeError, match="output construction failed"):
-        await compose_application(config, modules=selected).open_view("view")
-    assert opened == []
 
 
 # This suite tests execution with tool definitions already disclosed.

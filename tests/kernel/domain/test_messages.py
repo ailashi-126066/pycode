@@ -39,12 +39,12 @@ def test_error_result_preserves_call_pairing_and_output_reference():
         is_error=True,
         error_code="command_failed",
         exit_code=1,
-        output_id="output-1",
+        details={"full_output_path": "/tmp/pycode/s/c.log"},
     )
     message = Message(id="result-1", role="tool_result", tool_result=result)
     assert message.tool_result.call_id == "call-1"
     assert message.tool_result.exit_code == 1
-    assert message.tool_result.output_id == "output-1"
+    assert message.tool_result.details["full_output_path"] == "/tmp/pycode/s/c.log"
 
 
 def test_convert_to_llm_turns_custom_roles_into_user_text():

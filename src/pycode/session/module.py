@@ -4,7 +4,6 @@ from copy import copy
 from pathlib import Path
 
 from pycode.kernel import Timing
-from pycode.session.adapters.storage.header_reader import FileSessionHeaderReader
 from pycode.session.adapters.storage.history_backend import ConversationHistoryBackend
 from pycode.session.adapters.storage.layout import StorageLayout
 from pycode.session.adapters.storage.objects import FileStorageObjects
@@ -49,9 +48,6 @@ class SessionsModule:
             self.user_data, self.workspace, owned_session_id=owned_session_id
         )
         return StorageGC(objects, self.repository(), self.timing)
-
-    def header_reader(self):
-        return FileSessionHeaderReader(self.layout.sessions)
 
     def history_backend(self, history):
         return ConversationHistoryBackend(history)

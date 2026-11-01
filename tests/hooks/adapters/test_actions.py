@@ -15,8 +15,7 @@ from pycode.sandbox.adapters.seatbelt import UnavailableSandbox
 from pycode.sandbox.adapters.tools.bash import find_bash
 from pycode.sandbox.adapters.tools.process_runner import run_process
 from pycode.sandbox.domain.sandbox import SandboxSettings
-from pycode.session.adapters.storage.header_reader import FileSessionHeaderReader
-from pycode.tools.adapters.output_store import FileToolOutputStore
+from pycode.tools.adapters.output_store import TempOutputStore
 from pycode.tools.domain.operations import operation_spec_hash
 
 VECTORS = json.loads(
@@ -26,9 +25,7 @@ VECTORS = json.loads(
 
 def actions(tmp_path, environment=None):
     return ConfiguredHookActions(
-        FileToolOutputStore(
-            tmp_path / "outputs", "s1", header_reader=FileSessionHeaderReader(tmp_path / "outputs")
-        ),
+        TempOutputStore("s1"),
         find_bash(),
         UnavailableSandbox(),
         SandboxSettings(),

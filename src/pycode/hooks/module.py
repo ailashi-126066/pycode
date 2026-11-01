@@ -1,8 +1,7 @@
 """Own Hook configuration loading, action implementations and lifecycle engines."""
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Mapping
 from copy import copy
-from dataclasses import dataclass
 from pathlib import Path
 
 from pycode.hooks.actions import ConfiguredHookActions
@@ -13,11 +12,6 @@ from pycode.hooks.types import Hook
 from pycode.kernel import EventSink, HistoryJournal, data_hash, plain_data
 from pycode.kernel.adapters.path_io import owned_io
 from pycode.sandbox import OutputSink, ProcessRunner, SandboxBackend, SandboxSettings
-
-
-@dataclass(frozen=True)
-class _OutputBinding:
-    bind: Callable[[str, str], Awaitable[None]]
 
 
 class HooksModule:
@@ -85,7 +79,6 @@ class HooksModule:
         actions: HookActions,
         events: EventSink,
         *,
-        bind_output: Callable[[str, str], Awaitable[None]],
         executor_factory: HookExecutorFactory,
         plans: HookPlanGuard | None = None,
         read_only: bool = False,
@@ -94,7 +87,6 @@ class HooksModule:
             hooks,
             history,
             actions,
-            _OutputBinding(bind_output),
             events,
             executor_factory=executor_factory,
             plans=plans,

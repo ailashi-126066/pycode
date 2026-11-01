@@ -20,6 +20,14 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+@pytest.fixture(autouse=True)
+def isolated_tempdir(tmp_path_factory, monkeypatch):
+    """Large tool outputs go to $TMPDIR/pycode/<session>/; each test gets its own TMPDIR."""
+    import tempfile
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path_factory.mktemp("tmpdir")))
+
+
 @pytest.fixture
 def disclosed_tools(monkeypatch):
     """Execution-only regressions start with definitions already available.

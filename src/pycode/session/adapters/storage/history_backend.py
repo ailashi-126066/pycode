@@ -59,9 +59,7 @@ class ConversationHistoryBackend(BackendProtocol):
         for line in lines[offset : offset + limit]:
             encoded = (line + "\n").encode()
             if size + len(encoded) > 49500:
-                pieces.append(
-                    "[History range limited; inspect the original session or ReadToolResult.]\n"
-                )
+                pieces.append("[History range limited; inspect the original session.]\n")
                 break
             size += len(encoded)
             pieces.append(line + "\n")

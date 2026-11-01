@@ -33,6 +33,22 @@ async def open_session(config, url, *, create=False):
     )
 
 
+async def test_session_with_configured_hooks_opens_and_closes(tmp_path, monkeypatch):
+    # Regression: the Hook engine was once built with a missing positional argument.
+    monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
+    config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
+    await hook_file(
+        config,
+        [{"id": "rule", "event": "pre_send", "action": {"type": "prompt", "message": "x"}}],
+    )
+    with protocol_server([]) as (url, _):
+        session = await open_session(config, url, create=True)
+        try:
+            assert (await session.inspect())["snapshot"]["header"]["session_id"] == "s1"
+        finally:
+            await session.aclose()
+
+
 async def test_prompt_action_appends_context_and_notification_before_actual_request(
     tmp_path, monkeypatch
 ):

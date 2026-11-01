@@ -62,7 +62,6 @@ class Hooks:
         hooks,
         history,
         actions,
-        outputs,
         events,
         *,
         executor_factory: HookExecutorFactory,
@@ -72,7 +71,6 @@ class Hooks:
         self._hooks = hooks
         self._history = history
         self._actions = actions
-        self._outputs = outputs
         self._events = events
         self._executor = executor_factory(
             tuple(HookActionTool(hook, actions) for hook in hooks),
@@ -167,8 +165,6 @@ class Hooks:
                     operation_id=operation_id,
                 )
             )
-            if result.output_id:
-                await self._outputs.bind(result.output_id, entry.id)
             if result.details.get("file_snapshot"):
                 await self._history.append_entry(
                     EntryDraft(
@@ -210,7 +206,7 @@ class Hooks:
                     "event": context.event_name,
                     "success": not result.is_error,
                     "message": result.text,
-                    "output_id": result.output_id,
+                    "full_output_path": result.details.get("full_output_path"),
                 },
             )
             return result

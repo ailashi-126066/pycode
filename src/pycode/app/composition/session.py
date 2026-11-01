@@ -2,7 +2,7 @@
 
 from functools import partial
 
-from pycode.app.composition.factories import build_memory_service, build_outputs, skill_settings
+from pycode.app.composition.factories import build_memory_service, skill_settings
 from pycode.app.composition.hooks import build_lifecycle_hook_engine
 from pycode.app.composition.run import build_configured_run
 from pycode.app.composition.team import build_team, build_worktree_manager
@@ -59,14 +59,11 @@ async def open_agent_session(
     launcher = None
     try:
         await store.claim_writer()
-        outputs = build_outputs(modules, session_id, store)
         pending_execution = pending_run_entry(await store.snapshot())
         resumable = pending_execution is not None and await store.has_checkpoint(
             pending_execution.run_id
         )
-        await recover_conversation(
-            store, outputs, started_only=resumable, finish_runs=not resumable
-        )
+        await recover_conversation(store, started_only=resumable, finish_runs=not resumable)
         if config.agent_id == "lead" and (modules.sessions.layout.project / "worktrees").exists():
             await build_worktree_manager(config, modules=modules).scan()
         plan_session = modules.plans.session(session_id, store)
@@ -151,7 +148,6 @@ async def open_agent_session(
             plans=plans,
             storage=modules.sessions.storage(owned_session_id=session_id),
             memory=memory,
-            recovery_outputs=outputs,
         )
     except BaseException as error:
         closers = []
@@ -216,9 +212,7 @@ async def build_session_view(
     snapshots = (
         *tools,
         *skill_tools,
-        *modules.tools.default_tools(
-            build_outputs(modules, "view", store), modules.tools.question_prompt()
-        ),
+        *modules.tools.default_tools(modules.tools.question_prompt()),
     )
     specs = (
         *modules.tools.registry(snapshots).list_specs(),
@@ -252,7 +246,6 @@ async def build_session_view(
 
     # Resolve factories that may fail before opening the request database.
     projector = modules.projector()
-    outputs = build_outputs(modules, session_id, store)
     events = event_journal or MemoryEventJournal()
     records = modules.models.records()
     try:
@@ -264,7 +257,6 @@ async def build_session_view(
             consumers,
             owns_history=owns_history,
             context_settings=settings,
-            outputs=outputs,
         )
     except BaseException:
         try:

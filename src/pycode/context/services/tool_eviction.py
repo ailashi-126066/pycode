@@ -39,14 +39,11 @@ class ToolEvictionService:
         applied = []
         for identifier in selection.entry_ids:
             result = by_id[identifier].require_message().require_tool_result()
-            if result.output_id is None:
-                continue
             state = f"; exit code {result.exit_code}" if result.exit_code is not None else ""
             error = "; error result" if result.is_error else ""
-            replacement = (
-                f"Old tool output omitted{state}{error}; full result {result.output_id}. "
-                "Read with ReadToolResult."
-            )
+            path = result.details.get("full_output_path")
+            where = f"; full output: {path}. Read it with read" if path else ""
+            replacement = f"Old tool output omitted{state}{error}{where}."
             await self._store.append_entry(
                 EntryDraft(
                     "context_edit",

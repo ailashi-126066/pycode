@@ -20,9 +20,10 @@ def model_tool_text(result: ToolResult) -> str:
     preview = truncate(result.text, mode, max_lines=MAX_LINES - 2, max_bytes=MAX_BYTES - reserve)
     hint = ""
     if preview.truncated:
+        path = result.details.get("full_output_path")
         hint = (
-            f"\n[Full result {result.output_id}; ReadToolResult.]"
-            if result.output_id
+            f"\n[Full output: {path}]"
+            if path
             else "\n[Model preview limited; original result remains in history.]"
         )
     return preview.text + hint + footer

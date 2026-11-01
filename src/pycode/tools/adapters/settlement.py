@@ -30,7 +30,7 @@ from pycode.kernel import (
     json_dumps,
 )
 from pycode.plans import PlanService
-from pycode.tools import ToolExecutor, ToolOutputStore, ToolRegistry
+from pycode.tools import ToolExecutor, ToolRegistry
 from pycode.tools.adapters.framework_tool import make_framework_tool
 from pycode.tools.adapters.state import ToolSettlementState
 from pycode.tools.domain.execution import batch_execution_mode
@@ -82,7 +82,6 @@ class SettlementContext(Protocol):
     model_tools: tuple[ToolSpec, ...]
     disclosed_tool_names: tuple[str, ...] | None
     turn_end_sent: bool
-    outputs: ToolOutputStore | None
     plans: PlanService | None
     team: SettlementMailbox | None
     workspace_files: WorkspaceTools | None
@@ -353,15 +352,6 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             operation_id=tool_context.operation_id,
             details={**result.details, "source_assistant_id": context.assistant.id},
         )
-        if context.outputs is not None and result.output_id is None:
-            # Pre-execution rejections have the same durable output contract as
-            # executor results; neither the model nor the UI gets a second fact.
-            result = await context.outputs.prepare(tool_context, result, "head")
-            await context.events.emit(
-                "tool_output_ready",
-                {"call_id": result.call_id, "name": result.name, "output_id": result.output_id},
-                operation_id=tool_context.operation_id,
-            )
         if context.workspace_files is not None:
             result = replace(
                 result,

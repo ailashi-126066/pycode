@@ -629,7 +629,7 @@ class AgentTeam:
             execution.heartbeat()
         if steps != record["active_steps"] or phase != record["phase"]:
             execution.activity.set()
-        if kind == "tool_execution_end" and data.get("output_id"):
+        if kind == "tool_execution_end":
             source = None
             if operation in execution.source_versions:
                 before = execution.source_versions.pop(operation)
@@ -639,7 +639,7 @@ class AgentTeam:
                 task = self.board.records[record["task_id"]]
                 evidence = {
                     **task["evidence"],
-                    data["output_id"]: {
+                    data["call_id"]: {
                         "name": data["name"],
                         "source_tree": source,
                         "passed": not data["is_error"] and data.get("exit_code") in {None, 0},
@@ -786,11 +786,9 @@ class AgentTeam:
             )
         snapshot = await self.children.evidence(owner)
         outputs = {
-            entry.message.tool_result.output_id: entry.message.tool_result
+            entry.message.tool_result.call_id: entry.message.tool_result
             for entry in snapshot.entries
-            if entry.message is not None
-            and entry.message.tool_result is not None
-            and entry.message.tool_result.output_id
+            if entry.message is not None and entry.message.tool_result is not None
         }
         files = ()
         if owner["worktree_id"]:
@@ -814,7 +812,7 @@ class AgentTeam:
             names.add(check["name"])
             if check["status"] == "not_run":
                 continue
-            result = outputs.get(check["output_id"])
+            result = outputs.get(check["call_id"])
             if result is None or (check["status"] == "passed") != (
                 not result.is_error and result.exit_code in {None, 0}
             ):
@@ -822,7 +820,7 @@ class AgentTeam:
                     "invalid_evidence", "Check status must match its saved execution result"
                 )
             if owner["worktree_id"]:
-                evidence = task["evidence"].get(check["output_id"])
+                evidence = task["evidence"].get(check["call_id"])
                 if evidence is None or evidence["source_tree"] != task["source_fingerprint"]:
                     raise ToolError(
                         "evidence_stale", "Verification must refer to the submitted code tree"

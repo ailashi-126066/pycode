@@ -69,7 +69,7 @@ async def test_real_mcp_tool_through_native_sdk_model_and_shared_executor(
                 if entry["message"] and entry["message"]["role"] == "tool_result"
             ]
             assert len(outputs) == 2 and outputs[-1]["text"] == "echo:wire"
-            assert outputs[-1]["name"] == name and outputs[-1]["output_id"]
+            assert outputs[-1]["name"] == name
             report = state["context_usage"]
             assert report["source"] == "provider_usage" and report["tokens"] == 25
         finally:

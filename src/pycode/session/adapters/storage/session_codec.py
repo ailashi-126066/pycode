@@ -87,8 +87,12 @@ def upgrade_entry(payload: dict) -> dict:
             message.update(stop_reason="error", error="provider_content_filter")
         if message["tool_result"] is not None:
             message["tool_result"].pop("terminate")
+    # 11.1 section 31: output_id gave way to details["full_output_path"].
+    if isinstance(message, dict) and message["tool_result"] is not None:
+        message["tool_result"].pop("output_id", None)
     if payload["type"] == "hook_result":
         payload["data"]["result"].pop("terminate", None)
+        payload["data"]["result"].pop("output_id", None)
     return payload
 
 

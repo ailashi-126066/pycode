@@ -198,7 +198,7 @@
     },
     {
       "port": "pycode.sandbox.ports.output.OutputSink",
-      "implementation": "pycode.tools.adapters.output_store.FileToolOutputStore",
+      "implementation": "pycode.tools.adapters.output_store.TempOutputStore",
       "kind": "class"
     },
     {
@@ -298,12 +298,7 @@
     },
     {
       "port": "pycode.tools.ports.outputs.ToolOutputStore",
-      "implementation": "pycode.tools.adapters.output_store.FileToolOutputStore",
-      "kind": "class"
-    },
-    {
-      "port": "pycode.tools.ports.outputs.SessionHeaderReader",
-      "implementation": "pycode.session.adapters.storage.header_reader.FileSessionHeaderReader",
+      "implementation": "pycode.tools.adapters.output_store.TempOutputStore",
       "kind": "class"
     },
     {

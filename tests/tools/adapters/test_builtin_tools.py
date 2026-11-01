@@ -12,7 +12,7 @@ from pycode.tools.adapters.builtin.grep import Grep
 from pycode.tools.adapters.builtin.ls import Ls
 from pycode.tools.adapters.builtin.read import Read
 from pycode.tools.adapters.builtin.write import Write
-from pycode.tools.adapters.output_store import FileToolOutputStore
+from pycode.tools.adapters.output_store import TempOutputStore
 from pycode.tools.module import ToolsModule
 
 
@@ -41,9 +41,8 @@ async def test_read_keeps_the_head_and_points_at_the_next_offset(tmp_path):
     (workspace / "long.txt").write_text("\n".join(f"line {n}" for n in range(1, 3001)))
     result = await Read(backend).execute(context("read"), {"path": "long.txt"})
     body, _, notice = result.text.rpartition("\n\n")
-    # Two lines of the 2000-line limit stay free for the notice inside the output store.
-    assert body.splitlines()[0] == "line 1" and len(body.splitlines()) == MAX_LINES - 2
-    assert notice == "[Showing lines 1-1998 of 3000. Use offset=1999 to continue.]"
+    assert body.splitlines()[0] == "line 1" and len(body.splitlines()) == MAX_LINES
+    assert notice == "[Showing lines 1-2000 of 3000. Use offset=2001 to continue.]"
     assert result.details["truncation"]["truncated_by"] == "lines"
     rest = await Read(backend).execute(context("read"), {"path": "long.txt", "offset": 2999})
     assert rest.text == "line 2999\nline 3000"
@@ -54,7 +53,7 @@ async def test_read_byte_limit_long_line_and_user_limit_notices(tmp_path):
     (workspace / "wide.txt").write_text("\n".join("x" * 1000 for _ in range(100)))
     wide = await Read(backend).execute(context("read"), {"path": "wide.txt"})
     assert wide.text.endswith(
-        "[Showing lines 1-50 of 100 (50.0KB limit). Use offset=51 to continue.]"
+        "[Showing lines 1-51 of 100 (50.0KB limit). Use offset=52 to continue.]"
     )
     (workspace / "giant.txt").write_text("y" * 60000)
     giant = await Read(backend).execute(context("read"), {"path": "giant.txt"})
@@ -166,14 +165,21 @@ async def test_find_and_ls_limit_results(tmp_path):
 
 
 async def test_bash_keeps_the_tail_and_marks_nonzero_exit_as_error(tmp_path):
-    outputs = FileToolOutputStore(tmp_path / "sessions", "s")
+    outputs = TempOutputStore("s")
     bash = Bash(find_bash(), outputs)
     result = await bash.execute(
         context("bash", tmp_path), {"command": "for i in $(seq 1 3000); do echo line $i; done"}
     )
-    assert not result.is_error and result.output_id is not None
+    path = result.details["full_output_path"]
+    assert not result.is_error and path.endswith("/pycode/s/c.log")
     assert "line 3000" in result.text and "line 1\n" not in result.text
-    assert len(result.text.splitlines()) <= MAX_LINES
+    assert result.text.endswith(f"[Showing lines 1001-3000 of 3000. Full output: {path}]")
+    # The model reads the full output back with read through the temp-directory mount.
+    backend = ToolsModule.composite(
+        {str(outputs.directory) + "/": ToolsModule.read_only_mount(outputs.directory)}
+    )
+    page = await Read(backend).execute(context("read"), {"path": path, "offset": 1, "limit": 2})
+    assert page.text.startswith("line 1\nline 2")
     failed = await bash.execute(
         ToolContext("s", "r", "op2", str(tmp_path), "c2", "bash"), {"command": "exit 3"}
     )

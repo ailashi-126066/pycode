@@ -6,7 +6,6 @@ from pycode.context import SummaryReport
 from pycode.kernel import Message, RunResult
 from pycode.models import ProviderConfig
 from pycode.session.ports.history import SessionStore
-from pycode.tools import ToolOutputStore
 
 
 class RuntimeLauncher(Protocol):
@@ -15,7 +14,7 @@ class RuntimeLauncher(Protocol):
     def reassign_team(self, member, agent_id, prompt_factory, consumer) -> None: ...
     async def continue_handoff(self, provider, store, run_id) -> RunResult: ...
 
-    async def cancel_wait(self, run_id: str) -> ToolOutputStore | None: ...
+    async def cancel_wait(self, run_id: str) -> None: ...
 
     async def run(
         self,

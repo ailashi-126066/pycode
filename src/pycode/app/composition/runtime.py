@@ -40,9 +40,7 @@ async def build_runtime(
             if session.history_store is not None
             else modules.agent.checkpoint()
         )
-        outputs = session.outputs or build_outputs(
-            modules, session.session_id, session.history_store
-        )
+        outputs = session.outputs or build_outputs(modules, session.session_id)
         memory_tools = modules.memory.tools(session.memory, read_only=config.read_only)
         team_tools = (
             modules.team.tools(session.team_member, provider)
@@ -59,8 +57,10 @@ async def build_runtime(
         routes: dict[str, object] = {"/workspace/": workspace_files}
         if session.plan_backend is not None:
             routes["/plans/"] = session.plan_backend
+        # Pi writes truncated outputs to a temp file the model reads back with read; the
+        # directory is mounted at its own absolute path, so full_output_path works as is.
+        routes[str(outputs.directory) + "/"] = modules.tools.read_only_mount(outputs.directory)
         if session.history_store is not None:
-            routes["/large_tool_results/"] = modules.tools.artifacts(outputs, session.history_store)
             routes["/conversation_history/"] = modules.sessions.history_backend(
                 session.history_store
             )
@@ -75,7 +75,7 @@ async def build_runtime(
                 *(skills_run.tools if skills_run else ()),
                 *modules.tools.builtin_tools(backend),
                 *modules.tools.default_tools(
-                    outputs, modules.tools.question_prompt() if config.agent_id == "lead" else None
+                    modules.tools.question_prompt() if config.agent_id == "lead" else None
                 ),
                 modules.sandbox.bash(
                     outputs, skill_roots=skills_run.script_roots if skills_run else ()

@@ -134,8 +134,6 @@ def task_evidence(path, *, messages=()):
         result = message.tool_result
         if result is not None:
             evidence.add(result.call_id)
-            if result.output_id:
-                evidence.add(result.output_id)
     return evidence
 
 
@@ -153,7 +151,6 @@ def task_context(state, messages):
                     "tool": result.name,
                     "is_error": result.is_error,
                     "exit_code": result.exit_code,
-                    "output_id": result.output_id,
                 }
             )
     user = next((m for m in reversed(messages) if m.role == "user"), None)

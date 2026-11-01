@@ -18,7 +18,7 @@ async def build_configured_run(
     checkpointer=None,
 ):
     snapshot = await store.snapshot()
-    outputs = build_outputs(modules, snapshot.header.session_id, store)
+    outputs = build_outputs(modules, snapshot.header.session_id)
     skills_run = None
     if skills_session is not None:
         skills_run = await skills_session.prepare_run(read_only=launcher.config.read_only)

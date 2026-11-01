@@ -1,9 +1,11 @@
+import asyncio
+from pathlib import Path
+
 import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel.domain.messages import Message
-from pycode.session.adapters.storage.header_reader import FileSessionHeaderReader
 from tests.hooks.adapters.test_hooks import hook_file
 from tests.mcp.adapters.test_mcp import mcp_config
 from tests.skills.adapters.test_skills_http import skill_reply
@@ -11,7 +13,7 @@ from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
 
-async def test_large_mcp_result_is_complete_on_disk_and_pageable_through_read_tool_result(
+async def test_large_mcp_result_is_complete_on_disk_and_readable_through_its_full_output_path(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
@@ -34,26 +36,10 @@ async def test_large_mcp_result_is_complete_on_disk_and_pageable_through_read_to
                 for entry in state["snapshot"]["entries"]
                 if entry["message"] and entry["message"]["role"] == "tool_result"
             )
-            assert "中文行2399" not in result["text"] and result["output_id"]
-            # Complete data is retained as an ordinary output object; the branch owns its reference.
-            from pycode.session.adapters.storage.layout import StorageLayout
-            from pycode.tools.adapters.output_store import FileToolOutputStore
-
-            await session.aclose()
-            history = await compose_application(config).session_repository().open("s1")
-            try:
-                outputs = FileToolOutputStore(
-                    StorageLayout(config.workspace, config.user_data).sessions,
-                    "s1",
-                    history,
-                    header_reader=FileSessionHeaderReader(
-                        StorageLayout(config.workspace, config.user_data).sessions
-                    ),
-                )
-                page = await outputs.read(result["output_id"], 2350, 51, 50000)
-                assert "中文行2399" in page.text
-            finally:
-                await history.aclose()
+            path = result["details"]["full_output_path"]
+            assert "中文行2399" not in result["text"] and result["text"].endswith(path + "]")
+            # Pi: the complete output is an ordinary temp file the model can read.
+            assert "中文行2399" in await asyncio.to_thread(Path(path).read_text, "utf-8")
             assert len(requests) == 2
         finally:
             await session.aclose()

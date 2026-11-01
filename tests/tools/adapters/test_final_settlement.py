@@ -216,7 +216,6 @@ async def test_hidden_tool_schema_error_is_redacted_in_result_history_and_comple
 
     from pycode.kernel import SessionHeader, json_dumps
     from pycode.session.adapters.storage.session import SqliteSessionStore
-    from pycode.tools.adapters.output_store import FileToolOutputStore
     from tests.support.requests import TestTiming
 
     secret = "api_key=private-secret-key sk-abcdefghijklmnop12345678 "
@@ -242,7 +241,6 @@ async def test_hidden_tool_schema_error_is_redacted_in_result_history_and_comple
         TestTiming(),
     )
     context.journal = journal
-    context.outputs = FileToolOutputStore(sessions, context.session_id)
 
     async def hide(request):
         return request.override(tools=[item for item in request.tools if item.name != "echo"])
@@ -261,10 +259,6 @@ async def test_hidden_tool_schema_error_is_redacted_in_result_history_and_comple
         assert "[redacted]" in saved[0].text
         assert "private-secret-key" not in json_dumps(saved[0])
         assert "sk-abcdefghijklmnop12345678" not in json_dumps(saved[0])
-        output = sessions / context.session_id / "tool-results" / (saved[0].output_id + ".txt")
-        assert output.read_text() == saved[0].text
-        assert "private-secret-key" not in output.read_text()
-        assert "sk-abcdefghijklmnop12345678" not in output.read_text()
     finally:
         await journal.aclose()
 

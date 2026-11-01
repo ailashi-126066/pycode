@@ -44,20 +44,19 @@ async def test_catalog_contains_brief_names_but_no_parameter_schema_then_loads()
     assert [t.name for t in (await discovery.disclose(request)).tools] == ["ToolSearch", "echo"]
 
 
-async def test_large_search_result_still_loads_tools_on_next_request(tmp_path):
-    from tests.tools.adapters.test_output_store import setup as setup_output
+async def test_large_search_result_still_loads_tools_on_next_request():
+    from pycode.tools.adapters.output_store import TempOutputStore
 
     discovery, request, context, _ = setup_request()
     large = request.tools[0].model_copy(update={"description": "echo " + "x" * 60000})
     request = request.override(tools=[large])
     await discovery.disclose(request)
-    journal, output, output_context = await setup_output(tmp_path)
+    output_context = ToolContext("s1", "r", "op", "/workspace", "call-1", "ToolSearch")
     found = await discovery.execute(output_context, {"query": "echo"})
-    prepared = await output.prepare(output_context, found, "head")
-    assert prepared.details["output"]["bytes"] > 50000
+    prepared = await TempOutputStore("s1").prepare(output_context, found, "head")
+    assert prepared.details["truncation"]["total_bytes"] > 50000
     context.completed.append(Message("result", "tool_result", tool_result=prepared))
     assert [t.name for t in (await discovery.disclose(request)).tools] == ["ToolSearch", "echo"]
-    await journal.aclose()
 
 
 async def test_stale_definition_and_permission_removed_tool_are_not_disclosed():

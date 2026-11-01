@@ -148,11 +148,7 @@ class ToolExecutor:
             result = await self.outputs.prepare(context, result, mode)
             await self.events.emit(
                 "tool_output_ready",
-                {
-                    "call_id": result.call_id,
-                    "name": result.name,
-                    "output_id": result.output_id,
-                },
+                {"call_id": result.call_id, "name": result.name},
                 operation_id=context.operation_id,
             )
         if before is not None:

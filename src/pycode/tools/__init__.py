@@ -11,7 +11,7 @@ from pycode.tools.domain.tool_call_state import (
 from pycode.tools.domain.tool_failures import failure_update, repeated_tool_failure
 from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
 from pycode.tools.ports.hooks import ToolHooks
-from pycode.tools.ports.outputs import OutputWriter, SessionHeaderReader, ToolOutputStore
+from pycode.tools.ports.outputs import OutputWriter, ToolOutputStore
 from pycode.tools.ports.publication import ContextT, MessagePublisher, ToolLifecycle
 from pycode.tools.ports.questions import QuestionPrompt
 from pycode.tools.ports.tools import ToolGate
@@ -44,7 +44,6 @@ __all__ = [
     "PlanToolGate",
     "QuestionPrompt",
     "ReadOnlyToolGate",
-    "SessionHeaderReader",
     "ToolExecutor",
     "ToolGate",
     "ToolHooks",

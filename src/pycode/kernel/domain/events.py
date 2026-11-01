@@ -103,7 +103,6 @@ class ToolExecutionEndEvent(TypedDict):
     is_error: bool
     status: str
     outcome: str
-    output_id: str | None
     duration_ms: NotRequired[int]
 
 

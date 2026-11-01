@@ -15,11 +15,11 @@ def test_status_text_and_readback_hint_fit_the_model_preview_budget(text):
         text,
         is_error=True,
         exit_code=7,
-        output_id="output_" + "a" * 32,
+        details={"full_output_path": "/tmp/pycode/s/c1.log"},
         error_code="command_timeout",
     )
     visible = model_tool_text(result)
     assert len(visible.encode()) <= MAX_BYTES and line_count(visible) <= MAX_LINES
     assert "exit code 7" in visible and "command_timeout" in visible
-    assert result.output_id in visible and "ReadToolResult" in visible
+    assert "[Full output: /tmp/pycode/s/c1.log]" in visible
     assert result.text == text

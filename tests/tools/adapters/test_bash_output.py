@@ -3,6 +3,7 @@ import os
 import shlex
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -14,9 +15,8 @@ from pycode.kernel.domain.tools import ToolContext
 from pycode.kernel.domain.truncation import MAX_BYTES
 from pycode.kernel.services.events import EventStream
 from pycode.sandbox.adapters.tools.bash import Bash, find_bash
-from pycode.session.adapters.storage.header_reader import FileSessionHeaderReader
 from pycode.session.adapters.storage.session import SqliteSessionStore
-from pycode.tools.adapters.output_store import FileToolOutputStore
+from pycode.tools.adapters.output_store import TempOutputStore
 from pycode.tools.adapters.schema import JsonSchemaValidator
 from pycode.tools.adapters.tool_errors import execute_tool_errors
 from pycode.tools.services.tool_executor import ToolExecutor
@@ -36,9 +36,7 @@ async def assemble(tmp_path, *, passthrough=()):
         sessions / "s1", SessionHeader("s1", str(tmp_path), "t"), TestTiming()
     )
     await journal.append_message(Message("u1", "user", "command task"))
-    outputs = FileToolOutputStore(
-        sessions, "s1", journal, header_reader=FileSessionHeaderReader(sessions)
-    )
+    outputs = TempOutputStore("s1")
     validator = JsonSchemaValidator()
     registry = ToolRegistry(validator, (Bash(find_bash(), outputs, passthrough=passthrough),))
     executor = ToolExecutor(
@@ -70,12 +68,12 @@ async def test_real_command_output_is_complete_on_disk_and_bounded_in_model_resu
     assert result.exit_code == 0
     assert len(result.text.encode()) <= MAX_BYTES
     assert "line-8000" in result.text
-    entry_id = await journal.append_message(Message("result-1", "tool_result", tool_result=result))
-    await outputs.bind(result.output_id, entry_id)
-    full = (tmp_path / "sessions/s1/tool-results" / (result.output_id + ".txt")).read_bytes()
+    path = result.details["full_output_path"]
+    assert result.text.endswith(f"[Showing lines 6001-8000 of 8000. Full output: {path}]")
+    full = await asyncio.to_thread(Path(path).read_bytes)
     assert full.startswith(b"line-0001\n") and full.endswith(b"line-8000\n")
     assert full.count(b"\n") == 8000
-    assert (await outputs.read(result.output_id, 500, 100, MAX_BYTES)).next_offset == 600
+    assert result.details["truncation"]["total_lines"] == 8000
     await journal.aclose()
 
 

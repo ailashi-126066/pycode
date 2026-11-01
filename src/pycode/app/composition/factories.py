@@ -33,13 +33,8 @@ def build_memory_updater(config, provider, consumers=(), *, modules):
     return modules.memory.updater(provider, owner_factory, facade_factory)
 
 
-def build_outputs(modules, session_id, history):
-    return modules.tools.output_store(
-        modules.sessions.layout.sessions,
-        session_id,
-        history,
-        header_reader=modules.sessions.header_reader(),
-    )
+def build_outputs(modules, session_id):
+    return modules.tools.output_store(session_id)
 
 
 def skill_settings(config):

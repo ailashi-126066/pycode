@@ -28,7 +28,6 @@ def build_hook_engine(
         history,
         actions,
         events,
-        bind_output=outputs.bind,
         executor_factory=executor_factory,
         plans=plans,
         read_only=read_only,
@@ -39,7 +38,7 @@ def build_lifecycle_hook_engine(launcher, store, snapshot, lifetime, *, modules)
     events = EventStream(
         snapshot.header.session_id, lifetime, launcher.consumers, journal=launcher.event_journal
     )
-    outputs = build_outputs(modules, snapshot.header.session_id, store)
+    outputs = build_outputs(modules, snapshot.header.session_id)
     return build_hook_engine(
         launcher.configured_hooks,
         store,

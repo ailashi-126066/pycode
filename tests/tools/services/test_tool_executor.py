@@ -82,7 +82,7 @@ async def test_upstream_echo_result_and_event_contract():
     ]
     assert all(event.operation_id == "operation-1" for event in recorder.events)
     end = recorder.events[-1].data
-    assert (end["status"], end["outcome"], end["output_id"]) == ("settled", "completed", None)
+    assert (end["status"], end["outcome"]) == ("settled", "completed")
     assert isinstance(end["duration_ms"], int)
 
 

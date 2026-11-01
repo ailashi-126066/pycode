@@ -67,9 +67,7 @@ class Ls:
         if not names:
             return ToolResult(context.call_id, self.spec.name, "(empty directory)")
         shown = names[:limit]
-        truncation = truncate(
-            "\n".join(shown), "head", max_lines=len(shown), max_bytes=MAX_BYTES - 512
-        )
+        truncation = truncate("\n".join(shown), "head", max_lines=len(shown), max_bytes=MAX_BYTES)
         details = {}
         notices = []
         if len(names) > limit:
