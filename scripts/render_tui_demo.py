@@ -8,8 +8,7 @@ from tests.support.execution import provider
 from tests.support.http_provider import protocol_server
 from tests.tools.adapters.test_questions import question_response
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application
 
 
 async def main(project):

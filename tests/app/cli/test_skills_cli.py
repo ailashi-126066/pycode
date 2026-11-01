@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 from tests.app.cli.test_execution_cli import setup_cli
-from tests.skills.adapters.test_skills_http import skill_reply
-from tests.skills.services.test_skills import write_skill
+from tests.skills.test_skills import write_skill
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
@@ -66,8 +66,6 @@ def test_cli_skill_authoring_does_not_call_model(tmp_path, monkeypatch, capsys):
                     "authored",
                     "--file",
                     str(source),
-                    "--revision",
-                    created["revision"],
                 ]
             )
             == 0
@@ -84,13 +82,11 @@ def test_cli_skill_authoring_does_not_call_model(tmp_path, monkeypatch, capsys):
                     "authored",
                     "--file",
                     str(source),
-                    "--revision",
-                    created["revision"],
                 ]
             )
-            == 1
+            == 0
         )
-        assert "skill_conflict" in capsys.readouterr().out
+        capsys.readouterr()
         assert len(requests) == 1
 
 

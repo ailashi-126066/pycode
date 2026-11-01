@@ -6,10 +6,10 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app.api import compose_application
+from pycode.app.config import AppConfig
 from pycode.kernel import Message
-from pycode.models.adapters.storage.requests import SQLiteRequestStore
+from pycode.models import SQLiteRequestStore
 from tests.support.execution import provider
 
 
@@ -35,7 +35,7 @@ def crash_after_summary_request_start():
 
 
 async def main():
-    from pycode.tools.adapters.discovery import ToolDiscovery
+    from pycode.tools import ToolDiscovery
 
     async def disclosed(self, request):
         return request

@@ -4,7 +4,7 @@ import pytest
 
 from pycode.app.cli.parser import build_parser
 from pycode.session import AgentSession
-from pycode.ui.adapters.commands import COMMANDS
+from pycode.ui.commands import COMMANDS
 
 
 def test_hook_review_is_not_a_cli_or_ui_command():

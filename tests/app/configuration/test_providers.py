@@ -2,9 +2,9 @@ import json
 from dataclasses import asdict
 
 import pytest
-from tests.models.adapters.test_factory import configuration
+from tests.models.test_factory import configuration
 
-from pycode.app.configuration.providers import load_providers
+from pycode.app.config import load_providers
 from pycode.kernel import DomainError
 
 

@@ -105,7 +105,7 @@ class ConfiguredEvaluationSolver:
                 if tool["name"] == "bash" and not tool["is_error"] and tool["exit_code"] == 0:
                     verified_at = position
             requests = []
-            for record in await session.request_records():
+            for record in await session.view.request_records():
                 usage = plain_data(record.usage) if record.usage is not None else None
                 if usage is not None:
                     usage.pop("raw", None)
@@ -125,7 +125,7 @@ class ConfiguredEvaluationSolver:
                 "outcome": outcome,
                 "final_text": final_text,
                 "session_id": "evaluation",
-                "usage": await session.usage(),
+                "usage": await session.view.usage(),
                 **identity,
                 "provider": plain_data(self.providers[0]),
                 "configuration_hash": data_hash(plain_data(self.providers[0])),

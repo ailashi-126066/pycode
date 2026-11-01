@@ -5,12 +5,9 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from pydantic import TypeAdapter, ValidationError
-
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.providers import load_providers
-from pycode.kernel import DomainError, Message, RunResult, json_dumps, plain_data
-from pycode.session import RevertPlan
+from pycode.app.api import compose_application
+from pycode.app.config import load_providers
+from pycode.kernel import DomainError, Message, RunResult, plain_data
 
 
 def leaf_id(value):
@@ -37,28 +34,6 @@ def read_skill_source(path):
         return data.decode("utf-8-sig")
     except (OSError, UnicodeError, ValueError) as error:
         raise DomainError("invalid_skill_file", "Cannot read bounded UTF-8 Skill file") from error
-
-
-def read_plan(path):
-    try:
-        data = json_dumps(read_json(path), allow_nan=False)
-        plan = TypeAdapter(RevertPlan).validate_json(data, strict=True)
-        if not plan.transaction_id or (plan.mode == "dialogue" and plan.files is not None):
-            raise ValueError("Invalid revert plan")
-        return plan
-    except (ValidationError, ValueError) as error:
-        raise DomainError("invalid_revert_plan", "Cannot validate the saved revert plan") from error
-
-
-def write_plan(path, plan):
-    try:
-        with Path(path).expanduser().open("x", encoding="utf-8") as stream:
-            json.dump(plain_data(plan), stream, ensure_ascii=False, allow_nan=False)
-            stream.write("\n")
-    except OSError as error:
-        raise DomainError(
-            "plan_export_failed", "Cannot create plan file; use a new path"
-        ) from error
 
 
 async def command(args, config):
@@ -124,9 +99,8 @@ async def local_memory_command(args, config, output):
         raise DomainError("session_required", "Memory commands require --session")
     repository = compose_application(config).session_repository()
     store = await repository.open(args.session)
-    memory = compose_application(config).memory_service(store)
+    memory = await compose_application(config).memory_service(store)
     try:
-        await memory.initialize()
         if args.memory_command == "list":
             value = await memory.list()
         elif args.memory_command == "mode":
@@ -158,7 +132,9 @@ async def execute_run(args, session, output):
 
 
 async def execute_plan(args, session, output):
-    planned = await session.enter_plan(args.task)
+    planned = await session.plans.enter()
+    if args.task:
+        return await session.run(Message(uuid4().hex, "user", args.task))
     if not isinstance(planned, RunResult):
         output.value(plain_data(planned))
         return 0
@@ -189,46 +165,53 @@ async def execute_branch(args, session, output):
 
 async def execute_skill(args, session, output):
     if args.skill_command == "load":
-        return await session.load_skill(args.name, args.arguments)
+        request = await session.skills.load(args.name, args.arguments)
+        return await session.run(
+            Message(
+                uuid4().hex,
+                "user",
+                f"Use skill {args.name} at {request['path']}. "
+                f"Read its SKILL.md and follow its instructions.\nTask arguments: {args.arguments}",
+                provider_metadata={"skill_request": request},
+            )
+        )
     else:
         if args.skill_command == "reload":
-            value = await session.reload_skills()
+            value = await session.skills.refresh()
         elif args.skill_command == "install":
-            value = await session.install_skill(args.url, args.ref, args.subpath)
+            value = await session.skills.install(args.url, ref=args.ref, subpath=args.subpath)
         elif args.skill_command == "read":
-            value = plain_data(await session.read_skill(args.name))
+            value = plain_data(await session.skills.read(args.name))
         elif args.skill_command in {"create", "update"}:
             content = await asyncio.to_thread(read_skill_source, args.file)
-            value = await session.save_skill(
-                args.name,
-                content,
-                scope=args.scope,
-                expected_revision=getattr(args, "revision", None),
+            write = (
+                session.skills.create if args.skill_command == "create" else session.skills.update
             )
+            value = await write(args.name, content, scope=args.scope)
         else:
-            value = await session.skill_search(args.query, args.limit)
+            value = await session.skills.search(args.query, args.limit)
         output.value(value)
         return 0
 
 
 async def execute_memory(args, session, output):
     if args.memory_command == "list":
-        value = await session.memory_list()
+        value = await session.memory.list()
     elif args.memory_command == "mode":
-        await session.memory_mode(args.mode)
+        await session.memory.set_mode(args.mode)
         value = {"mode": args.mode}
     elif args.memory_command in {"remove", "delete"}:
-        await session.memory_remove(args.memory_id, scope=args.scope)
+        await session.memory.remove(args.memory_id, scope=args.scope)
         value = {"removed": args.memory_id}
     elif args.memory_command == "edit":
         value = {
-            "memory_id": await session.memory_edit(args.memory_id, args.content, scope=args.scope)
+            "memory_id": await session.memory.edit(args.memory_id, args.content, scope=args.scope)
         }
     elif args.memory_command == "clear":
-        await session.memory_clear()
+        await session.memory.clear()
         value = {"cleared": True}
     else:
-        value = await session.memory_extract()
+        value = await session.memory.extract()
     output.value(value)
     return 0
 
@@ -263,23 +246,11 @@ async def publish_cancelled(session):
 
 
 async def revert_command(args, session, output):
-    if args.revert_command == "preview":
-        plan = await session.preview_revert(leaf_id(args.target), args.mode)
-        if args.plan_out:
-            await asyncio.to_thread(write_plan, args.plan_out, plan)
-        output.value(plain_data(plan))
-        return 2 if plan.files is not None and plan.files.conflicts else 0
-    if args.revert_command == "apply":
-        plan = await asyncio.to_thread(read_plan, args.plan_file)
-        record = await session.revert(plan)
-    else:
-        record = await session.recover_revert(args.transaction_id, compensate=args.compensate)
-    output.value(
-        {
-            "restore": plain_data(record) if record is not None else None,
-            "session": await session.inspect(),
-        }
-    )
+    async with session.execution():
+        record = await session.snapshots.revert(leaf_id(args.target), args.mode)
+        await session.plans.initialize()
+        await session.tasks.initialize()
+    output.value({"revert": plain_data(record), "session": await session.inspect()})
     return 0
 
 

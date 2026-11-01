@@ -12,11 +12,9 @@ from importlib.util import find_spec
 from pathlib import Path
 from uuid import uuid4
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.providers import load_providers
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, compose_application, load_providers
 from pycode.kernel import Message, ToolError, ToolResult, ToolSpec, plain_data
-from pycode.models.domain.requests import RetryPolicy
+from pycode.models import RetryPolicy
 
 try:
     from evals.scripts.source_manifest import manifest
@@ -81,8 +79,8 @@ def messages(view):
 
 
 async def collect(case, directory):
-    from tests.models.adapters.test_primary_model import failure
-    from tests.skills.adapters.test_skills_http import skill_reply
+    from tests.models.test_primary_model import failure
+    from tests.skills.test_skills_http import skill_reply
     from tests.support.execution import provider as loopback_provider
     from tests.support.http_provider import chat_completion, protocol_server
     from tests.support.probe import Probe
@@ -149,7 +147,7 @@ async def collect(case, directory):
             else:
                 result = await session.run(Message("first", "user", "inspect"))
             view = await session.inspect()
-            records = [plain_data(record) for record in await session.request_records()]
+            records = [plain_data(record) for record in await session.view.request_records()]
             paired = [
                 entry["message"]["tool_result"]
                 for entry in view["snapshot"]["entries"]

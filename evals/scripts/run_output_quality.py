@@ -11,14 +11,11 @@ from importlib.util import find_spec
 from pathlib import Path
 from uuid import uuid4
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.providers import load_providers
-from pycode.app.configuration.settings import AppConfig
-from pycode.context.domain.summaries import SummarySource
+from pycode.app import AppConfig, compose_application, load_providers
+from pycode.context import SummarySource
 from pycode.kernel import Message, plain_data
-from pycode.models.adapters.storage.requests import SQLiteRequestStore
-from pycode.models.domain.requests import RetryPolicy
-from pycode.session.adapters.storage.layout import StorageLayout
+from pycode.models import RetryPolicy, SQLiteRequestStore
+from pycode.session import StorageLayout
 
 try:
     from evals.scripts.source_manifest import manifest

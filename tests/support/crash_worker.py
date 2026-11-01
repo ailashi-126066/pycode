@@ -5,12 +5,11 @@ import os
 import sys
 from pathlib import Path
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app.api import compose_application
+from pycode.app.config import AppConfig
 from pycode.kernel import Message
-from pycode.models.adapters.storage.requests import SQLiteRequestStore
-from pycode.models.domain.models import ProviderConfig
-from pycode.tools.adapters.output_store import TempOutputStore
+from pycode.models import ProviderConfig, SQLiteRequestStore
+from pycode.tools import TempOutputStore
 from tests.support.recovery_tools import WritingEcho
 
 
@@ -85,7 +84,7 @@ class CrashTool(WritingEcho):
 
 
 async def main():
-    from pycode.tools.adapters.discovery import ToolDiscovery
+    from pycode.tools import ToolDiscovery
 
     async def disclosed(self, request):
         return request

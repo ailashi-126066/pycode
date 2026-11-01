@@ -10,9 +10,7 @@ from pathlib import Path
 
 from langchain_deepseek import ChatDeepSeek
 
-from pycode.app.api import RunOptions, SessionResources
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig, RunOptions, SessionResources, compose_application
 from pycode.kernel import Message, ToolResult, ToolSpec
 from pycode.models import ProviderConfig, ReasoningDeepSeek
 

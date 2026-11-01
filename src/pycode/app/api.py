@@ -1,110 +1,157 @@
-"""The application's sole public composition root.
+# Pi 没有，pycode 新增
+"""Public application entry points backed by explicit concrete services."""
 
-Feature modules own their adapters and local lifetimes. This facade selects a module
-set and connects application/session/run scopes without exposing their construction.
-"""
-
-from dataclasses import dataclass, replace
+import sys
+from dataclasses import dataclass
 
 from pycode import __version__
-from pycode.app.composition import factories
-from pycode.app.composition import runtime as runtime_scope
-from pycode.app.composition import session as session_scope
-from pycode.app.composition import ui as ui_scope
-from pycode.app.composition.inputs import RunOptions, SessionResources
-from pycode.app.composition.modules import ApplicationModules
-from pycode.app.configuration.settings import AppConfig
-from pycode.models import ProviderConfig
-from pycode.session import SessionCatalogWriteGuard
+from pycode.app import composition
+from pycode.app.composition import RunOptions, SessionResources
+from pycode.app.config import AppConfig
+from pycode.context import SummaryWorkflow
+from pycode.kernel import EventStream, SessionScope
+from pycode.memory import MemoryService
+from pycode.models import ModelControl, ProviderConfig, model_request_step, stop_reason
+from pycode.sandbox import Sandbox
+from pycode.session import (
+    ApplicationService,
+    FileStorageObjects,
+    FileWorkspaceInspector,
+    SessionService,
+    StorageGC,
+)
 
 
 @dataclass(frozen=True)
 class Application:
     config: AppConfig
-    providers: tuple[ProviderConfig, ...]
-    _modules: ApplicationModules
+    providers: tuple[ProviderConfig, ...] = ()
 
     def status(self):
-        return self._modules.sessions.application(__version__).status()
+        return ApplicationService(
+            workspace=FileWorkspaceInspector(self.config.workspace), version=__version__
+        ).status()
 
     async def sandbox_status(self):
-        return await self._modules.sandbox.backend().status(self.config.sandbox)
+        return await self.sandbox_backend().status()
 
     def sandbox_backend(self):
-        return self._modules.sandbox.backend()
+        return Sandbox(self.config.sandbox, required=self.config.isolated_worker)
 
     def session_trace_path(self, session_id):
-        return self._modules.sessions.layout.sessions / session_id / "session.sqlite"
+        return composition.layout(self.config).sessions / session_id / "session.sqlite"
 
     def session_service(self):
-        return self._modules.sessions.service()
+        return SessionService(self.session_repository())
 
     def session_repository(self):
-        return self._modules.sessions.repository()
+        return composition.repository(self.config)
 
     async def open_session(self, session_id, **options):
-        return await session_scope.open_agent_session(
-            self.config, self.providers, session_id, modules=self._modules, **options
+        return await composition.open_agent_session(
+            self.config, self.providers, session_id, **options
         )
 
     async def open_view(self, session_id):
-        return await session_scope.open_session_view(self.config, session_id, modules=self._modules)
+        return await composition.open_session_view(self.config, session_id)
 
     def model_catalog(self):
-        return self._modules.models.catalog(self.providers)
+        return composition.model_catalog(self.config, self.providers)
 
-    def model_control(self, store=None, *, catalog=None):
-        selected = self.model_catalog() if catalog is None else catalog
-        return self._modules.models.control(selected, self._modules.projector(), store)
-
-    def memory_service(self, history, provider=None, consumers=()):
-        return factories.build_memory_service(
-            self.config, history, provider, consumers, modules=self._modules
+    def model_control(self, store, *, catalog=None):
+        return ModelControl(
+            self.model_catalog() if catalog is None else catalog,
+            composition.projector(),
+            store,
+            EventStream("catalog", "", ()),
         )
+
+    async def memory_service(self, history, provider=None, consumers=()):
+        from contextlib import asynccontextmanager
+        from functools import partial
+
+        from pycode.kernel import ModelError
+
+        @asynccontextmanager
+        async def unavailable(**options):
+            raise ModelError("providers_required", "Memory extraction requires a provider")
+            yield
+
+        memory = MemoryService(
+            trusted=self.config.project_trusted,
+            mode=self.config.memory_mode,
+            model=unavailable
+            if provider is None
+            else partial(composition.background_model, self.config, provider, consumers),
+        )
+        identifier = (await history.snapshot()).header.session_id
+        await memory.open(
+            SessionScope(
+                identifier,
+                self.config.workspace,
+                self.config.user_data,
+                history,
+                EventStream(identifier, "", consumers),
+                self.config.read_only,
+                self.config.agent_id,
+            )
+        )
+        return memory
 
     def storage(self, owned_session_id=None):
-        return self._modules.sessions.storage(owned_session_id=owned_session_id)
+        return StorageGC(
+            FileStorageObjects(
+                self.config.user_data, self.config.workspace, owned_session_id=owned_session_id
+            )
+        )
 
     def console(self, output_format):
-        return self._modules.ui.console(output_format)
+        from pycode.ui import ConsoleOutput
+
+        return ConsoleOutput(output_format, sys.stdout)
 
     def tui(self, session_id=None, tools=()):
-        return ui_scope.build_tui(
-            self.config, self.providers, session_id=session_id, tools=tools, modules=self._modules
-        )
+        from pycode.ui import PyApp
+
+        return PyApp(ConfiguredInteractiveSessions(self, tools), session_id=session_id)
 
     async def runtime(self, session: SessionResources, options: RunOptions):
-        if options.skills_run is None and self._modules.skills is not None:
-            settings = factories.skill_settings(self.config)
-            if session.history_store is not None:
-                skills = self._modules.skills.open_session(
-                    settings, session.history_store, catalog_write_guard=SessionCatalogWriteGuard()
-                )
-                options = replace(
-                    options, skills_run=await skills.prepare_run(read_only=self.config.read_only)
-                )
-            else:
-                options = replace(options, skills_run=self._modules.skills.standalone(settings))
-        return await runtime_scope.build_runtime(
-            self.config, modules=self._modules, session=session, options=options
-        )
+        return await composition.embedded_runtime(self.config, session, options)
 
     async def background_model(
         self, provider, consumers, session_id, run_id, purpose, **request_options
     ):
-        return await self._modules.models.owner(
-            provider,
-            consumers,
-            session_id,
-            run_id,
-            purpose,
-            **request_options,
-        )
-
-    def memory_updater(self, provider, consumers=()):
-        return factories.build_memory_updater(
-            self.config, provider, consumers, modules=self._modules
+        return await composition.open_model(
+            self.config, provider, consumers, session_id, run_id, purpose, **request_options
         )
 
     def summary_workflow(self, model):
-        return self._modules.context.workflow(model)
+        return SummaryWorkflow(model, request_step=model_request_step, stop_reason=stop_reason)
+
+
+class ConfiguredInteractiveSessions:
+    def __init__(self, application, tools):
+        self.application, self.tools = application, tools
+
+    async def open(self, session_id, *, create, consumer):
+        return await self.application.open_session(
+            session_id, create=create, consumers=(consumer,), tools=self.tools, refresh_models=False
+        )
+
+    async def list_sessions(self):
+        return await self.application.session_service().list_sessions()
+
+    async def sandbox_status(self):
+        return await self.application.sandbox_status()
+
+    async def fork(self, source_id, leaf_id, target_id):
+        return await self.application.session_service().fork(source_id, leaf_id, target_id)
+
+
+def compose_application(
+    config: AppConfig, providers: tuple[ProviderConfig, ...] = ()
+) -> Application:
+    return Application(config, providers)
+
+
+__all__ = ["Application", "RunOptions", "SessionResources", "compose_application"]

@@ -8,10 +8,10 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app.api import compose_application
+from pycode.app.config import AppConfig
 from pycode.kernel import Message
-from pycode.models.domain.models import ProviderConfig
+from pycode.models import ProviderConfig
 
 
 class CrashAfterFact:
@@ -21,7 +21,7 @@ class CrashAfterFact:
 
 
 async def main():
-    from pycode.tools.adapters.discovery import ToolDiscovery
+    from pycode.tools import ToolDiscovery
 
     async def disclosed(self, request):
         return request

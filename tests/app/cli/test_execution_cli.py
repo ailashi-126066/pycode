@@ -6,15 +6,19 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
-from tests.context.adapters.test_summary_http import seed
-from tests.session.adapters.test_revert_http import command_reply
-from tests.snapshot.adapters.test_git_tree import git, repository
+from tests.context.test_summary_http import seed
+from tests.snapshot.test_git_tree import git, repository
 from tests.support.execution import provider
-from tests.support.http_provider import HTTPResponse, chat_completion, protocol_server
+from tests.support.http_provider import (
+    HTTPResponse,
+    chat_completion,
+    command_reply,
+    protocol_server,
+)
 
-from pycode.app.bootstrap import compose_application
+from pycode.app.api import compose_application
 from pycode.app.cli.main import main
-from pycode.app.configuration.settings import AppConfig
+from pycode.app.config import AppConfig
 from pycode.kernel import Message
 
 VECTORS = json.loads(
@@ -90,7 +94,9 @@ def test_prompt_streams_one_terminal_result_after_history_and_checkpoint_with_al
         )
         assert reply["usage"]["output_tokens"] == 5 and "duration_ms" in reply
         run_id = events[-1]["run_id"]
-        assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
+        run_events = [event for event in events if event["run_id"] == run_id]
+        assert [event["sequence"] for event in run_events] == list(range(1, len(run_events) + 1))
+        assert any(event["type"] == "model_change" for event in events)
         snapshot = asyncio.run(read_session(tmp_path))
         assert snapshot.entries[-1].data["kind"] == "run_end"
         assert events[-1]["data"]["leaf_id"] == snapshot.leaf_id
@@ -263,9 +269,7 @@ def test_compact_cli_restarts_from_native_summary_and_preserves_all_original_rec
 
 
 @pytest.mark.parametrize("mode", ["dialogue", "code", "both"])
-def test_revert_cli_exports_review_plan_applies_explicit_mode_then_continues(
-    tmp_path, monkeypatch, capsys, mode
-):
+def test_revert_cli_applies_explicit_mode_then_continues(tmp_path, monkeypatch, capsys, mode):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     root = repository(tmp_path)
     (root / "file.txt").write_text("old", encoding="utf-8")
@@ -294,27 +298,7 @@ def test_revert_cli_exports_review_plan_applies_explicit_mode_then_continues(
         target = next(
             entry.id for entry in snapshot.entries if entry.message and entry.message.role == "user"
         )
-        plan_file = tmp_path / "revert.json"
-        assert (
-            main(
-                [
-                    *common,
-                    "revert",
-                    *execution,
-                    "preview",
-                    target,
-                    "--mode",
-                    mode,
-                    "--plan-out",
-                    str(plan_file),
-                ]
-            )
-            == 0
-        )
-        plan = rows(capsys)[0]
-        assert plan["mode"] == mode and plan_file.exists()
-        assert (root / "file.txt").read_text(encoding="utf-8") == "new"
-        assert main([*common, "revert", *execution, "apply", "--plan-file", str(plan_file)]) == 0
+        assert main([*common, "revert", *execution, target, "--mode", mode]) == 0
         rows(capsys)
         assert (root / "file.txt").read_text(encoding="utf-8") == (
             "new" if mode == "dialogue" else "old"

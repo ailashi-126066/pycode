@@ -3,11 +3,11 @@ import json
 from dataclasses import asdict
 
 import pytest
-from tests.models.adapters.test_factory import configuration
+from tests.models.test_factory import configuration
 
-from pycode.app.bootstrap import compose_application
+from pycode.app.api import compose_application
 from pycode.app.cli.main import main
-from pycode.app.configuration.settings import AppConfig
+from pycode.app.config import AppConfig
 from pycode.kernel import EntryDraft, Message
 
 
@@ -73,7 +73,6 @@ def test_model_selection_without_session_reports_explicit_error(tmp_path, capsys
 @pytest.mark.parametrize(
     "pending_kind,error_code",
     [
-        ("revert_started", "revert_recovery_required"),
         ("run_start", "session_needs_input"),
     ],
 )

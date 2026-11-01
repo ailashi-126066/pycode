@@ -8,14 +8,14 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app.api import compose_application
+from pycode.app.config import AppConfig
 from pycode.kernel import Message
-from pycode.models.domain.models import ProviderConfig
+from pycode.models import ProviderConfig
 
 
 async def main():
-    from pycode.tools.adapters.discovery import ToolDiscovery
+    from pycode.tools import ToolDiscovery
 
     async def disclosed(self, request):
         return request
@@ -35,7 +35,11 @@ async def main():
         (TypeAdapter(ProviderConfig).validate_json(json.dumps(request["provider"]), strict=True),),
     ).open_session("s1", create=True, refresh_models=False, consumers=(CrashConsumer(),))
     try:
-        await session.run(Message("u1", "user", "Run parent after Hook"))
+        result = await session.run(Message("u1", "user", "Run parent after Hook"))
+        if result.outcome == "needs_input":
+            await session.resume(
+                {"operation_id": result.pending[0]["operation_id"], "decision": "approve"}
+            )
     finally:
         await session.aclose()
 

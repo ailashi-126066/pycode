@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app.api import compose_application
+from pycode.app.config import AppConfig
 from pycode.kernel import Message
-from tests.skills.adapters.test_skills_http import skill_reply
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
@@ -70,7 +70,7 @@ async def test_plan_writes_only_current_markdown_then_approves_execution(
     with protocol_server(replies) as (url, requests):
         session = await open_plan_session(config, url)
         try:
-            plan = await session.enter_plan()
+            plan = await session.plans.enter()
             fix_plan_path(write, plan.plan_id)
             assert not (await asyncio.to_thread(Path(plan.storage_path).exists))
             waiting = await session.run(Message("u1", "user", "create plan"))
@@ -126,7 +126,7 @@ async def test_plan_denies_workspace_writes_commands_and_other_plan_files(tmp_pa
     with protocol_server(replies) as (url, requests):
         session = await open_plan_session(config, url)
         try:
-            plan = await session.enter_plan()
+            plan = await session.plans.enter()
             result = await session.run(Message("u1", "user", "plan only"))
             assert result.outcome == "completed" and len(requests) == 4
             assert not (tmp_path / "blocked.txt").exists() and not (
@@ -163,7 +163,7 @@ async def test_feedback_revises_same_plan_and_requires_new_review(tmp_path, monk
     with protocol_server(replies) as (url, requests):
         session = await open_plan_session(config, url)
         try:
-            plan = await session.enter_plan()
+            plan = await session.plans.enter()
             fix_plan_path(write, plan.plan_id)
             fix_plan_path(edit, plan.plan_id)
             waiting = await session.run(Message("u1", "user", "plan"))
@@ -216,7 +216,7 @@ async def test_exit_plan_mode_rejects_cycles_and_dangling_dependencies(
     ):
         session = await open_plan_session(config, url)
         try:
-            plan = await session.enter_plan()
+            plan = await session.plans.enter()
             fix_plan_path(write, plan.plan_id)
             result = await session.run(Message("u1", "user", "plan"))
             assert result.outcome == "completed" and len(requests) == 3
@@ -245,7 +245,7 @@ async def test_plan_board_only_accepts_new_steps(tmp_path, monkeypatch):
     with protocol_server(replies) as (url, requests):
         session = await open_plan_session(config, url)
         try:
-            plan = await session.enter_plan()
+            plan = await session.plans.enter()
             fix_plan_path(write, plan.plan_id)
             waiting = await session.run(Message("u1", "user", "plan"))
             result = await session.resume(
@@ -271,7 +271,7 @@ async def test_restart_preserves_markdown_and_plan_interrupt(tmp_path, monkeypat
     write = write_plan_reply()
     with protocol_server([write, skill_reply("ExitPlanMode", {}, "exit")]) as (url, requests):
         first = await open_plan_session(config, url)
-        plan = await first.enter_plan()
+        plan = await first.plans.enter()
         fix_plan_path(write, plan.plan_id)
         await first.run(Message("u1", "user", "plan"))
         await first.aclose()

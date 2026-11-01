@@ -7,11 +7,10 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from pycode.app.bootstrap import compose_application
+from pycode.app.api import compose_application
 from pycode.app.cli.commands import command
 from pycode.app.cli.parser import build_parser
-from pycode.app.configuration.providers import load_providers
-from pycode.app.configuration.settings import load_config
+from pycode.app.config import load_config, load_providers
 from pycode.kernel import DomainError, OutputClosed, json_dumps, plain_data
 from pycode.sandbox import SandboxSettings
 

@@ -38,7 +38,12 @@ from pycode.kernel import (
     ToolSpec,
     data_hash,
 )
-from pycode.tools import ToolCallState, failure_update, validate_operation_answer
+from pycode.tools import (
+    ToolCallState,
+    empty_failure_guard,
+    failure_update,
+    validate_operation_answer,
+)
 
 AGENTS_MD_PROMPT = (
     "<agent_memory>\n{agent_memory}\n</agent_memory>\n"
@@ -87,7 +92,7 @@ class RuntimeBindings:
 
     to_framework: Callable[[Message, ModelSelection], BaseMessage]
     # convert_to_llm + transform_messages + to_framework for one model request.
-    to_framework_messages: Callable[[Sequence[Message], ModelSelection], list[BaseMessage]]
+    to_framework_messages: Callable[[Sequence[Message], ModelSelection], Sequence[BaseMessage]]
     from_assistant: Callable[..., Message]
     make_framework_tool: Callable[..., object]
     disclose_model_tools: Callable[[object], Awaitable[object]]
@@ -196,7 +201,7 @@ class AgentRuntime:
     async def run(self, inputs, context, *, history=()):
         context.initial_inputs = inputs
         context.completed = []
-        context.failure_guard = {}
+        context.failure_guard = empty_failure_guard()
         context.run_state = RunState()
         for message in inputs:
             await context.journal.append_message(message)
@@ -213,7 +218,6 @@ class AgentRuntime:
                 "run_id": context.run_id,
                 "turn": 0,
                 "final_text": "",
-                "failure_count": 0,
             },
             context,
         )
@@ -227,8 +231,6 @@ class AgentRuntime:
 
     async def restore_task(self, context):
         graph = self.build(context)
-        if context.history_store is None:
-            raise StorageError("runtime_unavailable", "Restoring a task needs the history")
         checkpoint = await graph.aget_state(self.config(context))
         state = checkpoint.values
         snapshot = await context.history_store.snapshot()
@@ -253,6 +255,7 @@ class AgentRuntime:
         context.model_tools = tuple(ToolSpec(**item) for item in state.get("model_tools", ()))
         # Rebuild the transient settlement buffer from durable results, including results
         # saved after the last checkpoint. Completed effects must not run again.
+        context.failure_guard = empty_failure_guard()
         calls = {}
         for message in context.completed:
             for call in message.tool_calls:
@@ -364,10 +367,9 @@ class AgentRuntime:
         if run.apply("finish"):
             await end_turn(context, self.bindings)
         run.reason = reason
-        if context.history_store is not None:
-            await context.history_store.append_entry(
-                await run_end_entry(context, reason, checkpoint_id, error_code)
-            )
+        await context.history_store.append_entry(
+            await run_end_entry(context, reason, checkpoint_id, error_code)
+        )
         data = {"reason": reason}
         if error_code is not None:
             data.update(error_code=error_code, error=error)

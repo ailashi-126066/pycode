@@ -1,7 +1,7 @@
 import pytest
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
+from pycode.app.api import compose_application
+from pycode.app.config import AppConfig
 
 
 def test_public_application_composition_has_no_filesystem_write(tmp_path):

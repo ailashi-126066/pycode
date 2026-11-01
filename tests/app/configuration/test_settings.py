@@ -1,6 +1,6 @@
 import pytest
 
-from pycode.app.configuration.settings import AppConfig
+from pycode.app.config import AppConfig
 
 
 def test_loop_repeat_threshold_defaults_to_three_and_must_be_positive(tmp_path):

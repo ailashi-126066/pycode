@@ -5,9 +5,9 @@ import json
 import pytest
 
 from evals.coding.assembly import build_evaluation_runner
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig
 from pycode.kernel import StorageError
-from pycode.models.domain.models import ProviderConfig
+from pycode.models import ProviderConfig
 
 
 def test_evaluation_rejects_work_directories_outside_its_owned_root(tmp_path):

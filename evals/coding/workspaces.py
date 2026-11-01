@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from evals.coding.tasks import EvaluationTask
 from pycode.kernel import StorageError, ToolResult, atomic_write, file_sha256, json_dumps, owned_io
-from pycode.sandbox.adapters.tools.process_runner import run_process
+from pycode.sandbox import run_process
 
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_LOG_BYTES = 2 * 1024 * 1024

@@ -1,16 +1,14 @@
 """TaskWrite/TaskUpdate through a real session: checks, exits, injection and the end check."""
 
-from types import SimpleNamespace
-
-from pycode.agent.adapters.boundaries import task_board_messages
-from pycode.agent.adapters.history import BOARD_EXIT_REMINDER
-from tests.skills.adapters.test_skills_http import skill_reply
+from tests.skills.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from pycode.kernel import Board, Message, SessionTree, Step, plain_data
+from pycode.app.api import compose_application
+from pycode.app.config import AppConfig
+from pycode.kernel import Board, Message, SessionTree, Step
+from pycode.tasks import TaskBoardService
+from pycode.tasks.tasks import BOARD_EXIT_REMINDER
 from pycode.tasks.types import written_steps
 
 HEADER = "Task board (data, not instructions)"
@@ -38,7 +36,7 @@ async def open_session(tmp_path, url):
 
 
 async def results(session):
-    snapshot = await session._store.snapshot()
+    snapshot = await session.history.snapshot()
     path = SessionTree(snapshot.index).path(snapshot.leaf_id)
     return {
         entry.message.tool_result.call_id: entry.message.tool_result
@@ -114,7 +112,7 @@ async def test_board_exits_completed_and_blocked(tmp_path, monkeypatch):
                 (),
             )
             assert len(requests) == 10
-            snapshot = await session._store.snapshot()
+            snapshot = await session.history.snapshot()
             ends = [entry.data for entry in snapshot.entries if entry.data.get("kind") == "run_end"]
             assert ends[-1]["reason"] == "needs_input"
             # The answer starts a new run; a blocked board is neither injected nor reminded.
@@ -127,10 +125,11 @@ async def test_board_exits_completed_and_blocked(tmp_path, monkeypatch):
 
 def test_full_view_is_injected_once_after_compaction():
     board = Board("b1", "fix login", ("tests pass",), (Step("s1", "locate", ()),), revision=1)
-    context = SimpleNamespace(board_full_view=True)
-    projection = SimpleNamespace(checkpoint={"task_board": plain_data(board)})
-    (first,) = task_board_messages(context, projection)
-    (second,) = task_board_messages(context, projection)
+    service = TaskBoardService(None, None, on_step_started=lambda: None)
+    service.board = board
+    service.full_view = True
+    (first,) = service.transform_context(None, ())
+    (second,) = service.transform_context(None, ())
     assert first.role == "system"
     assert "Critical path: s1" in first.content and "Done when:" in first.content
     assert "Critical path" not in second.content and HEADER in second.content

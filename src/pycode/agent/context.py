@@ -19,7 +19,7 @@ from pycode.kernel import (
     ToolResult,
     ToolSpec,
 )
-from pycode.tools import ToolExecutor, ToolRegistry
+from pycode.tools import FailureGuard, ToolExecutor, ToolRegistry, empty_failure_guard
 
 if TYPE_CHECKING:
     from pycode.models import ModelRequestRunner
@@ -120,13 +120,13 @@ class RunContext:
     max_turns: int
     # Shared immutable identity and event data for callbacks.
     scope: RunScope
+    history_store: "SqliteSessionStore"
+    projector: ContextProjector
+    eviction: ToolEvictionService
+    durable_inputs: "DurableInputs"
     initial_inputs: tuple[Message, ...] = ()
     one_at_a_time: bool = False
     completed: list[Message] = field(default_factory=list)
-    history_store: "SqliteSessionStore | None" = None
-    projector: ContextProjector | None = None
-    eviction: ToolEvictionService | None = None
-    durable_inputs: "DurableInputs | None" = None
     agent_id: str = "lead"
     summary: SummaryService | None = None
     model_source_leaf_id: str | None = None
@@ -136,7 +136,7 @@ class RunContext:
     system_hash: str = ""
     disclosed_tool_names: tuple[str, ...] | None = None
     read_only: bool = False
-    failure_guard: dict = field(default_factory=dict)
+    failure_guard: FailureGuard = field(default_factory=empty_failure_guard)
     interrupted_calls: set[str] = field(default_factory=set)
     duplicate_calls: asyncio.Condition = field(default_factory=asyncio.Condition)
     dispatched_calls: set[str] = field(default_factory=set)

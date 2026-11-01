@@ -119,8 +119,6 @@ def build_parser():
         author.add_argument("name")
         author.add_argument("--file", required=True, help="UTF-8 SKILL.md source file")
         author.add_argument("--scope", choices=("user", "project"), default="user")
-        if operation == "update":
-            author.add_argument("--revision", required=True, help="Current SHA-256 revision")
     memory = commands.add_parser(
         "memory", aliases=["/memory"], help="Inspect and edit saved memory files"
     )
@@ -139,18 +137,10 @@ def build_parser():
     remove = memory_actions.add_parser("remove", aliases=["delete"])
     remove.add_argument("memory_id")
     remove.add_argument("--scope", choices=["user", "project"])
-    revert = commands.add_parser("revert", help="Preview, apply or recover an explicit revert")
+    revert = commands.add_parser("revert", help="Revert dialogue, code or both to an entry")
     execution_options(revert, suppress=True)
-    revert_commands = revert.add_subparsers(dest="revert_command", required=True)
-    preview = revert_commands.add_parser("preview")
-    preview.add_argument("target", help="Entry ID or root")
-    preview.add_argument("--mode", choices=("dialogue", "code", "both"), default="dialogue")
-    preview.add_argument("--plan-out", help="Write UTF-8 plan to a new file")
-    apply = revert_commands.add_parser("apply")
-    apply.add_argument("--plan-file", required=True)
-    recover = revert_commands.add_parser("recover")
-    recover.add_argument("transaction_id")
-    recover.add_argument("--compensate", action="store_true")
+    revert.add_argument("target", help="Entry ID or root; latest revert ID undoes it")
+    revert.add_argument("--mode", choices=("dialogue", "code", "both"), default="dialogue")
     usage = commands.add_parser(
         "usage", aliases=["/usage"], help="Inspect nullable token accounting"
     )

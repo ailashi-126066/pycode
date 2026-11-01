@@ -5,7 +5,6 @@ from pycode.agent.context import RunContext
 from pycode.kernel import (
     EntryDraft,
     SessionTree,
-    StorageError,
     ToolError,
     ToolSpec,
     data_hash,
@@ -51,49 +50,38 @@ async def calibrate_model_request(request, converter):
         context.model_tools = actual_tools
         context.system_hash = system_hash
         history = context.history_store
-        if history is not None:
-            snapshot = await history.snapshot()
-            previous = None
-            for entry in reversed(SessionTree(snapshot.index).path(snapshot.leaf_id)):
-                if (
-                    entry.type == "tool_set_change"
-                    and entry.data.get("source") == "effective_model"
-                ):
-                    previous = entry
-                    break
-            digest = data_hash({"tools": plain_data(actual_tools), "system_hash": system_hash})
-            if previous is None or previous.data["hash"] != digest:
-                await history.append_entry(
-                    EntryDraft(
-                        "tool_set_change",
-                        data={
-                            "source": "effective_model",
-                            "hash": digest,
-                            "tools": plain_data(actual_tools),
-                            "harness_system_hash": system_hash,
-                            "harness_system_tokens": estimate_text(
-                                system if isinstance(system, str) else str(system)
-                            ),
-                        },
-                        run_id=context.run_id,
-                    )
+        snapshot = await history.snapshot()
+        previous = None
+        for entry in reversed(SessionTree(snapshot.index).path(snapshot.leaf_id)):
+            if entry.type == "tool_set_change" and entry.data.get("source") == "effective_model":
+                previous = entry
+                break
+        digest = data_hash({"tools": plain_data(actual_tools), "system_hash": system_hash})
+        if previous is None or previous.data["hash"] != digest:
+            await history.append_entry(
+                EntryDraft(
+                    "tool_set_change",
+                    data={
+                        "source": "effective_model",
+                        "hash": digest,
+                        "tools": plain_data(actual_tools),
+                        "harness_system_hash": system_hash,
+                        "harness_system_tokens": estimate_text(
+                            system if isinstance(system, str) else str(system)
+                        ),
+                    },
+                    run_id=context.run_id,
                 )
+            )
         report = None
         summary = context.summary
         if summary is not None:
             summary.set_tools(actual_tools)
             report = await summary.prepare()
-        if history is not None:
-            projector = context.projector
-            if projector is None:
-                raise StorageError(
-                    "projector_unavailable", "Calibration history requires a projector"
-                )
-            snapshot = await history.snapshot()
-            projection = projector.transform_context(snapshot)
-            context.model_source_leaf_id = snapshot.leaf_id
-            if report is not None and report.applied_job_id is not None:
-                request = request.override(
-                    messages=converter(projection.messages, context.selection)
-                )
+        projector = context.projector
+        snapshot = await history.snapshot()
+        projection = projector.transform_context(snapshot)
+        context.model_source_leaf_id = snapshot.leaf_id
+        if report is not None and report.applied_job_id is not None:
+            request = request.override(messages=converter(projection.messages, context.selection))
     return request

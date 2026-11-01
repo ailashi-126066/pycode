@@ -7,9 +7,8 @@ import platform
 import sys
 from pathlib import Path
 
-from pycode.app.bootstrap import compose_application
-from pycode.app.configuration.settings import AppConfig
-from pycode.sandbox.domain.sandbox import SandboxSettings
+from pycode.app import AppConfig, compose_application
+from pycode.sandbox import SandboxSettings
 
 
 async def verify(args, root):

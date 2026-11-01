@@ -1,16 +1,12 @@
-"""The agent runtime with default bindings, for tests that drive the graph directly."""
+"""The real agent runtime with directly assembled model and tool callbacks."""
 
-from pycode.agent.module import AgentModule
-from pycode.app.composition.bindings import build_runtime_bindings
-from pycode.models.module import ModelsModule
-from pycode.tools.module import ToolsModule
+from pycode.agent import AgentRuntime
+from pycode.app.composition import build_runtime_bindings
+
+
+async def no_hook(*args, **kwargs):
+    pass
 
 
 def build_agent_runtime(model, **options):
-    return AgentModule().runtime(
-        model,
-        bindings=build_runtime_bindings(
-            agent=AgentModule(), models=ModelsModule, tools=ToolsModule()
-        ),
-        **options,
-    )
+    return AgentRuntime(model, bindings=build_runtime_bindings(run_hook=no_hook), **options)

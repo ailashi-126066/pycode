@@ -29,8 +29,7 @@ from pycode.kernel import (
 
 async def poll_steering(context):
     """Pi: getSteeringMessages. Polled at loop start, at each turn end, and after preparation."""
-    if context.durable_inputs is not None:
-        context.inputs = await context.durable_inputs.pending(context.run_id)
+    context.inputs = await context.durable_inputs.pending(context.run_id)
     return context.inputs.take("steer", one_at_a_time=context.one_at_a_time)
 
 
@@ -95,8 +94,6 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
     async def current_projection(self, context):
         """One projection per model call, reused while the history leaf is unchanged."""
 
-        if context.history_store is None or context.projector is None:
-            raise StorageError("history_unavailable", "Projection needs history and a projector")
         snapshot = await context.history_store.snapshot()
         cached = context.model_projection
         if cached is None or cached.leaf_id != snapshot.leaf_id:
@@ -143,10 +140,11 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             if current.summary is not None:
                 current.summary.set_tools(current.model_tools or current.registry.model_specs())
                 summary = await current.summary.prepare()
-            if current.eviction is not None:
-                await current.eviction.apply(
-                    protected_entry_ids=summary.protected_entry_ids if summary else ()
-                )
+                if summary.applied_job_id is not None:
+                    await self.bindings.run_hook(current.scope, "compact")
+            await current.eviction.apply(
+                protected_entry_ids=summary.protected_entry_ids if summary else ()
+            )
             return current
 
         async def project_turn(pending):
@@ -155,17 +153,12 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             if turn > 1:
                 await context.events.emit("turn_start", {"turn": turn})
             updates: dict[str, Any] = {"turn": turn}
-            if context.history_store is not None:
-                projection = await self.current_projection(context)
-                messages: list[BaseMessage] = [
-                    RemoveMessage(id=REMOVE_ALL_MESSAGES),
-                    *self.bindings.to_framework_messages(projection.messages, context.selection),
-                ]
-                updates.update(messages=messages, branch_leaf_id=projection.leaf_id)
-            elif pending:
-                updates["messages"] = [
-                    self.bindings.to_framework(message, context.selection) for message in pending
-                ]
+            projection = await self.current_projection(context)
+            messages: list[BaseMessage] = [
+                RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                *self.bindings.to_framework_messages(projection.messages, context.selection),
+            ]
+            updates.update(messages=messages, branch_leaf_id=projection.leaf_id)
             return updates
 
         await maintain_context(context)
@@ -183,8 +176,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         state = cast(PycodeState, request.state)
         boundary = f"{context.run_id}:model-{state['turn']}"
         await self.bindings.run_hook(context.scope, "pre_send")
-        if context.history_store is not None:
-            request = request.override(messages=await self.model_messages(context))
+        request = request.override(messages=await self.model_messages(context))
         tools = list(request.tools)
         names = set()
         for tool in tools:
@@ -197,9 +189,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             tools=tools, model_settings={**request.model_settings, "stream": True}
         )
         request = await prepare_model_boundary(request, self.bindings, self.tool_filters)
-        if context.history_store is not None:
-            # Calibration may append tool_set_change; record the leaf this request follows.
-            await self.current_projection(context)
+        await self.current_projection(context)
         model_step = self.bindings.model_request_step(
             context.requests, handler, logical_id=boundary
         )
@@ -213,6 +203,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 report = await context.summary.prepare(force=True)
                 if report.applied_job_id is None:
                     raise
+                await self.bindings.run_hook(context.scope, "compact")
                 request = request.override(messages=await self.model_messages(context))
                 response = await model_step.ainvoke(request)
         except (ModelError, asyncio.CancelledError) as error:
@@ -307,13 +298,12 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         kind, pending = "steer", context.steering
         context.steering = ()
         if not pending:
-            if context.durable_inputs is not None:
-                context.inputs = await context.durable_inputs.pending(context.run_id)
+            context.inputs = await context.durable_inputs.pending(context.run_id)
             kind, pending = take_queued(context)
         if not pending and self.before_finish is not None:
             if await self.before_finish(context):
                 return {"jump_to": "model"}
-        if not pending and context.durable_inputs is not None:
+        if not pending:
             context.inputs = await context.durable_inputs.finish_boundary(context.run_id)
             kind, pending = take_queued(context)
         if not pending:

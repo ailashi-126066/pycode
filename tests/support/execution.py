@@ -1,7 +1,7 @@
 """Shared Provider and session fixtures for actual loopback framework tests."""
 
-from pycode.app.bootstrap import compose_application
-from pycode.models.domain.models import ProviderConfig
+from pycode.app.api import compose_application
+from pycode.models import ProviderConfig
 
 
 def provider(url):

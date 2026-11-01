@@ -15,7 +15,7 @@ from evals.coding.assembly import build_evaluation_solver
 from evals.coding.runner import EvaluationRunner
 from evals.coding.workspaces import EvaluationWorkspaces
 from evals.tests.corpus import polyglot_cache
-from pycode.app.configuration.settings import AppConfig
+from pycode.app import AppConfig
 
 
 async def test_timeout_preserves_settled_request_usage_trace_and_independent_tests(
@@ -66,7 +66,7 @@ async def test_timeout_preserves_settled_request_usage_trace_and_independent_tes
         assert result["independent_tests"]["junit"]["tests"] > 0
         assert result["artifacts"]["trace"]["complete"]
         trace = tmp_path / "results" / result["artifacts"]["trace"]["path"]
-        from pycode.session.adapters.storage.session import read_records
+        from pycode.session import read_records
 
         exported = tmp_path / "exported-session.sqlite"
         with gzip.open(trace, "rb") as stream:

@@ -8,7 +8,7 @@ from pycode.kernel import SessionHeader, ToolCall, ToolError, ToolResult, ToolSp
 from pycode.plans import FilePlanStore, InterruptPlanPrompt, PlanService
 from pycode.session import SqliteSessionStore
 from pycode.tasks import plan_board
-from pycode.tools.adapters.backend import PycodeBackend
+from pycode.tools import PycodeBackend
 from tests.support.requests import TestTiming
 
 

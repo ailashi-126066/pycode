@@ -8,7 +8,7 @@ import pytest
 
 from pycode.kernel import ToolError
 from pycode.subagents.store import GitWorktrees
-from tests.snapshot.adapters.test_git_tree import git, repository
+from tests.snapshot.test_git_tree import git, repository
 
 
 def committed_repository(tmp_path):

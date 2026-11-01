@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from pycode.agent import next_turn
-from pycode.tools.domain.turn_guard import tool_calls_may_execute
+from pycode.tools.executor import tool_calls_may_execute
 
 VECTORS = json.loads((Path(__file__).parents[1] / "fixtures/pi-agent-loop.json").read_text())
 
