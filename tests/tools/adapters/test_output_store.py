@@ -31,6 +31,9 @@ async def test_large_result_keeps_details_and_points_at_the_full_output():
     prepared = await store.prepare(context(), result, "head")
     path = prepared.details["full_output_path"]
     assert path == str(store.directory / "call-1.log")
+    # Only this user can read full outputs, also when $TMPDIR is a shared /tmp.
+    for directory in (store.directory.parent, store.directory):
+        assert directory.stat().st_mode & 0o777 == 0o700
     assert await asyncio.to_thread(Path(path).read_text) == text
     # Original details survive; Pi's truncation and fullOutputPath are added beside them.
     assert prepared.details["loaded_tools"] == {"echo": "hash"}

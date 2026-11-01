@@ -2,7 +2,9 @@
 # Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/tools/bash.ts
 """Large tool outputs: a truncated preview in the result, the full text in a temp file."""
 
+import os
 import re
+import stat
 import tempfile
 from dataclasses import replace
 from pathlib import Path
@@ -26,6 +28,18 @@ from pycode.kernel.adapters.path_io import owned_io
 def output_directory(session_id: str) -> Path:
     """$TMPDIR/pycode/<session_id>; the Seatbelt profile already allows reading $TMPDIR."""
     return Path(tempfile.gettempdir()) / "pycode" / session_id
+
+
+def make_private_directory(directory: Path) -> None:
+    """Create $TMPDIR/pycode and the session directory as 0700; refuse one another user made.
+
+    On Linux $TMPDIR is often the shared /tmp, and full outputs skip the credential filter.
+    """
+    for path in (directory.parent, directory):
+        path.mkdir(mode=0o700, exist_ok=True)
+        info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode) or (os.name == "posix" and info.st_uid != os.getuid()):
+            raise StorageError("output_directory_not_owned", f"{path} is not this user's directory")
 
 
 def full_output_path(context: ToolContext) -> Path:
@@ -81,7 +95,7 @@ class TempOutputStore:
         path = full_output_path(context)
 
         def write():
-            path.parent.mkdir(parents=True, exist_ok=True)
+            make_private_directory(path.parent)
             path.write_text(result.text, encoding="utf-8")
 
         await owned_io(write)
@@ -106,7 +120,7 @@ class StreamingOutputWriter:
         self.tail = b""
 
     def open(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        make_private_directory(self.path.parent)
         self.stream = self.path.open("wb")
 
     async def append(self, data: bytes) -> None:
