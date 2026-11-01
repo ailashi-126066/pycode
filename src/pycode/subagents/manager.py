@@ -137,7 +137,8 @@ class SubagentManager:
         session = self._sessions[agent.agent_id]
         try:
             result = await run
-            while result.outcome == "needs_input":
+            # A blocked board ends with needs_input but nothing pending: it fails with its note.
+            while result.pending:
                 agent.pending = result.pending
                 agent.apply("wait")
                 await self.emit(agent)
