@@ -17,9 +17,9 @@ TASKS = {
     "goal": "ship",
     "done_when": ["tests pass"],
     "steps": [
-        {"id": "a", "title": "A", "depends_on": []},
+        {"id": "a", "title": "A"},
         {"id": "b", "title": "B", "depends_on": ["a"]},
-        {"id": "c", "title": "C", "depends_on": []},
+        {"id": "c", "title": "C"},
     ],
 }
 

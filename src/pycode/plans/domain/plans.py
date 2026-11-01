@@ -41,7 +41,7 @@ TASK_WRITE_SCHEMA = {
                     "depends_on": {"type": "array", "items": TEXT},
                     "acceptance": {"type": "array", "items": ACCEPTANCE},
                 },
-                "required": ["title", "depends_on"],
+                "required": ["title"],
                 "additionalProperties": False,
             },
         },
@@ -89,7 +89,8 @@ def written_steps(items, previous):
         identifier = item.get("id", f"s{len(steps) + 1}")
         fields = {
             "title": item["title"],
-            "depends_on": tuple(item["depends_on"]),
+            # 11.1 section 38: no depends_on means no dependencies.
+            "depends_on": tuple(item.get("depends_on", ())),
             "acceptance": tuple(
                 Acceptance(entry) if isinstance(entry, str) else Acceptance(**entry)
                 for entry in item.get("acceptance", ())

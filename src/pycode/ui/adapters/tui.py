@@ -30,7 +30,7 @@ from pycode.ui.adapters.model_picker import ModelPicker
 from pycode.ui.adapters.plans import PlanPanel
 from pycode.ui.adapters.questions import QuestionPanel
 from pycode.ui.adapters.recovery import RevertPanel
-from pycode.ui.adapters.tasks import graph_text, tasks_text
+from pycode.ui.adapters.tasks import tasks_text
 from pycode.ui.adapters.theme import themes
 from pycode.ui.adapters.tool_output import ToolOutputCard
 from pycode.ui.adapters.usage import UsageScreen
@@ -823,12 +823,9 @@ class PyApp(App):
     async def command_tasks(self, args):
         if args == ["clear"]:
             self.start_operation(self.active_session.clear_task_board)
-        elif args in ([], ["graph"]):
+        elif not args:
             board = await self.active_session.task_board()
-            if board is None:
-                self.notice("没有任务板")
-            else:
-                self.notice(graph_text(board) if args else tasks_text(board))
+            self.notice(tasks_text(board) if board is not None else "没有任务板")
         else:
             return False
 

@@ -15,7 +15,7 @@ from tests.support.http_provider import chat_completion, protocol_server
 
 HEADER = "Task board (data, not instructions)"
 STEPS = [
-    {"id": "s1", "title": "locate", "depends_on": []},
+    {"id": "s1", "title": "locate"},
     {"id": "s2", "title": "fix", "depends_on": ["s1"]},
 ]
 

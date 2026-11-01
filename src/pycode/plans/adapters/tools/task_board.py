@@ -44,7 +44,8 @@ class TaskWrite:
     spec = ToolSpec(
         "TaskWrite",
         "Create the task board, or revise the open one: goal, done_when criteria and steps. "
-        "Every step lists depends_on (ids of steps it waits for; [] when none). Steps not "
+        "Give a step depends_on (ids of steps it must wait for) only when it has to come "
+        "after them; leave it out when there is no ordering constraint. Steps not "
         "listed are kept; a listed id revises that step. A different goal needs replace=true, "
         "which abandons the open board. A board from an approved Plan only accepts new steps.",
         TASK_WRITE_SCHEMA,

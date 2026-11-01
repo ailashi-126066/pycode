@@ -1,4 +1,4 @@
-"""/tasks, /tasks graph, /tasks clear and /agents in the actual TUI."""
+"""/tasks, /tasks clear and /agents in the actual TUI."""
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
@@ -10,7 +10,7 @@ from tests.ui.adapters.test_tui_http import settled
 STEPS = [
     {"id": "s1", "title": "locate", "depends_on": [], "acceptance": ["found the bug"]},
     {"id": "s2", "title": "fix", "depends_on": ["s1"]},
-    {"id": "s3", "title": "docs", "depends_on": []},
+    {"id": "s3", "title": "docs"},
 ]
 
 
@@ -18,7 +18,7 @@ def notice(app):
     return str(app.query_one("#notice").render())
 
 
-async def test_tasks_show_evidence_graph_and_clear(tmp_path, monkeypatch):
+async def test_tasks_show_evidence_layers_and_clear(tmp_path, monkeypatch):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     write = {"goal": "fix login", "done_when": ["tests pass"], "steps": STEPS}
     replies = [
@@ -43,15 +43,26 @@ async def test_tasks_show_evidence_graph_and_clear(tmp_path, monkeypatch):
             await app.command("/tasks")
             text = notice(app)
             assert "- s1 [completed] locate" in text and "s1 evidence: look ls" in text
-            await app.command("/tasks graph")
-            text = notice(app)
+            # s1 and s3 can run in parallel, so layers and the critical path follow the list.
             assert "1) s1, s3" in text and "2) s2" in text
-            assert "Critical path: s1 -> s2" in text and "s2 <- s1" in text
+            assert "Critical path: s1 -> s2" in text
             await app.command("/tasks clear")
             await settled(app)
             if app.last_error:
                 raise app.last_error
             await app.command("/tasks")
             assert "[abandoned]" in notice(app)
+            await app.command("/tasks graph")
+            assert "用法" in notice(app)
             await app.command("/agents")
             assert app.query("#agents-panel")
+
+
+def test_layers_only_when_steps_can_run_in_parallel():
+    from pycode.kernel import Board, Step
+    from pycode.ui.adapters.tasks import tasks_text
+
+    line = Board("b", "g", ("done",), (Step("a", "A", ()), Step("b", "B", ("a",))))
+    assert "Layers" not in tasks_text(line)
+    free = Board("b", "g", ("done",), (Step("a", "A", ()), Step("b", "B", ())))
+    assert "1) a, b" in tasks_text(free)
