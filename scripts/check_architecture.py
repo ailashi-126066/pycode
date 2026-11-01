@@ -737,8 +737,12 @@ def check_branding(root: Path = ROOT) -> list[str]:
         if branding_excluded(relative):
             continue
         # Source attribution keeps actual upstream directory names; licenses keep notices.
-        # The 11.1 design document names its upstream sources the same way.
-        if relative.as_posix() in {"docs/source-map.md", "11.1.md"} or relative.parts[:2] == (
+        # Design documents name their upstream sources the same way.
+        if relative.as_posix() in {
+            "docs/source-map.md",
+            "11.1.md",
+            "docs/design/structure-slim-round2.md",
+        } or relative.parts[:2] == (
             "docs",
             "licenses",
         ):
@@ -749,7 +753,9 @@ def check_branding(root: Path = ROOT) -> list[str]:
             if not obsolete.search(line):
                 continue
             stripped = line.strip()
-            if stripped.startswith("#") and ("Source:" in line or "来源" in line):
+            if stripped.startswith("#") and any(
+                mark in line for mark in ("Source:", "来源", "参照")
+            ):
                 continue
             errors.append(f"{relative.as_posix()}:{number}: obsolete product brand")
     return errors
