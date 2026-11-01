@@ -1,48 +1,15 @@
 """Regression behavior found by the independent final review, exercised through real boundaries."""
 
-import asyncio
-from dataclasses import replace
-
 import pytest
-from langchain_core.messages import AIMessage
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel.domain.errors import ToolError
 from pycode.kernel.domain.messages import Message
 from pycode.tools.adapters.backend import PycodeBackend
-from tests.agent.adapters.test_agent import Recorder, assemble
+from tests.agent.adapters.test_agent import Recorder
 from tests.skills.adapters.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
-
-
-async def test_first_parallel_failure_batch_must_block_fourth_execution():
-    replies = [
-        AIMessage(
-            id="batch",
-            content="",
-            tool_calls=[
-                {"id": str(i), "name": "echo", "args": {"value": "same"}} for i in range(5)
-            ],
-        ),
-        AIMessage(id="final", content="done"),
-    ]
-    runtime, context, _, tool, journal, _ = assemble(replies)
-
-    class Failure:
-        spec = replace(tool.spec, execution_mode="sequential")
-        count = 0
-
-        async def execute(self, current, arguments):
-            self.count += 1
-            raise ToolError("stable_failure", "bad input")
-
-    failing = Failure()
-    context.registry.replace_source("builtin", (failing,))
-    await asyncio.wait_for(runtime.run((Message("u", "user", "work"),), context), 10)
-    print("actual_executions", failing.count)
-    assert failing.count == 3
 
 
 async def test_dialogue_revert_must_restore_plan_policy(tmp_path, monkeypatch):

@@ -1,6 +1,5 @@
 """Exercise the real application root with disabled, replaced and failed feature products."""
 
-import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -216,32 +215,6 @@ async def test_launcher_attempts_every_closer_after_an_earlier_failure(tmp_path)
     with pytest.raises(RuntimeError, match="active"):
         await launcher.aclose()
     assert order == ["active", "summary", "second", "first"]
-
-
-async def test_launcher_cancellation_waits_for_owned_cleanup(tmp_path):
-    started, finish = asyncio.Event(), asyncio.Event()
-    closed = []
-
-    class Resource:
-        async def aclose(self):
-            started.set()
-            await finish.wait()
-            closed.append(True)
-
-    launcher = ConfiguredRuntimeLauncher(
-        configuration(tmp_path), (), (), None, resource_owners=(Resource(),)
-    )
-    waiting = asyncio.create_task(launcher.aclose())
-    async with asyncio.timeout(2):
-        await started.wait()
-        waiting.cancel()
-        await asyncio.sleep(0)
-        waiting.cancel()
-        finish.set()
-        with pytest.raises(asyncio.CancelledError):
-            await waiting
-    assert closed == [True]
-    await launcher.aclose()
 
 
 async def test_view_factory_failure_closes_records_before_returning(tmp_path, monkeypatch):

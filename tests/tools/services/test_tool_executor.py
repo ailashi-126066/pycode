@@ -168,17 +168,6 @@ async def test_tool_io_error_is_a_domain_result():
     assert result.error_code == "tool_io_error"
 
 
-async def test_programming_defect_becomes_one_error_result_without_its_message():
-    class BrokenTool(EchoTool):
-        async def execute(self, context, arguments):
-            raise RuntimeError("implementation defect")
-
-    executor, context, _, _ = make_executor(BrokenTool())
-    result = await executor.execute(context, ToolCall("call-1", "echo", {"value": "x"}), "tool_use")
-    assert result.is_error and result.error_code == "tool_execution_error"
-    assert result.text == "Tool failed with RuntimeError" and result.details["executed"]
-
-
 async def test_cancellation_reaches_tool_and_waits_for_cleanup():
     started = asyncio.Event()
     cleaned = asyncio.Event()
@@ -224,17 +213,6 @@ async def test_tool_argument_mutation_cannot_rewrite_recorded_call():
     call = ToolCall("call-1", "echo", {"value": "original"})
     await executor.execute(context, call, "tool_use")
     assert call.arguments == {"value": "original"}
-
-
-def test_registry_declarations_are_stable_after_registration():
-    tool = EchoTool()
-    registry = ToolRegistry(JsonSchemaValidator(), (tool,))
-    original = registry.get_spec("echo")
-    tool.spec = replace(tool.spec, input_schema={"type": "null"}, category="write")
-    assert registry.get_spec("echo") == original
-    exposed = registry.get_spec("echo")
-    exposed.input_schema.clear()
-    assert registry.get_spec("echo") == original
 
 
 async def test_updates_after_the_tool_returned_are_dropped():

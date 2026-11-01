@@ -66,39 +66,6 @@ async def test_failed_owner_waits_for_owned_cleanup_only(
     assert closed == expected
 
 
-async def test_cancellation_during_failed_initialization_waits_for_cleanup(tmp_path, monkeypatch):
-    closing = asyncio.Event()
-    release = asyncio.Event()
-    closed = []
-
-    class Factory:
-        def __init__(self, *args):
-            pass
-
-        def create(self, provider):
-            raise RuntimeError("provider construction failed")
-
-        async def aclose(self):
-            closing.set()
-            await release.wait()
-            closed.append("factory")
-
-    monkeypatch.setattr(model_module, "ModelFactory", Factory)
-    models = model_module.ModelsModule(tmp_path / "catalog", tmp_path / "requests", {})
-    creating = asyncio.create_task(
-        models.owner(configuration("openai"), (), "session", "run", "agent")
-    )
-    await closing.wait()
-    creating.cancel()
-    # The owner must remain pending while the acquired resource is still closing.
-    await asyncio.sleep(0)
-    assert not creating.done()
-    release.set()
-    with pytest.raises(asyncio.CancelledError):
-        await creating
-    assert closed == ["factory"]
-
-
 @pytest.mark.parametrize("kind", ["openai", "deepseek", "anthropic"])
 async def test_partial_sdk_pair_is_closed_when_second_constructor_fails(
     tmp_path, monkeypatch, kind

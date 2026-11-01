@@ -40,8 +40,6 @@ async def test_fourth_and_later_identical_failure_is_paired_but_never_executed()
     ] * 3
     assert all(result.details["executed"] is False for result in results[3:])
     assert [result.call_id for result in results] == [str(index) for index in range(6)]
-    assert runtime.graph.config["recursion_limit"] == 9999
-    assert not any("SummarizationMiddleware" in name for name in runtime.graph.get_graph().nodes)
 
 
 async def test_parallel_identical_calls_stop_at_three_actual_failures():

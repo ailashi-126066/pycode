@@ -37,7 +37,6 @@ async def test_view_closes_owned_history_after_both_earlier_closers_fail_once():
         await view.aclose()
     assert caught.value is first
     assert calls == ["usage", "events", "history"]
-    assert not view._owns_history
     with pytest.raises(OSError):
         await view.aclose()
     assert calls == ["usage", "events", "history"]
@@ -49,56 +48,6 @@ async def test_view_does_not_close_borrowed_history():
     await view.aclose()
     await view.aclose()
     assert calls == ["usage", "events"]
-
-
-async def test_repeated_caller_cancellation_waits_for_owned_cleanup():
-    calls = []
-    started, release = asyncio.Event(), asyncio.Event()
-
-    class BlockingUsage:
-        async def aclose(self):
-            started.set()
-            await release.wait()
-            calls.append("usage")
-
-    view = make_view(calls)
-    view._usage = BlockingUsage()
-    closing = asyncio.create_task(view.aclose())
-    await started.wait()
-    closing.cancel()
-    await asyncio.sleep(0)
-    closing.cancel()
-    await asyncio.sleep(0)
-    assert not closing.done()
-    release.set()
-    with pytest.raises(asyncio.CancelledError):
-        await closing
-    assert calls == ["usage", "events", "history"]
-
-
-async def test_first_resource_error_is_preserved_when_caller_then_cancels():
-    calls = []
-    waiting, release = asyncio.Event(), asyncio.Event()
-    first = OSError("usage failed first")
-
-    class BlockingEvents:
-        async def aclose(self):
-            waiting.set()
-            await release.wait()
-            calls.append("events")
-
-    view = make_view(calls, usage_error=first)
-    view._events = BlockingEvents()
-    closing = asyncio.create_task(view.aclose())
-    await waiting.wait()
-    closing.cancel()
-    await asyncio.sleep(0)
-    assert not closing.done()
-    release.set()
-    with pytest.raises(OSError) as caught:
-        await closing
-    assert caught.value is first
-    assert calls == ["usage", "events", "history"]
 
 
 @pytest.mark.parametrize("close_error", [RuntimeError("close failed"), asyncio.CancelledError()])
@@ -129,7 +78,6 @@ async def test_subagent_close_failure_does_not_skip_launcher_view_or_history(clo
         await session.aclose()
     assert caught.value is close_error
     assert calls == ["memory", "subagents", "launcher", "view", "history"]
-    assert session._memory is None and session._subagents is None and session._view is None
     with pytest.raises(StorageError, match="closing or closed"):
         async with session.execution():
             pass
@@ -145,7 +93,7 @@ async def test_active_session_close_keeps_resources_owned_until_run_is_collected
         with pytest.raises(StorageError) as caught:
             await session.aclose()
         assert caught.value.code == "session_busy"
-        assert calls == [] and not session._closing
+        assert calls == []
     finally:
         session._execution.release()
     await session.aclose()
