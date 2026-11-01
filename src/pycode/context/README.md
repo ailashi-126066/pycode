@@ -10,7 +10,7 @@
 有序 `ProjectionContributor`；输出是 projector、summary、eviction、prompt/workflow。
 Projector 每实例缓存自己的会话版本；贡献器输入只读，检查名称和 checkpoint key 所有权。
 自定义贡献可能读取普通消息；未声明 `incremental_safe` 或声明为 False 时重算贡献。
-仅所有贡献器明确保证普通追加不影响既有贡献，才复用增量快路径；Skills 保守重算。
+仅所有贡献器明确保证普通追加不影响既有贡献，才复用增量快路径。
 
 在应用装配层可以显式建立：
 

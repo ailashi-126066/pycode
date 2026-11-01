@@ -4,7 +4,8 @@
 `SkillsMiddleware`；Skill 的脚本通过普通 Bash 工具执行，不自动注册 Python 函数。
 
 阅读顺序：`api.py` → `catalog.py` / `install.py` → `framework.py`。`module.py` 只供应用组装。
-`history.py` 保存压缩、分支和重启后恢复已读说明的纯投影；不是第二个执行循环。
+照 Pi，Skill 由一次成功的 `read /skills/<source>/<name>/SKILL.md` 加载：结果的 `details.skill` 记下名字、路径、
+content_hash 和 allowed-tools，`types.active_skills` 沿当前分支读这些结果。压缩摘要末尾写一行已加载的 skill。
 
 - `Skills.list/search/read`：查找定义，`search` 返回用于更新的 revision。
 - `Skills.load(name, args)`：只准备请求，不访问模型，也不启动任务。

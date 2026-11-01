@@ -1,116 +1,86 @@
-> 本文保留固定上游来源与原始迁移记录。下面的阶段映射包含已删除能力，不代表当前接口。当前工具发现与装配见 [统一 ToolSearch](design/tool-discovery.md) 和 [组件精简](design/component-simplification.md)。
-
 # 源码来源与复用记录
-
-唯一实施规范：项目根目录 `第二个计划.md`。原开发目录为
-`C:/Users/21125/Desktop/go/pycode`；原规范中的 macOS 绝对路径属于来源环境，
-在此工作区对应同级参考目录。当前副本没有 `.git`；最终历史接入只能在真实目标仓库中核验。
 
 ## 固定来源
 
-- Pi：`earendil-works/pi`，提交 `42a3497d03ad17e308a2299fa824727894f2c0ec`，
-  `packages/agent/package.json` 与 `packages/coding-agent/package.json` 版本 `1.1.0`。
-- OpenCode：`anomalyco/opencode`，提交 `055d95bb7e278c94baf06235a52cac79dd13ba67`，
-  `packages/opencode/package.json` 版本 `1.18.35`。
-- MewCode：只读本地目录 `../3_mewcode-python`，版本 `0.2.0`，无可用 Git 提交基线。
-  用户于 2026-10-10 明确说明这是其自行编写的代码。按用户授权直接复用和改造，
-  不因缺少项目级许可证文件阻止迁移。保留源文件现有署名；此授权不扩大第三方依赖许可证。
+- Pi：`earendil-works/pi`。本次对齐（11.1）的出处是 HEAD `2c8d1fe`，下表文件头写
+  `# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/<路径>`。更早移植的文件仍写最初的提交
+  `42a3497d03ad17e308a2299fa824727894f2c0ec`（`packages/agent` 与 `packages/coding-agent` 版本 `1.1.0`）。
+- OpenCode：`anomalyco/opencode`，提交 `055d95bb7e278c94baf06235a52cac79dd13ba67`（`packages/opencode` `1.18.35`）。
+  工具结果驱逐与 Git tree 快照的思路来自这里。
+- MewCode：只读本地目录 `../3_mewcode-python`，版本 `0.2.0`，没有 Git 基线。用户于 2026-10-10 说明这是其
+  自行编写的代码，授权直接复用和改造；这一授权不扩大第三方依赖许可证。文件头用本地 SHA-256 标明出处，
+  清单在本文件末尾。
+- Exercism Python（评测题库，`Aider-AI/polyglot-benchmark@7e0611e77b54e2dea774cdc0aa00cf9f7ed6144f`）。
 
-当前固定提交源码归档缓存位于 `tests/.runtime-tests/source-cache/`，仅供对照，
-不作为运行依赖或随发行包发布。原阶段使用的 `.source-cache/` 属于历史验证目录。
-归档 URL、完整提交和 SHA-256 见 `archive/baselines/upstream.json`。
-原始归档保留以核对来源，文件清单见本文件末尾与 `archive/baselines/upstream-files.json`。
+## 许可证
 
-## 许可证与署名
+Pi、OpenCode、Exercism 都是 MIT，完整声明在 `licenses/pi-MIT.txt`、`licenses/opencode-MIT.txt`、
+`licenses/exercism-MIT.txt`，随 wheel 和 sdist 发布。MewCode 的作者授权在 `licenses/local-author-permission.txt`，
+其中保留了原作者的署名（“公众号@小林coding / xiaolincoding.com / xiaolinnote.com / jianli.xiaolinnote.com”）；
+源码文件头不再重复这段署名。
 
-Pi 与 OpenCode 在上述固定提交均为 MIT，完整声明保存在
-`licenses/pi-MIT.txt` 和 `licenses/opencode-MIT.txt`，发行时包含在 wheel 与 sdist 中。
-未发现涉及这些目标模块的额外 NOTICE；后续每次复制检查对应文件头及目录声明。
-MewCode 无项目级 LICENSE/NOTICE；使用用户的作者授权，并保留部分文件已有的
-“公众号@小林coding / xiaolincoding.com / xiaolinnote.com / jianli.xiaolinnote.com”署名。
-授权依据另存于 `licenses/local-author-permission.txt`。
+## 照 Pi HEAD 2c8d1fe 实现的文件
 
-## 最终模块映射（2026-10-13）
+| pycode 文件 | Pi 文件 |
+|---|---|
+| `agent/domain/run_state.py` | `packages/agent/src/agent-loop.ts` |
+| `context/adapters/summary.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
+| `context/adapters/summary.py` | `packages/coding-agent/src/core/compaction/utils.ts` |
+| `context/domain/compaction.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
+| `context/domain/context_meter.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
+| `context/domain/file_ops.py` | `packages/coding-agent/src/core/compaction/utils.ts` |
+| `context/domain/summary_source.py` | `packages/coding-agent/src/core/compaction/compaction.ts` |
+| `context/domain/tasks.py` | `packages/coding-agent/examples/extensions/todo.ts` |
+| `context/services/context_projector.py` | `packages/coding-agent/src/core/session-manager.ts` |
+| `kernel/domain/events.py` | `packages/agent/src/types.ts` |
+| `kernel/domain/history.py` | `packages/coding-agent/src/core/session-manager.ts` |
+| `kernel/domain/messages.py` | `packages/ai/src/types.ts` |
+| `kernel/domain/messages.py` | `packages/coding-agent/src/core/messages.ts` |
+| `kernel/services/events.py` | `packages/agent/src/agent.ts` |
+| `models/adapters/messages.py` | `packages/ai/src/api/transform-messages.ts` |
+| `plans/adapters/tools/task_board.py` | `packages/coding-agent/examples/extensions/todo.ts` |
+| `tools/adapters/builtin/edit.py` | `packages/coding-agent/src/core/tools/edit.ts` |
+| `tools/adapters/builtin/edit.py` | `packages/coding-agent/src/core/tools/edit-diff.ts` |
+| `tools/adapters/builtin/find.py` | `packages/coding-agent/src/core/tools/find.ts` |
+| `tools/adapters/builtin/grep.py` | `packages/coding-agent/src/core/tools/grep.ts` |
+| `tools/adapters/builtin/ls.py` | `packages/coding-agent/src/core/tools/ls.ts` |
+| `tools/adapters/builtin/path_utils.py` | `packages/coding-agent/src/core/tools/path-utils.ts` |
+| `tools/adapters/builtin/read.py` | `packages/coding-agent/src/core/tools/read.ts` |
+| `tools/adapters/builtin/write.py` | `packages/coding-agent/src/core/tools/write.ts` |
+| `tools/adapters/discovery.py` | `packages/coding-agent/src/core/system-prompt.ts` |
+| `tools/adapters/file_mutation_queue.py` | `packages/coding-agent/src/core/tools/file-mutation-queue.ts` |
+| `tools/adapters/output_store.py` | `packages/coding-agent/src/core/tools/output-accumulator.ts` |
+| `tools/adapters/output_store.py` | `packages/coding-agent/src/core/tools/bash.ts` |
+| `tools/adapters/schema.py` | `packages/ai/src/utils/validation.ts` |
 
-固定来源清单和作者授权保持不变。以下说明当前复用边界；真实命令、源码摘要及结果以
-`archive/verification/deepagents-migration.json` 为准，历史阶段报告不证明当前版本。
+各概念的对照和用到的框架机制见 [pi-map.md](pi-map.md)。
 
-- `agent/adapters/agent.py`：Deep Agents 0.7.32 公共 create_deep_agent，唯一主 harness；
-  `agent/adapters/state.py`、`agent/adapters/history.py`、`agent/adapters/boundaries.py`、`tools/adapters/settlement.py` 保存 Pi 的原始消息、顺序、
-  重复失败与产品事实边界，删除旧调度循环、操作表及 after-model 调度。
-  中断不阻塞后续完成工具；结算、事件和 Hook 始终使用对应 operation_id。
-- `tools/adapters/backend.py`：复用既有 workspace 范围、精确编辑、哈希和 atomic write；
-  原生 FilesystemMiddleware 入口及实际 rg 搜索替换旧 Read/Write/Edit/Grep/Glob 和 Python
-  regex worker。巨型读／搜索结果保留到唯一输出对象；原字段与真实接口差异由迁移测试验证。
-- `session/adapters/storage/session.py`、`kernel/history_tree.py`、`context/services/context_projector.py`：
-  Pi JSONL 会话树、OpenCode 工具驱逐、原始与模型两种视图；immutable entry、单一 ID 索引、
-  active-path IDs 和 revision cache 为本项目优化。无主聊天磁盘 checkpoint。
-- `context/services/summary.py`、`context/adapters/summary.py`：MewCode 两阶段后台摘要与 Pi 保留边界；
-  阈值 80%，使用实际 native/dynamic schema 与系统提示 footprint。Deep Agents 摘要禁用。
-- `snapshot/adapters/git_tree.py`：固定 OpenCode tree 思路，独立裸仓库、路径预览与补偿事务；
-  不使用用户 index/refs/stash 作为快照存储。旧恢复测试改为 JSONL 边界。
-- `skills/services/skills.py`、`skills/adapters/*`、`skills/adapters/skills.py`：MewCode 声明、可信来源、
-  GitHub staging/backup 和 Python 资源验证保留；runtime 加载与披露只属于 native
-  SkillsMiddleware。目录分层只是预算边界，Python 每次审批；fork 经 native task。
-- `mcp/adapters/*`、`mcp/services/mcp*.py`：MewCode 产品命名/目录策略，LangChain MCPAdapter
-  唯一连接及协议实现；stdio/HTTP、direct/dispatch、资源/提示和错误经过同一结算边界。
-  不保留直接协议 SDK 客户端或额外 adapter 包。
-- `hooks/services/hooks.py`、`hooks/adapters/*`：MewCode 条件、模板、command/prompt 复用（HTTP 动作已删除）；
-  JSONL once/结果、owned background、真实只读 Agent 动作和 Plan/权限边界为本项目接入。
-- `plans/services/plans.py`、`plans/adapters/storage/plans.py`、`plans/adapters/plans.py`：精确 Markdown 路径，
-  当前进程审批、批准内容 hash、反馈与重启过期语义。AskUser 使用同样 live interrupt。
-- `memory/services/memory.py`、`memory/adapters/memory_update.py`、`memory/adapters/memory_tools.py`、
-  `memory/adapters/storage/markdown_memory.py`：官方 LangMem Store Manager 与 manage 工具直接
-  作用于一条记忆一个 Markdown 文件的 BaseStore（只实现 get/put/search）；本项目只接入存储位置、
-  触发时机（压缩采用后、手动 extract）和写入过滤。AGENTS.md 由 Deep Agents `MemoryMiddleware` 加载。旧的证据审查、分组提交、
-  作业／来源游标、作用域移动流水线已删除，规则比较代码存档于 `evals/memory_rules/`。
-- `team/services/team.py`、`team/adapters/worktrees.py`：任务存储、依赖校验与并发策略，以及
-  worktree 和安全集成清理，进程内 AgentTeam 已直接复用；`team serve`／Agent Protocol 已删除。
-  独立团队 JSONL 保存受限收件箱和投递确认；只读/worker、Hook delegate 和 fork Skill 共用进程内协调器。
-- `session/services/storage_gc.py`、`session/adapters/storage/objects.py`：引用标记、30 天隔离/恢复、会话显式
-  删除及审计；保护全部分支、fork、summary/Plan/memory/team。快照 Git GC 与 worktree 分开。
-- `app/runtime_launcher.py`、`app/composition/context.py` and `app/composition/memory.py`：显式注入的生命周期编排；具体
-  adapter 构造分到唯一组合根 `app/composition/` 的功能装配模块。没有 import 注册、全局服务定位或 monkey patch。
-- `ui/adapters/*`、`app/cli*.py`：MewCode Textual/CLI 设计；当前品牌 pycode、原始历史
-  增量组件、折叠/对象回读、live/expired 等待、Plan/memory/team、可读名称和 UTF-8 输出。
-  `commands.py`、`completion.py` 参考只读 `code-python/mewcode/commands/{registry,parser,completion}.py`；
-  仅注册本项目既有入口。原候选思路适配为 Textual OptionList，点击选择实际行，Enter 分开补全和提交。
-- `evals/coding/*`、`evals/quality/langfuse.py`（独立于 pycode 包）：固定 GitHub corpus
-  12 Python 题、3 smoke、实际 harness、独立测试及摘要-only Langfuse。本项目新增流水线。
-  上游 `Aider-AI/polyglot-benchmark@7e0611e77b54e2dea774cdc0aa00cf9f7ed6144f`；
-  Exercism Python MIT。manifest 含逐文件 hash，下载缓存/工作区/结果不进入发行包。
-  完整声明保存在 `licenses/exercism-MIT.txt`，随 wheel 和 sdist 发布。
+## 其他复用边界
+
+- Agent 循环：Deep Agents 0.7.32 的 `create_deep_agent` 是唯一的图（`agent/adapters/agent.py`），Pi 的循环钩子由
+  middleware 实现，不另写调度循环。
+- 会话树：Pi session-manager 的树结构存进 LangGraph `SqliteStore`（`session/adapters/storage/session.py`）。
+- 后台摘要：MewCode 的两阶段后台摘要（何时压缩）加上 Pi 的摘要写法（怎么压缩）。
+- Skills：目录、可信来源和 GitHub 安装来自 MewCode，加载与校验照 Pi；Deep Agents `SkillsMiddleware` 负责披露。
+- MCP：LangChain `MCPAdapter` 是唯一的连接与协议实现。
+- Hooks：MewCode 的条件、模板和 command/prompt 动作；条件在进程内求值。
+- 记忆：LangMem 的 Store Manager 和 manage 工具，底层 BaseStore 是一条一个 Markdown 文件。
+- Subagent：照 Claude Code 的行为自己写管理层（`subagents/`），子 agent 内部仍用同一个 Deep Agents 图。
+- TUI / CLI：MewCode 的 Textual 设计；`ui/adapters/commands.py`、`completion.py` 参考
+  `code-python/mewcode/commands/{registry,parser,completion}.py`。
+- 评测（`evals/`，独立于 pycode 包）：本项目自己的流水线。
 
 ## 移植规则
 
-2026-10-13 审查修复另存 `archive/verification/post-review-fixes.json`：修复实际 Team 配置／装配、
-权限和等待链路，MCP 工具直接使用 MCPAdapter 的 BaseTool；rg 改为有界流式 NUL 帧解析，
-结算失败收拢活跃工具，TUI 使用不可变展示缓存，评测保存版本关联的完整验证证据。
-来源清单、许可证及历史报告保持原样；下述来源哈希不因本次修复而重写。
+每个直接复制或翻译的文件在文件头写出处（Pi 写 GitHub 链接和提交，MewCode 写本地路径和 SHA-256）以及改造范围。
+新源码不包含旧产品名或旧配置路径；本文件、许可证和出处注释可以出现 MewCode 名称。
 
-### 原生 Provider 集成的最小适配
+### Provider 的最小适配
 
-真实 HTTP 用例揭示当前集成的实际缺陷：DeepSeek 的 cache miss 在流式归一化后丢失，
-thinking 内容虽被接收却未随后续工具轮请求发送；Anthropic 的 message_start 输入用量
-丢失并被默认补成 0。以上回归已通过真实 SDK HTTP 请求复现，再修复。
-
-`observation.py` 只观察 SDK 已解码的对象，SDK 继续负责 HTTP、SSE 和消息协议。
-`ManagedChatAnthropic` 仍是原生 `ChatAnthropic` 的子类，仅重载其两个惰性 SDK client
-访问器以注入有生命周期所有者的 client；没有另写 BaseChatModel 协议实现、动态注册
-或猴子补丁。原生消息转换与工具绑定仍使用 LangChain。这个窄适配依赖上述验证版本，
-升级集成时必须重新执行四种 HTTP 协议测试和原始 usage 回归，不能只做类型构造检查。
-
-DeepSeek 实际目录于 2026-10-10 返回 `deepseek-flash` 和 `deepseek-v4-pro`。
-旧配置 `deepseek-chat` 未发现记录已保留；验收另外显式选择 `deepseek-flash`，
-程序没有自动换模型。示例配置更新为当前模型；目录不内置固定模型名称列表。
-官方行为说明：[DeepSeek thinking](https://api-docs.deepseek.com/guides/thinking_mode/)、
-[模型列表](https://api-docs.deepseek.com/api/list-models/)、
-[LangChain middleware](https://docs.langchain.com/oss/python/langchain/middleware/custom)。
-
-每个直接复制或翻译的文件先记录上表来源，在文件头注明路径、提交或本地 SHA-256
-以及改造范围；保留已有署名。先提取对应来源的测试向量，再编写 Python 实现。
-测试向量记录上游用例名称及源文件哈希，固定模型通过和真实服务通过分别记录。
-新的源码不包含旧产品配置路径或品牌；本文件和许可证、来源注释允许出现 MewCode 名称。
+LangChain 负责 HTTP、SSE、消息转换和工具绑定。`models/adapters/observation.py` 只观察 SDK 已解码的对象，
+补回流式归一化后丢失的用量（DeepSeek cache miss、Anthropic message_start 输入用量）。
+`ManagedChatAnthropic` 是 `ChatAnthropic` 的子类，只重载两个惰性 client 访问器以注入有生命周期所有者的
+client。升级 LangChain 集成时要重跑四种 HTTP 协议测试和 usage 回归。
 
 ## 本地来源 SHA-256 清单
 

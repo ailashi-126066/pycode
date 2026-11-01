@@ -26,8 +26,6 @@ EntryType = Literal[
     "tool_set_change",
     "plan_state",
     "session_metadata",
-    "session_deleted",
-    "session_restored",
     "skill_catalog",
     "system_prompt",
 ]

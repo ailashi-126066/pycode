@@ -9,5 +9,4 @@
 
 根 `__init__.py` 只公开原生契约与纯策略；I/O 实现必须显式从 adapters 使用，纯层不能依赖它。
 Skill/MCP 规则、模型展示、消息计费和压缩边界属于对应功能，禁止重新塞回共享目录。
-ProjectedContext 的 usage invalidation 字段仅承载模块贡献的历史 ID，不解释功能事件类型；
-它不参与 checkpoint fingerprint，也不改写 JSONL。
+`work_graph.py` 是任务板（Board/Step、转移表、validate/apply/derived），`state_machine.py` 是通用状态机。

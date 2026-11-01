@@ -1,4 +1,4 @@
-# Subagents（11.1 第 10 节，替代 Team）
+# Subagents（11.1 第 10 节）
 
 照 Claude Code 的 subagent 做，不做 agent teams（子 agent 之间不通信，不共享任务板）。
 

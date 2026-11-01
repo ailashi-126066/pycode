@@ -1,259 +1,106 @@
-> 当前存储与恢复行为以 [存储格式](storage-format.md) 为准：完整记录使用 SqliteStore，执行位置使用 AsyncSqliteSaver。
+# 架构
 
-> 子 agent 的行为以 [Subagents 设计](design/subagents.md) 为准。
+pycode 的底层照 Pi（HEAD `2c8d1fe`）翻译成 Python，用 LangChain / LangGraph / Deep Agents 实现，再加上 pycode
+自己的功能（后台压缩、MCP、subagent、任务板、Plan、长期记忆、快照与回退）。Pi 概念到 pycode 文件的对照见
+[pi-map.md](pi-map.md)，存储见 [storage-format.md](storage-format.md)，一次请求的组成见
+[context-request.md](context-request.md)。
 
-# 当前工具发现流程
+## 包与依赖
 
-2026-10-22：模型工具选择器已删除，本地与 MCP 统一采用名称/一句话分类目录和 ToolSearch 按需加载。详见 [统一工具发现](design/tool-discovery.md)。
+`src/pycode/` 下按功能分包：kernel（消息、事件、记录、状态机、work_graph）、models（LangChain provider 适配）、
+context（投影、压缩、驱逐、任务板投影）、agent（Deep Agents 图和 middleware）、tools（注册、执行、结算、
+发现）、sandbox（Seatbelt、bash）、snapshot（Git 快照）、session（SQLite 会话、恢复、回退）、plans（Plan 与
+任务板工具）、memory、skills、mcp、hooks、subagents、ui（Textual TUI、控制台）、app（CLI、配置、组装）。
 
-# Final architecture and ownership
+分层包是 domain/ports/services/adapters/module；skills、mcp、hooks、subagents 是扁平包（types/contracts）。
+跨包只能经包的 `__init__` 导出。允许的依赖在 `docs/design/feature-dependencies.json`，每个 Protocol 的生产实现
+在 `docs/design/port-implementations.json`，两者都由 `scripts/check_architecture.py` 强制。pycode 不 import
+evals 和 scripts。
 
-> 2026-10-22：本文包含精简前的设计/教学记录；当前 Skills、MCP、Hooks、Team 以[组件精简说明](design/component-simplification.md)和组件 README 为准。
+组装只有一个入口 `app/bootstrap.py::compose_application`，返回带 `ApplicationModules` 的 Application；CLI、TUI、
+评测都用它。`app/composition/` 连接各模块，`app/lifecycle/` 管会话和运行的资源生命周期。
 
-`app/bootstrap.py:compose_application` is the single public composition entry. It returns
-an Application with explicitly selected `ApplicationModules`. CLI, TUI wiring, coding evaluations
-and maintenance acceptance use it. `app/composition/` contains private application/session/run
-connections; its package no longer exports a catalogue of constructors.
+## 一次运行
 
-The app root contains only bootstrap and package documentation. `app/cli/` owns input/dispatch,
-`app/configuration/` owns external settings and credentials, `app/composition/` connects modules,
-and `app/lifecycle/` owns assembled session/run resources. Lifecycle receives explicit factories
-and cannot import composition, bootstrap or CLI. Configuration has no reverse application edge.
-Package initializers contain documentation only. The installed CLI entry point is
-`pycode.app.cli.main:main`; module execution uses the same function. These boundaries and the
-physical app layout are enforced by the architecture checker. See `src/pycode/app/README.md`.
+1. `AgentSession.run` 写用户消息，`ConfiguredRuntimeLauncher` 组装 `AgentRuntime`（`agent/adapters/agent.py`，
+   唯一的 `create_deep_agent` 图）和 `RunContext`。
+2. 循环由 LangGraph 跑，`HistoryMiddleware`（`agent/adapters/history.py`）提供 Pi `AgentLoopConfig` 的几个钩子：
+   `abefore_model`（维护上下文、轮次预算、防打转）、`awrap_model_call`（投影、注入、请求、保存回复）、
+   `aafter_model` / `aafter_agent`（结束一轮、steering 与 follow-up、任务板结束前检查）。
+   `RunState`（`agent/domain/run_state.py`）显式记录 `starting → model_turn ⇄ tool_turn → awaiting_input →
+   verifying → finished`。
+3. 工具调用由 `ToolSettlementMiddleware`（`tools/adapters/settlement.py`）包住 tools 节点：准备阶段按顺序串行
+   （校验、Hook、审批一次一个），执行阶段并发；有工具声明 `sequential` 时整批串行。`ToolExecutor`
+   （`tools/services/tool_executor.py`）负责校验、`pre_tool_use`、授权、快照和执行。每个调用有
+   `ToolCallState`（issued → validating → awaiting_approval → running → settled），`begin` / `settle` 是唯一出入口。
+4. 审批用 LangGraph `interrupt` 暂停，`AgentRuntime.resume` 用 `Command(resume)` 送回答案；同一时间只有一个
+   待答问题。
+5. `AgentRuntime.finish` 是唯一结束出口：必要时发 `turn_end`，写 `run_end{reason}`，发 `agent_end`，触发
+   `run_end` Hook。
 
-Each feature owns `module.py`: configuration interpretation, concrete adapter construction,
-local service products and resource lifetimes. Application wiring imports these named module
-entries and native public contracts, never feature-internal adapters. Feature modules do not
-import app, another feature's module entry, or another feature's adapters. Optional Skills/MCP
-can be replaced or disabled without changing Agent core. Child scopes rebind the chosen
-providers through their own scoped hooks, preserving implementation and credential selection.
-No default module set is silently rebuilt for child operations.
+## 转移 → 记录 → 事件 → Hook
 
-Source is organized as kernel, agent, session, context, models, tools, sandbox, snapshot,
-memory, skills, mcp, hooks, plans, team, ui and app. Each feature has domain, ports, services
-and adapters. Kernel follows the same four layers: immutable exchange facts/algorithms,
-native interfaces, event delivery, and explicit file/clock/journal implementations. Its root
-API does not forward I/O adapters. Built-in Skill documents and the system prompt live inside
-their owning feature resources. Old global layer packages and compatibility shells are absent.
+先持久化，再发事件，最后触发 Hook：
 
-The exact permitted DAG is in `docs/design/feature-dependencies.json`. Context owns no Skill,
-MCP, Memory or Plan reconstruction: immutable contributors return only their owned checkpoint
-keys and entries in a fixed order. Generic usage invalidation and system-fingerprint metadata
-keep counting independent of feature event names. Unknown or unsafe contributors recompute on changed history. Incremental append is used only
-when every contributor explicitly guarantees safety; unchanged revisions remain cached.
-The checker enforces layer purity, explicit module entry ownership, public origins, module and
-feature cycles, aliases/TYPE_CHECKING/dynamic imports, and real native-port implementation coverage.
+| 转移 | 记录（session.sqlite） | 事件 | Hook |
+|---|---|---|---|
+| 运行开始 | `custom{run_start}` | `agent_start` | `run_start` |
+| 一轮开始 / 结束 | — | `turn_start` / `turn_end{turn, message_id, tool_result_ids}` | `turn_start` / `turn_end` |
+| 请求模型 | — | `message_start{attempt}`、`message_update` | `pre_send` |
+| 收到回复 | `message`（assistant，含 stop_reason） | `message_end{message, entry_id}` | `post_receive` |
+| ToolCall issued → validating | — | `tool_execution_start` | `pre_tool_use` |
+| validating → awaiting_approval | — | `needs_input`（运行停下等待时） | `permission_request` |
+| 审批决定 | `custom{tool_approval}` | — | — |
+| → running | `custom{tool_started}` | `tool_execution_update` | — |
+| → settled | `message`（tool_result，改文件时 details 带 file_snapshot） | `tool_execution_end{status, outcome}` | `post_tool_use`、`file_change`、`error` |
+| 压缩采用 | `compaction` | `compaction` | `compact` |
+| 子 agent 状态 | `custom{subagent_start}` | `subagent` | — |
+| 运行结束 | `custom{run_end}` | `agent_end{reason}` | `run_end` |
 
-`agent/adapters/agent.py` builds the sole `deepagents.create_deep_agent` graph. Framework state
-is separate from the framework-free `agent/services/context.py` RunContext and its consumer
-Protocols. History middleware records model responses before tools; tool settlement owns
-only its private failure-state fields. Composition injects model converters, calibration,
-request metering, Skills and tool middleware. A bound message publisher preserves session Store →
-output binding → snapshot fact → completion-event order; tool lifecycle callbacks run after
-durable publication. Revert orchestration and conversation transactions belong to session;
-snapshot owns only Git/file versions and restores.
+事件共 18 种（`kernel/domain/events.py`），每个事件信封带 `turn`、`agent_id`、`parent_call_id`。订阅者抛异常会让
+本次运行失败；只有 `BrokenPipeError` 例外，禁用该订阅者并抛 `OutputClosed`。Hook 共 14 种
+（`hooks/types.py`），旧名字在加载配置时报错并提示新名字；`pre_tool_use` 出错按拦截处理。
 
-Skill and Plan backends delegate to explicitly injected filesystem operations, rather than
-inheriting another feature's adapter. Skill files remain read-only and version-pinned. Plan
-resolution restricts every operation to the active file, and its search scope makes rg scan
-only that file. Skill scripts execute through Bash with the existing permission boundary;
-worker write roots and credential/environment restrictions remain.
+## 工具
 
-FilesystemMiddleware uses PycodeBackend and explicit routes: `/workspace/`, `/plans/`,
-`/skills/<source>/`, `/large_tool_results/`, `/conversation_history/`.
-Workspace paths, hashes and locks are enforced by the Backend. rg supplies real regex/glob
-search, ignoring internal state and default hidden paths; complete large results are preserved
-before native display truncation. SkillsMiddleware owns loading/disclosure, including budgeted
-catalogue reload through its public methods. LangChain MCPAdapter owns MCP connections/protocol.
+内置工具照 Pi：read、bash、edit、write、grep、find、ls，默认并行；edit 和 write 按文件排队。其余工具：
+ToolSearch、TaskWrite/TaskUpdate、ExitPlanMode、AskUserQuestion、Agent/SendMessage/StopAgent、Skill 与 MCP
+工具、记忆工具。延迟加载见 [design/tool-discovery.md](design/tool-discovery.md)。
 
-Main-chat execution uses AsyncSqliteSaver in execution.sqlite. Full branch records live in
-session.sqlite through SqliteStore. Explicit resume restores the graph; effects started without
-a saved result receive an interrupted result. Saved business effects are not executed again. EventStream isolates failed consumers; closed CLI output requests
-controlled cancellation. The session Store contains one original result; large bytes live in one scoped
-object. Memory/summary/Plan metadata reference original facts rather than another conversation.
+文件访问走 `tools/module.py::composite` 构造的 `CompositeBackend`，虚拟路由有 `/workspace/`、`/plans/`、
+`/skills/<source>/`、`/memory/user/`、`/memory/project/` 和大输出临时目录；write/edit 只能写 `/workspace/` 和
+`/plans/`。授权链是 Interrupt（或 ReadOnly）→ Memory → Plan，嵌入方的 `AppConfig.tool_gate` 和 Skill 的
+allowed-tools 范围包在链外层，先判断再交给默认链。
 
-Settlement normally follows declared tool order. An interrupted call does not hold completed
-later calls: their saved results settle before the native graph returns the waiting state.
-Resume clears only transient interrupt barriers; confirmed results are not executed again.
-The repeated-failure barrier applies only to the matching name/arguments, and yields when
-that call interrupts. Each completion event and Hook retains its own operation identity.
+## 任务板与 Plan
 
-Harness summarization is excluded through its public profile. The pycode 80% background
-summary uses source/configuration hashes and two-phase safe adoption. Effective native/dynamic
-tool definitions and system-prompt footprint are recorded for runtime/UI capacity consistency.
-Project prompt snapshots refresh only at new tasks. Store entries are immutable, indexed once
-by ID; active-path IDs and projection revision caches avoid deep-copying complete history.
+任务板（`kernel/domain/work_graph.py`）是简单任务和 Plan 共用的模型：`Board` 和 `Step` 两个类，两张转移表，
+`validate` / `apply` / `derived` 三个函数。`depends_on` 可选，写了就做环和悬空校验，依赖没完成的步骤不能开始；
+同一时间只有一个 in_progress；完成要有证据：有 `check` 的验收项由系统在步骤开始之后找完全相同且成功的 bash
+调用，引用的证据必须在步骤开始之后、而且是成功的调用。任务板的出口是 completed / failed / blocked
+（结束运行并把问题交给用户）/ abandoned。Plan 模式只读规划、写计划文档，末尾的 `pycode-tasks` 代码块经用户
+审批后变成执行任务板，执行中只能追加或跳过步骤。TUI `/tasks` 查看，`/tasks clear` 放弃。
 
-Subagents (Agent/SendMessage/StopAgent) each run in their own child AgentSession; the main
-agent sees only their final results, and worktree-mode changes are merged by an approved bash
-`git merge`. See [the subagent design](design/subagents.md).
-Plan is an exact writable document with run-bound approved hash; restart expires approvals.
+## Subagent
 
-Memory has two parts. AGENTS.md instructions (`~/.pycode/AGENTS.md`, plus the project's
-`AGENTS.md` only with `--trust-project`) load through Deep Agents `MemoryMiddleware` with a
-read-only allowlisted
-backend. They are read once per run into private graph state and appended to every model call's
-system message, so they never enter JSONL history and compaction/summaries cannot drop them;
-the harness system footprint recorded for capacity includes them.
+照 Claude Code：Agent / SendMessage / StopAgent，readonly 或 worktree 模式，前台或后台。每个子 agent 是一个完整
+的 `AgentSession`，管理层是 `subagents/manager.py`。见 [design/subagents.md](design/subagents.md)。
 
-Long-term memory is one Markdown file per memory (frontmatter `description`/`updated`), in
-`~/.pycode/memory/` and, for a trusted project, `<project>/.pycode/memory/`. The system prompt
-carries an index (one line per memory, at most 50, newest first); the model reads
-`/memory/<scope>/<id>.md` with `read` through a read-only mount. There is no automatic recall.
-The model writes with LangMem `manage_*_memory` tools through ordinary settlement and
-MemoryToolGate. `memory/services/memory.py` (MemoryService) runs one background
-`create_memory_store_manager` pass after a compaction is adopted, plus manual `/memory extract`.
-Background memory models always run with thinking disabled (forced tool choice conflicts with
-DeepSeek thinking); failures are logged, never retried and never reach the conversation.
-The write filter (`memory/domain/memory.py`: 2000 characters, 50 per scope, credential patterns)
-applies to every write. MarkdownMemoryStore implements only the get/put/search LangMem uses.
+## 防打转与预算
 
-GC marks all durable references and
-live/uncertain writers before 30-day quarantine/purge; memory directories are explicitly
-excluded from managed objects. Worktree integration/cleanup stays separate.
-Seatbelt profiles deny by default: reads cover the workspace, system directories, temp,
-the running interpreter's prefixes/import roots and git global config; later rules deny
-~/.ssh, ~/.aws, ~/.gnupg, ~/.config, ~/.pycode and every .env/.env.* except a workspace
-.env.example. Writes stay in the workspace outside .git/.pycode and dotenv files (so they cannot
-be renamed out of the read deny). Toolchains and caches under HOME are not readable.
-`on-auto` approves only commands whose every segment passes the pure sandbox allow list
-(`sandbox/domain/command_policy.auto_approvable`, quote-aware; unquoted globs in find/rg/git arguments are
-rejected); others use the ordinary approval interrupt. Deny patterns are defence in depth ahead of both.
-Evaluation runs the same harness in isolated declared-file workspaces and tests independently.
+`tools/domain/progress_guard.py` 检测"同一动作在工作区没变时重复"和"文件改回旧内容"，第一次提醒，再出现就以
+`loop_detected` 结束运行，active 任务板同时设为 failed。最大轮次 `--max-turns`（默认 100），到达时
+`turn_limit`。
 
-Build/tests operate here without initializing the project Git directory. Reference projects
-remain read-only. Temporary Git/worktree operations are confined to tests-owned roots.
-Evaluation lives in the separate `evals/` package (pycode never imports it) and keeps its
-cache/work/results under `evals/` or `tests/.runtime-tests`.
+## 记忆
 
-Review fixes: serial tools wait for preceding durable settlement
-or interrupt, rather than racing a lock and an outdated failure count. Live tool tasks are
-owned and collected when persistence or a critical synchronous Hook fails.
+AGENTS.md（`~/.pycode/AGENTS.md`，加 `--trust-project` 时还有项目根目录的）经 Deep Agents `MemoryMiddleware`
+每次放进系统提示。长期记忆一条一个 Markdown 文件，系统提示里放索引，模型用 read 按需读取；模型用 LangMem 的
+`manage_*_memory` 写入（单条 ≤2000 字，每作用域 ≤50 条，疑似密钥拒绝）。后台整理只在压缩被采用后跑一次，
+另有手动 `/memory extract`。
 
-MCPAdapter-produced BaseTools reach the graph directly. The connection gateway rechecks pinned
-schemas/annotations; one boundary converts the native result to its canonical JSONL fact.
-New runs refresh discovery without mutating a live run's declaration snapshot. No raw call-tool
-dictionary round trip or random inner call ID remains.
+## 沙箱
 
-rg uses its public NUL filename framing and sorted output. Python drains bounded chunks, retains
-a bounded preview, and streams complete oversized matches into the existing output store. Bash
-and Python progress uses the same process owner and bounded event chunks. Actual Textual render
-errors are isolated in the message pump; immutable presentation views and incremental sidebar
-nodes avoid repeatedly copying or rebuilding completed history.
-
-Evaluation retains version-linked evidence before removing baseline/workspace pairs. Its optional
-SDK uploader observes measured summaries after execution; submission status is distinct from
-independently verified remote ingestion. Historical audit scripts and test-owned environments
-are preserved outside normal collection and distributions; their confirmed cases are covered
-by production regression tests.
-
-## Ports and concrete implementations
-
-Every Protocol declared in feature ports and shared contracts is listed below. Multiple
-implementations may exist (for example, ToolGate and SandboxBackend); one concrete production
-implementation is shown per port. Factory and callback rows identify the composition binding,
-not the Protocol itself. `docs/design/port-implementations.json` records exact source symbols;
-the architecture check verifies complete coverage and rejects missing or Protocol-only bindings.
-Private adapter-local SDK Protocols are implemented by injected PycodeBackend/framework objects.
-
-| Consumer port | Production implementation |
-| --- | --- |
-| `agent.ports.runtime.InputQueue` | `session.services.input_queue.PendingInputs` |
-| `agent.ports.runtime.DurableInputDelivery` | `session.services.durable_inputs.DurableInputs` |
-| `agent.ports.runtime.HistoryProjector` | `context.services.context_projector.ContextProjector` |
-| `agent.ports.runtime.RequestTracking` | `models.adapters.model_requests.ModelRequestRunner` |
-| `agent.ports.runtime.TeamMailbox` | `team.services.team.TeamMember` |
-| `agent.ports.runtime.TitleAssignment` | `app.composition.runtime.BoundTitleAssignment` |
-| `agent.ports.runtime.WorkspaceReadback` | `tools.adapters.backend.PycodeBackend` |
-| `context.ports.summaries.SummaryGenerator` | `context.adapters.background.ConfiguredSummaryGenerator` |
-| `context.ports.summaries.SummaryStore` | `context.adapters.storage.summaries.FileSummaryStore` |
-| `hooks.ports.hooks.HookActions` | `hooks.adapters.actions.ConfiguredHookActions` |
-| `hooks.ports.lifecycle.LifecycleHooks` | `hooks.services.hooks.Hooks` |
-| `hooks.ports.lifecycle.LifecycleContext` | `agent.services.context.RunContext` |
-| `hooks.ports.runtime.HookExecution` | `tools.services.tool_executor.ToolExecutor` |
-| `hooks.ports.runtime.HookPlanGuard` | `plans.services.plans.PlanService` |
-| `hooks.ports.runtime.HookExecutorFactory` | `app.composition.hooks.build_hook_engine` (factory/callback) |
-| `kernel.ports.history.MessageJournal` | `session.adapters.storage.session.JsonlSessionStore` |
-| `kernel.ports.history.HistoryReader` | `session.adapters.storage.session.JsonlSessionStore` |
-| `kernel.ports.history.HistoryJournal` | `session.adapters.storage.session.JsonlSessionStore` |
-| `kernel.ports.tools.ExecutableTool` | `sandbox.adapters.tools.bash.Bash` |
-| `kernel.ports.events.EventConsumer` | `ui.adapters.console.ConsoleOutput` |
-| `kernel.ports.events.EventSink` | `kernel.services.events.EventStream` |
-| `kernel.ports.events.EventJournal` | `kernel.adapters.event_journal.MemoryEventJournal` |
-| `kernel.ports.timing.Timing` | `kernel.adapters.timing.SystemTiming` |
-| `mcp.ports.mcp.MCPConnections` | `mcp.adapters.manager.MCPAdapterConnections` |
-| `mcp.ports.schema.SchemaChecker` | `tools.adapters.schema.JsonSchemaValidator` |
-| `memory.ports.memory.MemoryUpdater` | `memory.adapters.background.ConfiguredMemoryUpdater` |
-| `models.ports.context.Projector` | `context.services.context_projector.ContextProjector` |
-| `models.ports.context.RunOwnership` | `session.domain.guards.SessionRunOwnership` |
-| `models.ports.context.RegistryLookup` | `tools.services.tool_registry.ToolRegistry` |
-| `models.ports.context.CalibrationReport` | `context.domain.summaries.SummaryReport` |
-| `models.ports.context.SummaryBudget` | `context.services.summary.SummaryService` |
-| `models.ports.context.CalibrationContext` | `agent.services.context.RunContext` |
-| `models.ports.models.ModelFailureClassifier` | `models.adapters.failures.ProviderFailureClassifier` |
-| `models.ports.models.RequestStore` | `models.adapters.storage.requests.SQLiteRequestStore` |
-| `models.ports.models.ModelObservation` | `models.adapters.observation.ProviderObservation` |
-| `models.ports.models.ModelDirectory` | `models.adapters.directory.SDKModelDirectory` |
-| `models.ports.models.CatalogStore` | `models.adapters.storage.catalog.FileCatalogStore` |
-| `plans.ports.plans.PlanFiles` | `plans.adapters.storage.plans.FilePlanStore` |
-| `plans.ports.plans.QuestionPrompt` | `plans.adapters.plans.InterruptPlanPrompt` |
-| `sandbox.ports.output.StreamWriter` | `tools.adapters.output_store.StreamingOutputWriter` |
-| `sandbox.ports.output.OutputSink` | `tools.adapters.output_store.FileToolOutputStore` |
-| `sandbox.ports.process.ProcessRunner` | `sandbox.adapters.tools.process_runner.run_process` (factory/callback) |
-| `sandbox.ports.sandbox.SandboxBackend` | `sandbox.adapters.seatbelt.RequiredSandbox` |
-| `session.ports.history.SessionStore` | `session.adapters.storage.session.JsonlSessionStore` |
-| `session.ports.runtime.RuntimeLauncher` | `app.lifecycle.session.ConfiguredRuntimeLauncher` |
-| `session.ports.sessions.SessionRepository` | `session.adapters.storage.session_repository.JsonlSessionRepository` |
-| `session.ports.storage.StorageObjects` | `session.adapters.storage.objects.FileStorageObjects` |
-| `session.ports.workspace.WorkspaceInspector` | `session.adapters.storage.workspace.FileWorkspaceInspector` |
-| `skills.ports.guard.CatalogWriteGuard` | `session.domain.guards.SessionCatalogWriteGuard` |
-| `skills.ports.guard.SchemaChecker` | `tools.adapters.schema.JsonSchemaValidator` |
-| `skills.ports.sandbox.SkillReadGrant` | `sandbox.module.skill_read_grant` (factory/callback) |
-| `skills.ports.skills.SkillCatalog` | `skills.adapters.catalog.FileSkillCatalog` |
-| `skills.ports.skills.SkillResourceToolFactory` | `skills.adapters.python_tool.PythonSkillToolFactory` (factory/callback) |
-| `skills.ports.skills.SkillCatalogCommands` | `skills.services.skills.Skills` |
-| `skills.ports.skills.SkillInstaller` | `skills.adapters.install.GitHubSkillInstaller` |
-| `snapshot.ports.snapshots.SnapshotStore` | `snapshot.adapters.git_tree.GitSnapshotStore` |
-| `team.ports.team.ChildSession` | `session.services.agent_session.AgentSession` |
-| `team.ports.team.ChildSessions` | `app.composition.team.ConfiguredChildSessions` |
-| `team.ports.team.Worktrees` | `team.adapters.worktrees.WorktreeManager` |
-| `team.ports.team.WorktreeSnapshot` | `snapshot.adapters.git_tree.GitSnapshotStore` |
-| `team.ports.team.WorktreeSnapshotFactory` | `snapshot.adapters.git_tree.GitSnapshotStore` (factory/callback) |
-| `tools.ports.hooks.ToolHooks` | `hooks.services.tool_bridge.ToolHookBridge` |
-| `tools.ports.outputs.OutputWriter` | `tools.adapters.output_store.StreamingOutputWriter` |
-| `tools.ports.outputs.ToolOutputStore` | `tools.adapters.output_store.FileToolOutputStore` |
-| `tools.ports.outputs.SessionHeaderReader` | `session.adapters.storage.header_reader.FileSessionHeaderReader` |
-| `tools.ports.publication.MessagePublisher` | `agent.adapters.boundaries.AgentMessagePublisher` |
-| `tools.ports.questions.QuestionPrompt` | `tools.adapters.questions.InterruptQuestionPrompt` |
-| `tools.ports.tools.ArgumentValidator` | `tools.adapters.schema.JsonSchemaValidator` |
-| `tools.ports.tools.ToolGate` | `tools.services.permissions.ReadOnlyToolGate` |
-| `ui.ports.ui.InteractiveSession` | `session.services.agent_session.AgentSession` |
-| `ui.ports.ui.InteractiveSessions` | `app.composition.ui.ConfiguredInteractiveSessions` |
-| `ui.ports.ui.ModelChoice` | `models.domain.models.ModelDescriptor` |
-| `ui.ports.ui.ModelChoices` | `models.domain.models.CatalogSnapshot` |
-| `ui.ports.ui.SandboxAvailability` | `sandbox.domain.sandbox.SandboxStatus` |
-| `context.ports.projection.ProjectionContributor` | `context.services.prompt_projection.SystemPromptProjection` |
-| `tools.ports.extensions.ToolExtension` | `skills.adapters.extension.SkillsToolExtension` |
-| `tools.ports.extensions.NativeToolBinding` | `mcp.adapters.native.MCPNativeBinding` |
-| `agent.ports.runtime.Runtime` | `agent.adapters.agent.AgentRuntime` |
-
-Stage-five type boundaries add the UI's read-only ModelChoice/ModelChoices and
-SandboxAvailability views; their implementations are the existing native ModelDescriptor,
-CatalogSnapshot and SandboxStatus values. The private `_DataclassValue` typing helper is not
-a business port. Explicit subprocess passthrough accepts only exact ordinary environment
-names and still rejects credential-shaped names (including bare API_KEY/TOKEN/CREDENTIAL).
-Bash, Hook and Python Skill policy hashes bind sandbox settings and the validated name list;
-environment values and provider secrets never enter those policy hashes. The configured
-process/grant callbacks and strict worker sandbox remain injected through the selected module entries.
-
-## Team 框架复用边界
-
-成员图负责 TimeoutPolicy、有效活动 heartbeat、审批等待和交接路由；engine 保留实际子执行的停止确认、成员资源、邮箱与 worktree。公共 TeamState 更新直接使用 reducer。子图 checkpoint 保存执行位置，JSONL 提供中断边界已持久化的工具事实；不复制旧 RunContext 的整套执行字段。后台摘要和工具输出清理保持原实现。
-
-Single-agent task updates use the main model task_action/message JSON envelope. History
-validates changes before publishing the assistant or executing its native tool calls.
-TaskProjection replays assistant metadata from the active Store branch; compaction retains
-task_state, and the graph uses a derived plain-data view. Common tools are preloaded; other
-local/MCP schemas load through ToolSearch. See docs/context-request.md for request assembly.
+Seatbelt profile 默认拒绝：读允许工作区、系统目录、临时目录、解释器前缀和 git 全局配置，拒绝 ~/.ssh、~/.aws、
+~/.gnupg、~/.config、~/.pycode 和 .env 文件；写只允许工作区（.git、.pycode、.env 除外）。`on-auto` 只自动批准
+每一段都通过白名单（`sandbox/domain/command_policy.py::auto_approvable`）的命令，其余走正常审批。
