@@ -1,4 +1,5 @@
-"""Hooks types: component-owned implementation."""
+# Pi 没有，pycode 新增；参照 MewCode hooks/conditions.py and models.py
+"""Hook configuration values and compiled conditions."""
 
 # Source: MewCode local hooks/conditions.py and models.py; fixed SHA in docs/source-map.md.
 # SHA-256 conditions: d11485198df8f4ebf76a009c4b13eaf51883ae0a1bbc14f734779d684817f870
@@ -8,6 +9,7 @@ import fnmatch
 import re
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
+from typing import cast
 
 from pycode.kernel import DomainError
 
@@ -57,9 +59,7 @@ class HookCondition:
             return value != self.value
         if self.operator == "~=":
             return fnmatch.fnmatch(value, self.value)
-        if self.pattern is None:
-            raise DomainError("invalid_hook_condition", "Regex condition was not compiled")
-        return self.pattern.search(value) is not None
+        return cast(re.Pattern[str], self.pattern).search(value) is not None
 
 
 @dataclass(frozen=True)

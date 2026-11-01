@@ -1,29 +1,15 @@
 # Context
 
-负责上下文投影、预算、压缩、安全采用和大输出驱逐。系统提示位于本模块 `resources/`。
-也负责 TaskProjection：沿当前分支取最后一份任务板快照（工具结果的 `details.task_board`）。
-完整请求组成见 `docs/context-request.md`。有 active 任务板时由 History 加入请求并单独计量。
-`domain/` 是纯策略，`ports/` 描述摘要存储/生成与投影贡献，`services/` 编排事实，
-`adapters/` 连接框架和文件。此模块不解析 Skill、MCP、Plan 或 Memory 的内部记录。
+`ContextProjector(contributors=(), *, checkpoint_keys=frozenset())` 重建当前分支上下文。
+contributors 是 `(snapshot, path, checkpoint) -> ProjectionContribution | None` 函数序列，
+系统提示先投影，之后按显式顺序调用业务投影。checkpoint_keys 告诉增量缓存哪些状态变化需要重算。
 
-装配入口为 `module.py:ContextModule`。输入是模型调用/停止原因回调、摘要记录工厂及
-有序 `ProjectionContributor`；输出是 projector、summary、eviction、prompt/workflow。
-Projector 每实例缓存自己的会话版本；贡献器输入只读，检查名称和 checkpoint key 所有权。
-自定义贡献可能读取普通消息；未声明 `incremental_safe` 或声明为 False 时重算贡献。
-仅所有贡献器明确保证普通追加不影响既有贡献，才复用增量快路径。
+`PromptService(scope, sections=(), *, suffix="")` 拼接默认提示、项目 agent.md、后缀及实际提示读取函数。
+每个 section 接收 SessionScope、返回文本 tuple；app 只注册确实提供提示的服务。
 
-在应用装配层可以显式建立：
+`SummaryService(..., on_compacted=None)` 在压缩记录成功采用后将该时刻的完整 SessionSnapshot
+同步交给回调，再发 applied 事件。app 将 memory.compacted 接到这个入口，不让后台任务再读取不确定的最新状态。
+配置更新不会丢掉已连接的回调。压缩失败或尚未采用时不会调用。
 
-```python
-from pycode.context.module import ContextModule
-from pycode.models.module import ModelsModule
-
-context = ContextModule(
-    request_step=ModelsModule.model_request_step, stop_reason=ModelsModule.stop_reason
-)
-projector = context.projector(contributors=())
-```
-
-摘要生成器每次拥有一个后台模型 scope，并在成功、失败或取消后关闭；服务的 aclose 由
-session/run 所有者调用。纯投影不打开连接。完整接线见 `app/bootstrap.py` 与
-`app/composition/modules.py`；跨模块依赖只通过公开原生契约。
+阅读顺序：types → projector/prompts → budget/compaction → summary → eviction。
+本包不认识 Feature 基类，也不通过通用服务列表寻找能力。

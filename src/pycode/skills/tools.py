@@ -1,11 +1,14 @@
-"""Skills tools: component-owned implementation."""
+# Pi 没有，pycode 新增；参照 MewCode local tools/load_skill.py
+# SHA-256: 2eb89e486d11167ceae3a18b973accecf12658bcb60c593ea7ea47641c682f52
+# Adaptation: the Skills service instead of mutable Agent/loader fields and private dispatch.
+"""SkillSearch, InstallSkill and SaveSkill."""
 
-# Source: MewCode local tools/load_skill.py; SHA-256:
-# 2eb89e486d11167ceae3a18b973accecf12658bcb60c593ea7ea47641c682f52
-# Adaptation: application port instead of mutable Agent/loader fields and private dispatch.
+from typing import TYPE_CHECKING
 
 from pycode.kernel import ToolResult, ToolSpec, json_dumps
-from pycode.skills.contracts import SkillCatalogCommands
+
+if TYPE_CHECKING:
+    from pycode.skills.skills import Skills
 
 
 class SkillSearch:
@@ -25,7 +28,7 @@ class SkillSearch:
         execution_mode="parallel",
     )
 
-    def __init__(self, skills: SkillCatalogCommands):
+    def __init__(self, skills: "Skills"):
         self._skills = skills
 
     async def execute(self, context, arguments):
@@ -52,7 +55,7 @@ class InstallSkill:
         execution_mode="sequential",
     )
 
-    def __init__(self, skills: SkillCatalogCommands):
+    def __init__(self, skills: "Skills"):
         self._skills = skills
 
     async def execute(self, context, arguments):
@@ -67,7 +70,7 @@ class SaveSkill:
 
     spec = ToolSpec(
         "SaveSkill",
-        "Create a local SKILL.md, or update it with the SHA-256 revision from SkillSearch. "
+        "Create a local SKILL.md, or overwrite an existing one with replace. "
         "Content must include name and description YAML frontmatter. Does not run or activate it.",
         {
             "type": "object",
@@ -75,7 +78,7 @@ class SaveSkill:
                 "name": {"type": "string", "maxLength": 64},
                 "content": {"type": "string", "maxLength": 262144},
                 "scope": {"type": "string", "enum": ["user", "project"], "default": "user"},
-                "expected_revision": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "replace": {"type": "boolean", "default": False},
             },
             "required": ["name", "content"],
             "additionalProperties": False,
@@ -84,16 +87,14 @@ class SaveSkill:
         execution_mode="sequential",
     )
 
-    def __init__(self, skills: SkillCatalogCommands):
+    def __init__(self, skills: "Skills"):
         self._skills = skills
 
     async def execute(self, context, arguments):
         name, content = arguments["name"], arguments["content"]
         scope = arguments.get("scope", "user")
-        if "expected_revision" in arguments:
-            report = await self._skills.update(
-                name, content, scope=scope, expected_revision=arguments["expected_revision"]
-            )
+        if arguments.get("replace", False):
+            report = await self._skills.update(name, content, scope=scope)
         else:
             report = await self._skills.create(name, content, scope=scope)
         return ToolResult(context.call_id, self.spec.name, json_dumps(report, ensure_ascii=False))

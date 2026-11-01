@@ -1,9 +1,9 @@
-"""Skills install: component-owned implementation."""
+# Pi 没有，pycode 新增；参照 MewCode local skills/install.py
+# SHA-256: 0393811fad87caf067df6c006cc652298ebb151c86ee9883087d557bc85178b0
+# Adaptation: repository roots, explicit ref/path overrides and portable path validation;
+# immutable commit downloads, owned I/O, provenance, lease and rollback.
+"""Install a GitHub Skill and its resources into the user Skill root."""
 
-# Source: MewCode local skills/install.py; SHA-256:
-# 0393811fad87caf067df6c006cc652298ebb151c86ee9883087d557bc85178b0
-# Adaptation: repository roots, explicit ref/path overrides and portable path validation.
-# Adaptation: immutable commit downloads, owned I/O, provenance, lease and rollback.
 import base64
 import binascii
 import hashlib
@@ -21,7 +21,7 @@ import httpx
 
 from pycode import __version__
 from pycode.kernel import FileLease, StorageError, ToolError, json_dumps, owned_io, plain_data
-from pycode.skills.catalog import MAX_SKILL_BYTES, linked, parse_skill
+from pycode.skills.store import MAX_SKILL_BYTES, linked, parse_skill
 
 
 @dataclass(frozen=True)

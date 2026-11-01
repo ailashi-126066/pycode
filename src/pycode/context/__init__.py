@@ -1,44 +1,34 @@
-"""Public native contracts, policies and services for context."""
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/compaction/index.ts
+"""Context projection, system prompt, budgets, compaction summaries and tool-output eviction."""
 
-from pycode.context.domain.context_budget import InputBudget
-from pycode.context.domain.context_meter import ContextMeter
-from pycode.context.domain.retention import retained_context_entries
-from pycode.context.domain.summaries import SummaryReport, SummarySettings
-from pycode.context.domain.tasks import (
-    board_from_data,
-    task_board,
-    task_board_text,
-    task_evidence,
+from pycode.context.budget import ContextMeter, InputBudget, estimate_messages
+from pycode.context.compaction import retained_context_entries
+from pycode.context.eviction import EvictionBudget, ToolEvictionService
+from pycode.context.projector import ContextProjector
+from pycode.context.prompts import InstructionFileBackend, PromptService, instruction_files
+from pycode.context.summary import (
+    ConfiguredSummaryGenerator,
+    FileSummaryStore,
+    SummaryService,
+    SummaryWorkflow,
 )
-from pycode.context.domain.token_estimate import estimate_messages
-from pycode.context.domain.tool_eviction import EvictionBudget
-from pycode.context.ports.summaries import SummaryGenerator, SummaryStore
-from pycode.context.services.context_projector import ContextProjector
-from pycode.context.services.prompts import PromptService
-from pycode.context.services.summary import SummaryService
-from pycode.context.services.tool_eviction import ToolEvictionService
+from pycode.context.types import SummaryReport, SummarySettings
 
 __all__ = [
-    "board_from_data",
-    "task_board",
-    "task_board_text",
-    "task_evidence",
-    "ProjectionContributor",
-    "ProjectedContext",
-    "estimate_messages",
+    "ConfiguredSummaryGenerator",
     "ContextMeter",
     "ContextProjector",
     "EvictionBudget",
+    "FileSummaryStore",
     "InputBudget",
+    "InstructionFileBackend",
     "PromptService",
-    "SummaryGenerator",
-    "SummaryService",
     "SummaryReport",
+    "SummaryService",
     "SummarySettings",
-    "SummaryStore",
+    "SummaryWorkflow",
     "ToolEvictionService",
+    "estimate_messages",
+    "instruction_files",
     "retained_context_entries",
 ]
-
-from pycode.context.ports.projection import ProjectionContributor
-from pycode.kernel import ProjectedContext
