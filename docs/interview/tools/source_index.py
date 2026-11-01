@@ -12,7 +12,7 @@ FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 def module_name(path):
     parts = list(Path(path).with_suffix("").parts)
     if parts[0] == "src":
-        parts.pop(0)
+        parts[0] = "pycode"
     if parts[-1] == "__init__":
         parts.pop()
     return ".".join(parts)
@@ -234,11 +234,11 @@ def canonical_symbols(symbols):
 def build_index(root):
     root = root.resolve()
     selected = [
-        *(root / "src/pycode").rglob("*.py"),
+        *(root / "src").rglob("*.py"),
         *(root / "evals").rglob("*.py"),
         *(root / "scripts").glob("*.py"),
     ]
-    allowed = (root / "src/pycode", root / "evals", root / "scripts")
+    allowed = (root / "src", root / "evals", root / "scripts")
     files = []
     for path in sorted(set(selected)):
         relative = path.relative_to(root)

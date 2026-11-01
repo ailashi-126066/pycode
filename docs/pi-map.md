@@ -1,6 +1,6 @@
 # Pi → pycode 对照
 
-Pi 源码：https://github.com/earendil-works/pi/tree/2c8d1fe 。路径相对 `src/pycode/`。
+Pi 源码：https://github.com/earendil-works/pi/tree/2c8d1fe 。路径相对 `src/`。
 
 ## 对照表
 

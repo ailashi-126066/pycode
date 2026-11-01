@@ -68,7 +68,7 @@ Bash的timeout输入范围是0.1～600秒，默认120秒。随后它创建输出
 | 谁结束整个进程树 | `stop_process` | 等待退出后才返回 |
 | 子Agent能否退化执行 | `RequiredSandbox.launch` | 满足限制才启动，否则明确错误 |
 
-{{inline:src/pycode/sandbox/types.py:SandboxSettings}}
+{{inline:src/sandbox/types.py:SandboxSettings}}
 
 ## 回到这次测试，出错时该怎么理解
 

@@ -104,7 +104,7 @@
 | `input_expired` | 未处理输入的记录ID与类型 | 把旧任务未读的补充说明假装成已经响应 |
 | 会话对象存储 | 超限工具输出的完整内容 | 为看后面的输出而重复运行原工具 |
 
-{{inline:src/pycode/kernel/history.py:SessionEntry}}
+{{inline:src/kernel/history.py:SessionEntry}}
 
 
 ## 遇到异常时，程序怎么处理

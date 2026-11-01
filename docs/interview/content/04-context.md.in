@@ -79,11 +79,11 @@ TaskProjection 沿当前分支取最后一份任务板快照（TaskWrite/TaskUpd
 
 后面这些定义现在可以当查阅材料：`InputBudget`保存输入/输出余量，`SummarySource`保存后台模型当时概括的具体范围，`ProjectionContribution`保存一次功能重建方法允许返回什么。先知道它们在流程里解决什么，再展开字段才有意义。
 
-{{inline:src/pycode/context/budget.py:InputBudget}}
+{{inline:src/context/budget.py:InputBudget}}
 
-{{inline:src/pycode/context/types.py:SummarySource}}
+{{inline:src/context/types.py:SummarySource}}
 
-{{inline:src/pycode/kernel/history.py:ProjectionContribution}}
+{{inline:src/kernel/history.py:ProjectionContribution}}
 
 ## 读懂检查：模型下一次读测试结果之前
 

@@ -1,6 +1,6 @@
 {
-  "src/pycode/kernel/messages.py::Message": {
-    "file": "src/pycode/kernel/messages.py",
+  "src/kernel/messages.py::Message": {
+    "file": "src/kernel/messages.py",
     "name": "Message",
     "purpose": "各功能共用的完整消息格式",
     "notes": [
@@ -9,8 +9,8 @@
     ],
     "guide": "用户需求、模型完整回答和测试工具结果会在不同模块之间传递，因此需要同一份完成消息格式。这个定义把正文、工具调用、结果和用量分别放好，读取者不必猜字典形状。它随历史保存与传递，不代表屏幕刚出现的片段已经完成，内部可变值仍由存储方法冻结。"
   },
-  "src/pycode/kernel/tools.py::ToolSpec": {
-    "file": "src/pycode/kernel/tools.py",
+  "src/kernel/tools.py::ToolSpec": {
+    "file": "src/kernel/tools.py",
     "name": "ToolSpec",
     "purpose": "让模型说明与执行检查使用同一份工具描述",
     "notes": [
@@ -19,8 +19,8 @@
     ],
     "guide": "模型准备运行测试时，需要知道工具名称、参数形状和作用类别；执行时还要核对是不是同一份说明。这个定义保存描述、类别及实现和政策摘要，交给请求准备与执行检查共同使用。它本身没有批准操作，模型看见说明以后仍要通过当前权限和文件检查。"
   },
-  "src/pycode/kernel/history.py::SessionSnapshot": {
-    "file": "src/pycode/kernel/history.py",
+  "src/kernel/history.py::SessionSnapshot": {
+    "file": "src/kernel/history.py",
     "name": "SessionSnapshot",
     "purpose": "持久化历史与所选分支的不可变快照",
     "notes": [
@@ -29,8 +29,8 @@
     ],
     "guide": "程序已经保存很多消息，也可能留下用户放弃的修复路线，所以传递历史时不能只有一个消息列表。这个定义同时给出记录、当前叶和变化序号，并可附存储验证过的索引。接收者据此查询当前路径或判断缓存能否重用，索引本身不另写成一份恢复真相。"
   },
-  "src/pycode/kernel/events.py::Event": {
-    "file": "src/pycode/kernel/events.py",
+  "src/kernel/events.py::Event": {
+    "file": "src/kernel/events.py",
     "name": "Event",
     "purpose": "程序内通知界面时使用的事件格式",
     "notes": [
@@ -39,8 +39,8 @@
     ],
     "guide": "测试结果落盘后，程序需要把进度或完成情况送给不同界面，因此使用这个共同信封。它记录会话、运行、序号和可选操作身份，让接收者知道事件属于哪次任务。事件内容负责及时显示，不能代替完成消息；界面重开仍要从会话记录重建可靠历史。"
   },
-  "src/pycode/models/types.py::RequestRecord": {
-    "file": "src/pycode/models/types.py",
+  "src/models/types.py::RequestRecord": {
+    "file": "src/models/types.py",
     "name": "RequestRecord",
     "purpose": "每次实际模型尝试的持久化账本",
     "notes": [
@@ -49,8 +49,8 @@
     ],
     "guide": "模型开始发送之前，记录方法需要留下可核对的一次尝试，这个定义规定保存哪些字段。逻辑请求、尝试序号和备用模型位置分别表达，最终状态及用量也能为空或失败。它交给SQLite和事件显示共同引用，使一次重试不会悄悄覆盖之前可能已经产生费用的请求。"
   },
-  "src/pycode/context/budget.py::InputBudget": {
-    "file": "src/pycode/context/budget.py",
+  "src/context/budget.py::InputBudget": {
+    "file": "src/context/budget.py",
     "name": "InputBudget",
     "purpose": "输入容量、输出预留和安全边际",
     "notes": [
@@ -59,8 +59,8 @@
     ],
     "guide": "历史消息准备好以后，还要给模型回答留下空间，因此不能把总窗口都当输入。这个定义保存总窗口、输出预留和安全余量，并计算输入上限及更早的摘要准备线。调用方用它判断是否继续发送或准备摘要，而不是把这些配置数字当成已经实际消耗的用量。"
   },
-  "src/pycode/kernel/history.py::ProjectionContribution": {
-    "file": "src/pycode/kernel/history.py",
+  "src/kernel/history.py::ProjectionContribution": {
+    "file": "src/kernel/history.py",
     "name": "ProjectionContribution",
     "purpose": "一次功能补充可以返回哪些内容",
     "notes": [
@@ -69,8 +69,8 @@
     ],
     "guide": "基础消息整理完成后，记忆、计划或工具目录需要补上自己的说明，因此约定这种返回格式。它携带新增消息、自己字段的更新删除及影响旧用量的来源ID，内部值会被冻结。接收它的整理方法还会核对字段和分支归属，通过后才合并，不允许功能原地改别人内容。"
   },
-  "src/pycode/context/types.py::SummarySource": {
-    "file": "src/pycode/context/types.py",
+  "src/context/types.py::SummarySource": {
+    "file": "src/context/types.py",
     "name": "SummarySource",
     "purpose": "固定后台模型当时概括的那段消息",
     "notes": [
@@ -79,8 +79,8 @@
     ],
     "guide": "后台摘要可能和修复任务同时进行，所以开始生成时必须固定它概括的是哪段历史。这个定义保存来源消息、前缀和配置校验值，以及以后保留尾部的起点。后台模型据此生成文字，采用方法再拿它与当前历史比较，确保不会把已经变化的内容误当成仍可替代的前缀。"
   },
-  "src/pycode/agent/runtime.py::RuntimeBindings": {
-    "file": "src/pycode/agent/runtime.py",
+  "src/agent/runtime.py::RuntimeBindings": {
+    "file": "src/agent/runtime.py",
     "name": "RuntimeBindings",
     "purpose": "把图以后需要调用的方法交清楚",
     "notes": [
@@ -89,8 +89,8 @@
     ],
     "guide": "模型、工具、历史和可选功能已经各自有了方法，Agent还需要知道在图里调用谁。这个定义保存应用明确交过来的转换、请求与扩展方法，而不是让Agent按模块名字到处寻找。构图时登记这些方法，运行到对应回调才执行，从而能替换或禁用功能而不修改图内业务判断。"
   },
-  "src/pycode/agent/context.py::RunContext": {
-    "file": "src/pycode/agent/context.py",
+  "src/agent/context.py::RunContext": {
+    "file": "src/agent/context.py",
     "name": "RunContext",
     "purpose": "保存这次修复正在用的方法与等待状态",
     "notes": [

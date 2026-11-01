@@ -85,9 +85,9 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 `RuntimeBindings`保存的是这些显式方法；`RunContext`保存这一次运行正在用的消息、请求方法、执行器和结果顺序。它们不应该装上每个可选模块的内部服务，让Agent到处按名称查找。需要具体Skill/MCP行为时，应用已经把相应方法交到了应当调用的位置。
 
-{{inline:src/pycode/agent/runtime.py:RuntimeBindings}}
+{{inline:src/agent/runtime.py:RuntimeBindings}}
 
-{{inline:src/pycode/agent/context.py:RunContext}}
+{{inline:src/agent/context.py:RunContext}}
 
 ## 读懂检查：能否自己顺着修复过程讲一遍
 

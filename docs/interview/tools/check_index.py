@@ -3,7 +3,7 @@
 import tempfile
 from pathlib import Path
 
-from source_index import build_index
+from source_index import build_index, module_name
 
 FIXTURE = """from typing import overload
 from .helper import imported
@@ -69,14 +69,19 @@ def conditional(flag):
 
 
 def main():
+    assert module_name("src/__init__.py") == "pycode"
+    assert module_name("src/sample.py") == "pycode.sample"
+    assert module_name("src/agent/__init__.py") == "pycode.agent"
     with tempfile.TemporaryDirectory(prefix="pycode-doc-index-") as temporary:
         root = Path(temporary)
-        package = root / "src/pycode"
+        package = root / "src"
         package.mkdir(parents=True)
         (package / "sample.py").write_text(FIXTURE, encoding="utf-8")
         (package / "helper.py").write_text("def imported():\n    return 7\n", encoding="utf-8")
         indexed = build_index(root)
         sample = next(file for file in indexed if file["path"].endswith("sample.py"))
+        assert sample["module"] == "pycode.sample"
+        assert sample["imports"]["imported"] == "pycode.helper.imported"
         symbols = {symbol["name"]: symbol for symbol in sample["symbols"]}
 
         def call(name, expression):

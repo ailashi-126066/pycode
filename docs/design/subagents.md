@@ -3,7 +3,7 @@
 照 Claude Code 的 subagent 做，不做 agent teams（子 agent 之间不通信，不共享任务板）。
 
 - 工具：`Agent(description, prompt, mode: readonly|worktree, name?, background, max_turns)`、
-  `SendMessage(agent_id, message)`、`StopAgent(agent_id)`，都在 `src/pycode/subagents/tools.py`。
+  `SendMessage(agent_id, message)`、`StopAgent(agent_id)`，都在 `src/subagents/tools.py`。
 - 名字（11.1 第 39 节第 5 条）：`name` 由主 agent 指定，同一会话内唯一，格式是 slug（小写字母、数字、连字符，
   最长 64）；对应任务板步骤时建议用步骤 id（如 `n3`）。不给就由系统生成 `a1`、`a2`……`SendMessage` /
   `StopAgent` 的 `agent_id` 参数接受名字或 8 位 id。完成通知、`/agents` 和 `subagent` 事件都显示名字。

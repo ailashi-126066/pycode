@@ -15,7 +15,7 @@ from source_index import build_index
 
 BOOK = Path(__file__).resolve().parents[1]
 ROOT = BOOK.parents[1]
-REPOSITORY = "https://github.com/ailashi-126066/miniclaudecode"
+REPOSITORY = "https://github.com/ailashi-126066/pycode"
 REQUIRED = ("框架",)
 
 
@@ -214,7 +214,7 @@ def build(check=False):
     counts["chapters"] = len(chapters)
     counts["explained_symbols"] = len(used_symbols)
     source_commit = subprocess.check_output(
-        ["git", "log", "-1", "--format=%H", "--", "src/pycode", "evals", "scripts"],
+        ["git", "log", "-1", "--format=%H", "--", "src", "evals", "scripts"],
         cwd=ROOT,
         text=True,
     ).strip()

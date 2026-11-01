@@ -31,7 +31,8 @@ npm install --prefix docs/interview/tools
 - coverage.json：记录源码固定版本、全部已索引文件SHA、生成器输入与生成产物摘要、章节/链/节点数量。
 
 `--check` 不写文件，会核对生成Markdown与当前模板一致，源码/生成器输入与产物摘要一致。
-源码基线使用最后一次改动 src/pycode、evals、scripts 的提交，纯文档提交不会让源码链接漂移。
+源码基线使用最后一次改动 src、evals、scripts 的提交，纯文档提交不会让源码链接漂移。
+`src/__init__.py` 对应逻辑模块 `pycode`，`src/agent/runtime.py` 对应 `pycode.agent.runtime`；源码文件链接使用实际 `src/` 路径。
 索引会拒绝源码文件或其祖先目录的符号链接及越界路径。类型重载导航到实际实现；条件同名定义按源行区分，不静态猜测分支。`check_index.py` 用不执行的临时源码验证遮蔽、闭包、类作用域、重载和符号链接边界。
 
 ## 内容约定
@@ -48,7 +49,7 @@ edge 要明确普通调用、框架稍后调用、预先保存的方法以及协
 
 ```text
 {{chain:模块:动作}}
-{{inline:src/pycode/路径.py:Class.method}}
+{{inline:src/路径.py:Class.method}}
 ```
 
 完整源码由AST位置提取，不手抄、不省略关键步骤。工厂依赖图和框架回调不能伪装成直接调用。

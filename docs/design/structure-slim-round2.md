@@ -8,7 +8,7 @@
 
 | 项 | 数值 |
 |---|---|
-| `src/pycode` 文件数 / 行数 | 321 个 `.py` / 26463 行（其中 46 个空 `__init__.py`） |
+| 历史基线 `src/pycode` 文件数 / 行数 | 321 个 `.py` / 26463 行（其中 46 个空 `__init__.py`） |
 | 类数 | 379 |
 | `Protocol` 子类（AST 统计） | 79。11.1 里写的"93"是更早基线的数字；`docs/design/port-implementations.json` 登记了 67 个 |
 | `tests` | 234 个 `.py` |
@@ -208,9 +208,9 @@ B2：memory.background 只保留一层 except Exception + logger.debug，不发�
 
 通用规则：
 
-- 每组只改组内各包的 `src/pycode/<包>/`、`tests/<包>/`（测试目录同样平铺，去掉 `adapters/domain/services` 子目录，删掉空目录）和包内 `README.md`。r32-c 另外可以改 `scripts/verify_live_provider.py`（加 `--no-reasoning-passback` 开关）。
+- 每组只改组内各包的 `src/<包>/`、`tests/<包>/`（测试目录同样平铺，去掉 `adapters/domain/services` 子目录，删掉空目录）和包内 `README.md`。r32-c 另外可以改 `scripts/verify_live_provider.py`（加 `--no-reasoning-passback` 开关）。
 - **组内每个包的第 41 节修复放在这个包的第一个提交里，先修后搬**：此时文件还在原位置，审计 2 里的位置最容易对上；第二个提交起再迁移这个包。
-- 每个包迁移完就验收这个包：`.venv/bin/pytest tests/<包> -q`、`.venv/bin/ruff check src/pycode/<包> tests/<包>`、`.venv/bin/ruff format --check` 同范围、`.venv/bin/pyright src/pycode/<包>`（只看本包文件里的错误）。组内后面的包可以依赖前面已迁移的包的新 API，这是组内排顺序的原因。
+- 每个包迁移完就验收这个包：`.venv/bin/pytest tests/<包> -q`、`.venv/bin/ruff check src/<包> tests/<包>`、`.venv/bin/ruff format --check` 同范围、`.venv/bin/pyright src/<包>`（只看本包文件里的错误）。组内后面的包可以依赖前面已迁移的包的新 API，这是组内排顺序的原因。
 - 不处理其他组的包对本组旧 API 的引用，那是集成步骤的事。
 - 断言被删分支错误码的测试按第 21 节一起删。
 - 不加新的 Optional 依赖和判空（E3/E4 在集成步骤统一处理）。

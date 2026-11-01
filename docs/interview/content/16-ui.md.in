@@ -108,7 +108,7 @@ Application.console 直接创建 ConsoleOutput，Application.tui 直接创建 Py
 | `pending/pending_run_id` | 当前等待问题与所属运行 | 日志可解释等待；关进程后不能回答旧图审批 |
 | `subagents.approvals` | 指定子 agent 在等待的问题 | 答案携具体agent_id，不能误投给主运行或别的子助手 |
 
-{{inline:src/pycode/session/agent_session.py:AgentSession}}
+{{inline:src/session/agent_session.py:AgentSession}}
 
 
 ## 遇到异常时，程序怎么处理

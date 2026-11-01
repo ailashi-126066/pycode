@@ -5,6 +5,8 @@ pycode 的底层照 Pi（HEAD `2c8d1fe`）翻译成 Python，用 LangChain / Lan
 [pi-map.md](pi-map.md)，存储见 [storage-format.md](storage-format.md)，一次请求的组成见
 [context-request.md](context-request.md)。
 
+源码物理路径以 `src/` 为根，发行包将它映射为 `pycode` 命名空间；例如 `src/agent/runtime.py` 对应 `pycode.agent.runtime`。
+
 ## 包与依赖
 
 核心包按 kernel ← models ← context ← tools ← agent ← session 单向依赖。

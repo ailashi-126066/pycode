@@ -26,7 +26,7 @@ code 或 both 先采集当前树，再逐路径比较预期版本；任何外部
 
 {{chain:08-snapshot:recover}}
 
-{{inline:src/pycode/snapshot/types.py:Snapshot}}
+{{inline:src/snapshot/types.py:Snapshot}}
 
 ## 框架和服务各负责什么
 

@@ -15,7 +15,7 @@ function list() {
 function view() {
   const params = new URLSearchParams(location.hash.slice(1));
   const [pathname, symbolName] = (params.get('symbol') || '').split('::');
-  const file = files.find(file => file.path === (pathname || params.get('file'))) || files.find(file => file.path === 'src/pycode/app/bootstrap.py') || files[0];
+  const file = files.find(file => file.path === (pathname || params.get('file'))) || files.find(file => file.path === 'src/app/bootstrap.py') || files[0];
   const symbol = file.symbols.find(symbol => symbol.name === symbolName);
   if (![...choose.options].some(option => option.value === file.path)) { query.value = ''; list(); }
   choose.value = file.path;

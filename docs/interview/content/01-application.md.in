@@ -18,7 +18,7 @@ pycode --workspace /project --providers providers.json -p "给 parser.py 增加�
 
 检查后得到的 `AppConfig` 可以理解为“这次工作的设置单”。后面的模块读这张设置单，不必再各自解析一遍终端参数。比如沙箱开关和允许传给命令的环境变量，都在这里先检查，再交给实际执行的模块。
 
-{{inline:src/pycode/app/config.py:AppConfig}}
+{{inline:src/app/config.py:AppConfig}}
 
 到这里，程序已经知道去哪儿工作，但仍然缺少模型的连接设置。`providers.json` 保存模型名称、服务地址和密钥对应的环境变量名。`command` 读这个文件，得到后续创建模型客户端要用的信息。真正的密钥不需要写进对话记录。
 

@@ -21,7 +21,7 @@ def digest(path):
 
 def runtime_files(report):
     source = report.get("runtime_manifest", report.get("source_manifest"))
-    return [file for file in source["files"] if file["path"].startswith("src/pycode/")]
+    return [file for file in source["files"] if file["path"].startswith("src/")]
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
         key: load(getattr(args, key))
         for key in ("outputs", "memory_recovery", "trajectories", "selector_recovery", "rules")
     }
-    current = [file for file in manifest(root)["files"] if file["path"].startswith("src/pycode/")]
+    current = [file for file in manifest(root)["files"] if file["path"].startswith("src/")]
     if any(runtime_files(report) != current for report in reports.values()):
         raise ValueError("Runtime code changed relative to quality evidence")
     for report in reports.values():

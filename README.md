@@ -11,7 +11,9 @@
 - [上下文组成](docs/context-request.md)：每次发给模型的内容、四道转换边界、任务板注入、压缩。
 - [存储格式](docs/storage-format.md)：会话记录类型、工具调用、运行与任务板记录。
 - [工具发现](docs/design/tool-discovery.md)、[Subagents](docs/design/subagents.md)、[源码来源](docs/source-map.md)。
-- 各包的 README.md；组装从 `src/pycode/app/composition.py` 开始。
+- 各包的 README.md；组装从 `src/app/composition.py` 开始。
+
+源码直接放在 `src/` 下；安装后的 Python 包名仍为 `pycode`，例如 `from pycode.app import AppConfig`。
 
 ## 安装
 

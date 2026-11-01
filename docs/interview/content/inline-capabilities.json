@@ -1,6 +1,6 @@
 {
-  "src/pycode/sandbox/types.py::SandboxSettings": {
-    "file": "src/pycode/sandbox/types.py",
+  "src/sandbox/types.py::SandboxSettings": {
+    "file": "src/sandbox/types.py",
     "name": "SandboxSettings",
     "purpose": "命令隔离设置，不等于审批决定",
     "notes": [
@@ -9,8 +9,8 @@
     ],
     "guide": "用户在启动时选择off、on或on-auto，应用把它们保存成这个小配置对象。沙箱查询和命令启动都读取同一份值，网络是否开放则由单独字段控制。定义本身不探测系统、不批准命令；后面status还要查机器能不能运行，权限检查也仍决定具体测试是否获准，避免把一个开关误当成全部安全保证。"
   },
-  "src/pycode/skills/types.py::SkillEntry": {
-    "file": "src/pycode/skills/types.py",
+  "src/skills/types.py::SkillEntry": {
+    "file": "src/skills/types.py",
     "name": "SkillEntry",
     "purpose": "目录元数据与双版本身份",
     "notes": [
@@ -19,8 +19,8 @@
     ],
     "guide": "目录扫描找到了review指令，需要把名称、说明、可信来源和版本传给后续步骤，这个定义承载这些信息。正文与资源各有摘要，模式和上下文设置供普通或fork加载使用。目录、请求和记录器围绕它继续工作，但得到一条entry只代表找到文档，不代表模型已读过，更不代表附带Python已经被允许运行。"
   },
-  "src/pycode/mcp/types.py::MCPServer": {
-    "file": "src/pycode/mcp/types.py",
+  "src/mcp/types.py::MCPServer": {
+    "file": "src/mcp/types.py",
     "name": "MCPServer",
     "purpose": "远端连接与加载配置的原生值",
     "notes": [
@@ -29,8 +29,8 @@
     ],
     "guide": "用户配置已经通过验证，连接器需要一份明确设置来知道怎样连接哪个外部服务。这个定义保存传输、目录、超时和环境引用，以及本地信任和工具加载选择。后面建立client、发现目录和判断工具类别分别读取它；配置对象不是连接结果，记录凭据引用也不意味着可以把真实密钥写进会话或交给模型。"
   },
-  "src/pycode/hooks/types.py::Hook": {
-    "file": "src/pycode/hooks/types.py",
+  "src/hooks/types.py::Hook": {
+    "file": "src/hooks/types.py",
     "name": "Hook",
     "purpose": "持久化Hook声明和执行时机",
     "notes": [
@@ -39,8 +39,8 @@
     ],
     "guide": "配置读取已经确认规则合法，需要把它交给以后触发事件的引擎，这个定义保留事件、动作、条件和执行方式。fire按它判断是否匹配，执行身份也包含整份定义，因此修改动作会得到不同身份。它只是未来工作的描述，不会在构造时运行命令，也不能凭reject字段让任意时机的后台动作撤回已经发生的编辑。"
   },
-  "src/pycode/snapshot/types.py::Snapshot": {
-    "file": "src/pycode/snapshot/types.py",
+  "src/snapshot/types.py::Snapshot": {
+    "file": "src/snapshot/types.py",
     "name": "Snapshot",
     "purpose": "独立 Git 树与已采集文件版本",
     "notes": [

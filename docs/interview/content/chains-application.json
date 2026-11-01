@@ -7,7 +7,7 @@
     "why": "同一入口把模块选择、持久化身份、权限状态和实际执行接起来，不给CLI另开旁路。",
     "nodes": [
       {
-        "file": "src/pycode/app/cli/main.py",
+        "file": "src/app/cli/main.py",
         "name": "main",
         "purpose": "把终端参数交给命令处理",
         "notes": [
@@ -17,7 +17,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/app/config.py",
+            "file": "src/app/config.py",
             "name": "load_config",
             "purpose": "先把工作目录和数据目录确定下来",
             "notes": [
@@ -31,7 +31,7 @@
         "edge": "先读终端命令"
       },
       {
-        "file": "src/pycode/app/cli/commands.py",
+        "file": "src/app/cli/commands.py",
         "name": "command",
         "purpose": "先打开会话，再把任务交给对应命令",
         "notes": [
@@ -41,7 +41,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/app/api.py",
+            "file": "src/app/api.py",
             "name": "compose_application",
             "purpose": "把选定功能放进同一个应用入口",
             "notes": [
@@ -50,7 +50,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/app/composition.py",
+                "file": "src/app/composition.py",
                 "name": "assemble_session",
                 "purpose": "创建内置服务并明确接线",
                 "notes": [
@@ -63,7 +63,7 @@
             "guide": "command不应为了run命令再拼一遍全部功能，所以先调用compose_application。它收到工作设置、模型配置和可选的模块集合，返回Application。后面通过这个对象打开会话或查看状态；此刻只是把这些能力接上，还没把修复任务发送给模型。"
           },
           {
-            "file": "src/pycode/app/cli/commands.py",
+            "file": "src/app/cli/commands.py",
             "name": "execute_run",
             "purpose": "把用户文本变成一条有身份的消息",
             "notes": [
@@ -77,7 +77,7 @@
         "guide": "main把设置和命令名称交到这里后，command还需要准备模型配置及会话。它读providers.json，通过Application打开会话，再从命令表找到execute_run。会话准备好以后，execute_run才能把用户的话提交进去；这和模型随后选择工具是两层不同的工作。"
       },
       {
-        "file": "src/pycode/app/api.py",
+        "file": "src/app/api.py",
         "name": "Application.open_session",
         "purpose": "把打开会话的工作交给已选模块",
         "notes": [
@@ -88,7 +88,7 @@
         "guide": "command已经有了Application，现在请求打开某个会话。这个方法把配置、模型和同一组modules传给open_agent_session，让它准备历史文件和本次启用的功能。返回的AgentSession由调用方持有，后面才能提交消息、查看状态或关闭会话。"
       },
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.run",
         "purpose": "让同一会话中的任务按顺序开始",
         "notes": [
@@ -97,7 +97,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/session/agent_session.py",
+            "file": "src/session/agent_session.py",
             "name": "AgentSession._run_locked",
             "purpose": "记录这次任务从哪条消息开始，再交给执行者",
             "notes": [
@@ -107,7 +107,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/app/composition.py",
+                "file": "src/app/composition.py",
                 "name": "SessionLauncher.run",
                 "purpose": "启动显式组装的一轮运行",
                 "notes": [
@@ -124,7 +124,7 @@
         "guide": "execute_run把用户消息交过来时，同一会话可能还在处理别的操作。run先进入会话的执行锁，再把消息交给_run_locked检查和启动。等那一层完成、等待输入或出错后，它把相应结果返回给命令处理方，避免两次任务同时抢同一段会话状态。"
       },
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "SessionLauncher.execute",
         "purpose": "在本轮资源范围执行图",
         "notes": [
@@ -133,7 +133,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/app/composition.py",
+            "file": "src/app/composition.py",
             "name": "build_run",
             "purpose": "明确连接一次运行的服务",
             "notes": [
@@ -161,7 +161,7 @@
     "why": "格式不可信时尽早拒绝；秘密不进入历史、模块清单和配置序列化。",
     "nodes": [
       {
-        "file": "src/pycode/app/config.py",
+        "file": "src/app/config.py",
         "name": "load_providers",
         "purpose": "把模型配置文件读成可以使用的设置",
         "notes": [
@@ -170,7 +170,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/app/config.py",
+            "file": "src/app/config.py",
             "name": "validate_provider_fields",
             "purpose": "先找出配置里写错或多出的字段",
             "notes": [
@@ -180,7 +180,7 @@
             "guide": "load_providers刚读到的JSON还只是列表和字典，可能包含程序根本不认识的选项。这个函数检查Provider、工具选择和模型覆盖等层次的字段名。它通过后，后面的类型检查才有明确范围；发现错误则直接中止这次配置读取。"
           },
           {
-            "file": "src/pycode/app/config.py",
+            "file": "src/app/config.py",
             "name": "validate_provider",
             "purpose": "检查模型设置放在一起是否说得通",
             "notes": [
@@ -189,7 +189,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/app/config.py",
+                "file": "src/app/config.py",
                 "name": "validate_provider_url",
                 "purpose": "在拿密钥连接服务之前，检查目标地址",
                 "notes": [
@@ -199,7 +199,7 @@
                 "guide": "Provider配置中包含服务地址，后面SDK会把密钥发到这个地址，所以这里必须先检查。远程服务要求HTTPS，本机回环地址才允许HTTP；带用户名、密码、query或fragment的地址也会拒绝。通过后返回上一层继续检查模型设置，不发网络请求。"
               },
               {
-                "file": "src/pycode/app/config.py",
+                "file": "src/app/config.py",
                 "name": "validate_thinking",
                 "purpose": "检查思考选项是否适合这家模型服务",
                 "notes": [
@@ -216,7 +216,7 @@
         "edge": "先检查配置文件"
       },
       {
-        "file": "src/pycode/app/config.py",
+        "file": "src/app/config.py",
         "name": "credential_environment",
         "purpose": "解析配置引用的凭据",
         "notes": [
@@ -227,7 +227,7 @@
         "guide": "组装模型之前，从允许的环境来源取得配置引用的密钥。"
       },
       {
-        "file": "src/pycode/app/config.py",
+        "file": "src/app/config.py",
         "name": "credential_environment",
         "purpose": "保留已有环境，再补齐明确缺少的模型密钥",
         "notes": [
@@ -252,7 +252,7 @@
     "why": "会话不是一个模型对象：它同时拥有历史、权限状态、后台任务和可恢复的运行边界。",
     "nodes": [
       {
-        "file": "src/pycode/app/api.py",
+        "file": "src/app/api.py",
         "name": "Application.open_session",
         "purpose": "把打开会话的工作交给已选模块",
         "notes": [
@@ -263,7 +263,7 @@
         "edge": "应用收到打开会话的请求"
       },
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "open_agent_session",
         "purpose": "打开历史，准备会话会反复用到的能力",
         "notes": [
@@ -273,7 +273,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/tools/output.py",
+            "file": "src/tools/output.py",
             "name": "TempOutputStore.__init__",
             "purpose": "为大工具输出选择临时存储",
             "notes": [
@@ -283,7 +283,7 @@
             "guide": "执行器把超出模型窗口的输出写到本轮临时目录。"
           },
           {
-            "file": "src/pycode/app/composition.py",
+            "file": "src/app/composition.py",
             "name": "build_session_view",
             "purpose": "给CLI和TUI准备同一套历史查看方法",
             "notes": [
@@ -297,7 +297,7 @@
         "guide": "Application把“打开会话”交到这里后，要先准备模型目录和历史文件，再检查旧运行、计划和启用的扩展。接着把运行方法、Hook方法等交给launcher，并创建AgentSession返回。任何一步失败，都要关闭已经打开的对象，不能让半个会话留在后台。"
       },
       {
-        "file": "src/pycode/memory/memory.py",
+        "file": "src/memory/memory.py",
         "name": "MemoryService.open",
         "purpose": "打开会话记忆存储",
         "notes": [
@@ -321,7 +321,7 @@
     "why": "创建对象不等于运行任务；等待用户回答和彻底结束，也需要不同处理。",
     "nodes": [
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "SessionLauncher.execute",
         "purpose": "在本轮资源范围执行图",
         "notes": [
@@ -332,7 +332,7 @@
         "edge": "开始这轮任务"
       },
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "build_run",
         "purpose": "明确连接一次运行的服务",
         "notes": [
@@ -343,7 +343,7 @@
         "guide": "app 在这里刷新技能与 MCP，并汇总实际工具、gate、middleware 和上下文函数。"
       },
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "build_run",
         "purpose": "显式组装运行核心",
         "notes": [
@@ -354,7 +354,7 @@
         "guide": "app 将服务的实际能力注入运行器、工具执行器和上下文处理器。"
       },
       {
-        "file": "src/pycode/agent/runtime.py",
+        "file": "src/agent/runtime.py",
         "name": "AgentRuntime.run",
         "purpose": "把本轮输入交给新建的执行图",
         "guide": "launcher已经拿到RuntimeContainer，随后调用其中runtime的run方法。这里记录新输入，调用build建立本轮执行图，再把历史和输入转换成框架消息，交给invoke。图的结果最终返回launcher；这里没有再写一套单独的模型与工具循环。",
@@ -365,7 +365,7 @@
         "edge": "创建成功后，launcher调用container.runtime.run"
       },
       {
-        "file": "src/pycode/agent/runtime.py",
+        "file": "src/agent/runtime.py",
         "name": "AgentRuntime.build",
         "purpose": "把模型、工具和每次请求前后的处理接成执行图",
         "guide": "run已经收到用户输入，但还缺少能够协调模型和工具的执行图，因此调用build。这里把可用工具、文件操作及历史等处理方法交给create_deep_agent，并把返回的图保存在self.graph。建图结束后run继续准备消息，再调用invoke开始执行。",
@@ -376,7 +376,7 @@
         "edge": "run先调用build；建好图后返回run"
       },
       {
-        "file": "src/pycode/agent/runtime.py",
+        "file": "src/agent/runtime.py",
         "name": "AgentRuntime.invoke",
         "purpose": "启动执行图，把完成或等待的结果交回会话",
         "guide": "图已经建好，run也准备好了要发送的消息，于是把它们交到invoke。这里等待graph.ainvoke运行模型和工具，再检查图有没有停在等待回答的位置，整理成RunResult返回。launcher据此决定保留当前运行等待用户，还是关闭本轮对象。",
@@ -387,7 +387,7 @@
         "edge": "run准备好消息后调用invoke，invoke运行图并返回结果"
       },
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "RuntimeContainer.aclose",
         "purpose": "释放本轮资源栈",
         "notes": [
@@ -398,7 +398,7 @@
         "guide": "运行结束时关闭本轮拥有的资源，不关闭借用的会话资源。"
       },
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "RuntimeContainer.aclose",
         "purpose": "结束本轮工作，并继续尝试关闭所有该关的对象",
         "notes": [
@@ -422,7 +422,7 @@
     "why": "作用域变化不是重新挑选一套默认实现。",
     "nodes": [
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "child_config",
         "purpose": "为子工作区生成配置",
         "notes": [
@@ -433,7 +433,7 @@
         "edge": "需要为子工作区调整设置"
       },
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "request_records",
         "purpose": "为当前配置打开请求账本",
         "notes": [

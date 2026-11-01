@@ -40,7 +40,7 @@ Runner先拿锁，避免同一组SDK观察状态被内部并发请求覆盖。�
 
 如果返回普通400、认证错误或程序错误，就不是“多等一会儿大概会好”的情况。它们不会无条件重试。取消也会记为interrupted；Provider已经给出的实际用量可以保留，没有给出的值仍为空，不能拿字符估算补成真实账单。
 
-{{inline:src/pycode/models/types.py:RequestRecord}}
+{{inline:src/models/types.py:RequestRecord}}
 
 到这里，这次请求不是“成功了才留痕”，而是开始、失败、重试和完成都有记录。重试耗尽后报告错误，由用户决定是否手动切换模型。
 

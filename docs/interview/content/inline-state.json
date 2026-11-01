@@ -1,6 +1,6 @@
 {
-  "src/pycode/kernel/history.py::SessionEntry": {
-    "file": "src/pycode/kernel/history.py",
+  "src/kernel/history.py::SessionEntry": {
+    "file": "src/kernel/history.py",
     "name": "SessionEntry",
     "purpose": "保存一条消息或运行变化，接到正确历史位置",
     "notes": [
@@ -9,8 +9,8 @@
     ],
     "guide": "用户消息、工具结果和运行变化都要先变成这种统一日志记录，存储才能按同一规则追加和重建分支。它的ID标识这条记录，父ID说明接在哪条历史后面，类型决定里面装什么；读取消息的方法只检查数据结构，不会触发模型或重新执行工具。"
   },
-  "src/pycode/plans/types.py::PlanState": {
-    "file": "src/pycode/plans/types.py",
+  "src/plans/types.py::PlanState": {
+    "file": "src/plans/types.py",
     "name": "PlanState",
     "purpose": "记录当前方案及本轮批准了哪份内容",
     "notes": [
@@ -19,8 +19,8 @@
     ],
     "guide": "用户进入规划后，需要同时告诉文件后端写哪份方案、告诉工具门当前能做什么，这份状态把这些信息放在一起。它还记录批准的正文校验值和所属运行，服务每次变更先保存日志；界面可以展示状态，但不能单改一个模式字段就让旧批准变成新权限。"
   },
-  "src/pycode/session/agent_session.py::AgentSession": {
-    "file": "src/pycode/session/agent_session.py",
+  "src/session/agent_session.py::AgentSession": {
+    "file": "src/session/agent_session.py",
     "name": "AgentSession",
     "purpose": "界面调用的具体会话服务",
     "notes": [

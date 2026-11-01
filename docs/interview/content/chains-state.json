@@ -11,7 +11,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.run",
         "purpose": "取得排他执行权，进入已识别的用户任务",
         "notes": [
@@ -20,7 +20,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/session/agent_session.py",
+            "file": "src/session/agent_session.py",
             "name": "AgentSession.execution",
             "purpose": "检查关闭与回退状态，拥有当前执行任务",
             "notes": [
@@ -30,7 +30,7 @@
             "guide": "运行、恢复和切换分支都会改变同一会话，所以外层入口先进入这个异步上下文。它拒绝关闭中的新操作，并登记当前任务供取消使用；退出时清掉登记。若任务被取消，还要等待相关子助手停止，而不是只释放锁就让后台继续改文件。"
           },
           {
-            "file": "src/pycode/session/agent_session.py",
+            "file": "src/session/agent_session.py",
             "name": "AgentSession._run_locked",
             "purpose": "识别输入重放，先存用户消息，再写run_start",
             "notes": [
@@ -39,7 +39,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/session/store.py",
+                "file": "src/session/store.py",
                 "name": "SqliteSessionStore.append_message",
                 "purpose": "将完成消息的身份转为EntryDraft",
                 "notes": [
@@ -48,7 +48,7 @@
                 ],
                 "helpers": [
                   {
-                    "file": "src/pycode/session/store.py",
+                    "file": "src/session/store.py",
                     "name": "SqliteSessionStore.append_entry",
                     "purpose": "load、写者租约、去重、分支检查和写入日志",
                     "notes": [
@@ -57,7 +57,7 @@
                     ],
                     "helpers": [
                       {
-                        "file": "src/pycode/session/store.py",
+                        "file": "src/session/store.py",
                         "name": "SqliteSessionStore.write_entry",
                         "purpose": "日志字节落盘并fsync，再更新文件内容校验值",
                         "notes": [
@@ -79,7 +79,7 @@
         "guide": "界面把“修复解析器并跑测试”作为一条用户消息交到这里。服务先检查消息身份和会话是否忙，再取得本轮独占的执行位置，交给内部运行函数。这样用户重复按回车不会同时启动两次修改；返回值最后交回界面展示等待问题或最终结果。"
       },
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "SessionLauncher.run",
         "purpose": "启动显式组装的一轮运行",
         "notes": [
@@ -88,7 +88,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/app/composition.py",
+            "file": "src/app/composition.py",
             "name": "SessionLauncher.execute",
             "purpose": "在本轮资源范围执行图",
             "notes": [
@@ -98,7 +98,7 @@
             "edge": "通过注入工厂／活容器",
             "helpers": [
               {
-                "file": "src/pycode/app/composition.py",
+                "file": "src/app/composition.py",
                 "name": "build_run",
                 "purpose": "明确连接一次运行的服务",
                 "notes": [
@@ -115,7 +115,7 @@
         "guide": "会话保存 run_start 后，把 provider、历史和输入交给 launcher。"
       },
       {
-        "file": "src/pycode/agent/runtime.py",
+        "file": "src/agent/runtime.py",
         "name": "AgentRuntime.run",
         "purpose": "以输入构建唯一Deep Agents图并调用invoke",
         "notes": [
@@ -124,7 +124,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/agent/runtime.py",
+            "file": "src/agent/runtime.py",
             "name": "AgentRuntime.build",
             "purpose": "注册harness并安装原生后端与有序middleware",
             "notes": [
@@ -134,7 +134,7 @@
             "guide": "正式请求模型前，需要把文件后端、指令文件和各阶段处理器装进同一张图。这里按明确顺序传给框架建图函数，并关闭项目已有替代实现的默认能力。返回图供本轮执行使用；历史保存和工具结算也因此在框架调度时进入项目代码。"
           },
           {
-            "file": "src/pycode/agent/runtime.py",
+            "file": "src/agent/runtime.py",
             "name": "AgentRuntime.invoke",
             "purpose": "graph.ainvoke是真实框架执行边界",
             "notes": [
@@ -143,7 +143,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/agent/loop.py",
+                "file": "src/agent/loop.py",
                 "name": "HistoryMiddleware.awrap_model_call",
                 "purpose": "框架模型边界保存完整assistant",
                 "notes": [
@@ -153,7 +153,7 @@
                 "edge": "框架在ainvoke期间回调",
                 "helpers": [
                   {
-                    "file": "src/pycode/agent/boundaries.py",
+                    "file": "src/agent/boundaries.py",
                     "name": "save_message",
                     "purpose": "正式消息→输出绑定→快照事实→message_end",
                     "notes": [
@@ -172,7 +172,7 @@
         "guide": "运行容器把用户输入交到这里，才进入框架执行层。它再次追加同一消息时由真实存储识别重复，之后设置初始标题、创建图，并把消息和初始运行状态交给调用函数。真正的模型和工具交替由那张图完成，此处没有第二套聊天循环。"
       },
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.record_run_result",
         "purpose": "统一保存run_wait或run_end",
         "notes": [
@@ -196,7 +196,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.resume",
         "purpose": "排他读取当前分支尚未结束的run",
         "notes": [
@@ -205,7 +205,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/session/agent_session.py",
+            "file": "src/session/agent_session.py",
             "name": "AgentSession.resume_run",
             "purpose": "run_resume先落盘，再传答案给launcher",
             "notes": [
@@ -218,7 +218,7 @@
         "guide": "用户在同一窗口回答审批时，入口先取得会话执行位置，并查找当前尚未结束的运行。它从会话配置恢复模型选择，而不是相信答案正文指定另一轮任务，再交给恢复函数。找不到待继续的运行就报错，不能将任意旧批准当成新任务输入。"
       },
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "SessionLauncher.resume",
         "purpose": "恢复已等待的运行",
         "notes": [
@@ -227,7 +227,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/app/composition.py",
+            "file": "src/app/composition.py",
             "name": "SessionLauncher.execute",
             "purpose": "在本轮资源范围执行图",
             "notes": [
@@ -237,7 +237,7 @@
             "edge": "通过注入工厂／活容器",
             "helpers": [
               {
-                "file": "src/pycode/app/composition.py",
+                "file": "src/app/composition.py",
                 "name": "build_run",
                 "purpose": "明确连接一次运行的服务",
                 "notes": [
@@ -254,7 +254,7 @@
         "guide": "使用持久 run_id 和用户回答恢复图。"
       },
       {
-        "file": "src/pycode/agent/runtime.py",
+        "file": "src/agent/runtime.py",
         "name": "AgentRuntime.resume",
         "purpose": "校验当前interrupt并创建Command(resume)",
         "notes": [
@@ -265,7 +265,7 @@
         "guide": "同进程使用保留的图，进程重启由 launcher 重建资源并恢复持久化 checkpoint；显式回答核对真实问题身份，再继续该任务。打开会话本身不会自动运行。"
       },
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.settle_run",
         "purpose": "提交锁下完成运行结算",
         "notes": [
@@ -288,7 +288,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.submit_input",
         "purpose": "确认运行归属后接受steer/follow_up",
         "notes": [
@@ -297,7 +297,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/session/store.py",
+            "file": "src/session/store.py",
             "name": "SqliteSessionStore.append_entry",
             "purpose": "在唯一存储边界接受输入",
             "notes": [
@@ -310,7 +310,7 @@
         "guide": "用户执行中补充“只跑解析器测试”时会来到这里，而不是再开一轮运行。服务检查回退预览和当前待运行身份，将消息交给持久队列。返回排队成功代表输入已经保存；模型何时读到要等框架边界，不能把按钮反馈当作模型已执行补充要求。"
       },
       {
-        "file": "src/pycode/agent/loop.py",
+        "file": "src/agent/loop.py",
         "name": "HistoryMiddleware.abefore_model",
         "purpose": "模型前维护能力、flush收件箱并交付steer",
         "notes": [
@@ -320,7 +320,7 @@
         "edge": "框架模型前回调",
         "helpers": [
           {
-            "file": "src/pycode/agent/boundaries.py",
+            "file": "src/agent/boundaries.py",
             "name": "deliver_input",
             "purpose": "交付补充消息后发送input_delivered通知",
             "notes": [
@@ -333,7 +333,7 @@
         "guide": "框架准备再请求模型时，才调用这个入口。它先更新可用工具和上下文，再恢复已保存的补充输入，把即时说明加入本次模型消息。补充输入不是由前一个工具直接塞给模型；处理成功以后还会进入各自的保存确认流程。"
       },
       {
-        "file": "src/pycode/agent/loop.py",
+        "file": "src/agent/loop.py",
         "name": "HistoryMiddleware.aafter_agent",
         "purpose": "自然结束边界选择follow_up，再关闭输入接收",
         "notes": [
@@ -343,7 +343,7 @@
         "edge": "框架自然结束回调",
         "helpers": [
           {
-            "file": "src/pycode/session/inputs.py",
+            "file": "src/session/inputs.py",
             "name": "DurableInputs.finish_boundary",
             "purpose": "接收锁下确认队列空才关闭run",
             "notes": [
@@ -370,7 +370,7 @@
     "groups": true,
     "nodes": [
       {
-        "file": "src/pycode/app/composition.py",
+        "file": "src/app/composition.py",
         "name": "open_agent_session",
         "purpose": "先恢复持久事实，再连接完整会话能力",
         "notes": [
@@ -379,7 +379,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/session/restart.py",
+            "file": "src/session/restart.py",
             "name": "recover_conversation",
             "purpose": "扫描配对并补中断结果，不调用旧业务工具",
             "notes": [
@@ -392,7 +392,7 @@
         "guide": "界面请求打开会话时，这个应用组装入口先取得日志写入资格并整理旧运行，再连接当前选择的计划、技能、记忆和执行器。成功返回的会话能处理完整业务命令；中途失败则按已创建资源逐项关闭，不能把半初始化对象交给窗口继续使用。"
       },
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.cancel",
         "purpose": "由owned取消任务等待当前执行等待停止并回收",
         "notes": [
@@ -401,7 +401,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/app/composition.py",
+            "file": "src/app/composition.py",
             "name": "SessionLauncher.cancel_wait",
             "purpose": "关闭等待中的运行",
             "notes": [
@@ -414,7 +414,7 @@
         "guide": "用户按取消时，服务先识别当前是正在执行，还是保留着等待审批的图，再启动一次被明确等待的取消处理。它还会处理关联子任务和日志中的未完成记录。返回之前等待实际停止，但不承诺回退已经写过的文件；撤销代码是另外的确认操作。"
       },
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.aclose",
         "purpose": "先禁止新执行，再逐项关闭子 agent、执行器、视图和存储",
         "notes": [
@@ -439,7 +439,7 @@
     "groups": true,
     "nodes": [
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.branch",
         "purpose": "仅切换历史leaf，完成后重建Plan状态",
         "notes": [
@@ -448,7 +448,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/session/store.py",
+            "file": "src/session/store.py",
             "name": "SqliteSessionStore.branch",
             "purpose": "持writer lease校验目标并发布当前位置",
             "notes": [
@@ -461,7 +461,7 @@
         "guide": "用户想从旧消息换一种修法时，这里先确认当前没有运行或审批等待，再切换日志活动节点。接着重新初始化计划，防止沿用另一分支的批准。它返回的是新的历史位置，不修改工作区文件；需要恢复代码时应使用预览和确认回退的独立入口。"
       },
       {
-        "file": "src/pycode/snapshot/snapshot.py",
+        "file": "src/snapshot/snapshot.py",
         "name": "SnapshotService.changed_paths",
         "purpose": "计算回退确认范围",
         "notes": [
@@ -472,7 +472,7 @@
         "guide": "UI 直接访问 session.snapshots 取得将变更的路径。"
       },
       {
-        "file": "src/pycode/snapshot/snapshot.py",
+        "file": "src/snapshot/snapshot.py",
         "name": "SnapshotService.revert",
         "purpose": "通过具体快照服务执行回退",
         "notes": [
@@ -482,7 +482,7 @@
         "guide": "调用方在 session.execution 内确认没有待恢复的 run，再调用 snapshots.revert。"
       },
       {
-        "file": "src/pycode/session/agent_session.py",
+        "file": "src/session/agent_session.py",
         "name": "AgentSession.compact",
         "purpose": "记录维护请求，交给launcher压缩入口",
         "notes": [
@@ -491,7 +491,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/app/composition.py",
+            "file": "src/app/composition.py",
             "name": "SessionLauncher.compact",
             "purpose": "触发一次明确压缩",
             "notes": [
@@ -500,7 +500,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/context/summary.py",
+                "file": "src/context/summary.py",
                 "name": "SummaryService.adopt",
                 "purpose": "来源验证成功后追加compaction，再触发后置回调",
                 "notes": [
@@ -530,7 +530,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/memory/memory.py",
+        "file": "src/memory/memory.py",
         "name": "MemoryService.prompt_sections",
         "purpose": "按需构造记忆索引",
         "guide": "系统提示读取当前记忆文件索引，只加入简短标题而非全部正文。",
@@ -540,7 +540,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/memory/memory.py",
+            "file": "src/memory/memory.py",
             "name": "memory_index",
             "purpose": "拼成每条一行的索引",
             "guide": "按 updated 倒序取最近 50 条，每条一行 [scope] id — description，开头说明这是数据不是指令，并告诉模型去 /memory/<scope>/<id>.md 读。",
@@ -565,7 +565,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/memory/tools.py",
+        "file": "src/memory/tools.py",
         "name": "ManageMemoryTool.execute",
         "purpose": "进入 LangMem manage 工具",
         "guide": "执行器校验参数、经 MemoryToolGate 放行后调用这里。只有主 agent 且 mode 不是 off 才能用；然后交给 LangMem 的原生工具，它把 create/update/delete 变成对 BaseStore 的 put。",
@@ -575,7 +575,7 @@
         ]
       },
       {
-        "file": "src/pycode/memory/store.py",
+        "file": "src/memory/store.py",
         "name": "MarkdownMemoryStore.write",
         "purpose": "在作用域锁里写或删一个 md 文件",
         "guide": "LangMem 的 put 最后落到这里。value 为 None 就删除文件；否则先算出写入后的条数，交给check_memory_write，通过后原子写入带 frontmatter 的 Markdown。",
@@ -585,7 +585,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/memory/store.py",
+            "file": "src/memory/store.py",
             "name": "check_memory_write",
             "purpose": "每次写入的统一规则",
             "guide": "描述必须是一行非空文字，描述加正文不超过 2000 字，每个作用域不超过 50 条，疑似密钥直接拒绝。",
@@ -610,7 +610,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/memory/memory.py",
+        "file": "src/memory/memory.py",
         "name": "MemoryService.compacted",
         "purpose": "最多同时一个后台整理任务",
         "guide": "摘要采用后 SummaryService 调用这里。会话已关闭、mode=off 或没有整理模型时直接返回；已有任务在跑也返回；否则开一个后台任务，在独立的 contextvars 里运行。",
@@ -620,7 +620,7 @@
         ]
       },
       {
-        "file": "src/pycode/memory/memory.py",
+        "file": "src/memory/memory.py",
         "name": "MemoryService.consolidate",
         "purpose": "取摘要和最近对话，逐作用域交给 LangMem",
         "guide": "从会话取最新摘要和有限的最近对话；都为空就不调用模型。每个作用域调用一次整理模型，写入经过 lenient 视图，被规则拒绝的条目计数后记日志。",
@@ -645,7 +645,7 @@
     "groups": true,
     "nodes": [
       {
-        "file": "src/pycode/plans/plans.py",
+        "file": "src/plans/plans.py",
         "name": "PlanService.enter",
         "purpose": "进入规划模式",
         "notes": [
@@ -656,7 +656,7 @@
         "guide": "UI 直接访问具体规划服务，并在会话执行范围内切换状态。"
       },
       {
-        "file": "src/pycode/tools/backend.py",
+        "file": "src/tools/backend.py",
         "name": "ScopedBackend.write",
         "purpose": "执行限定范围的文件写入",
         "notes": [
@@ -666,7 +666,7 @@
         "edge": "FilesystemMiddleware经/plans/路由调用",
         "helpers": [
           {
-            "file": "src/pycode/plans/store.py",
+            "file": "src/plans/store.py",
             "name": "FilePlanStore.check_path",
             "purpose": "限制规划文件路径",
             "notes": [
@@ -692,7 +692,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/plans/tools.py",
+        "file": "src/plans/tools.py",
         "name": "ExitPlanMode.execute",
         "purpose": "普通控制工具把审阅交给PlanService",
         "notes": [
@@ -701,7 +701,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/plans/plans.py",
+            "file": "src/plans/plans.py",
             "name": "PlanService.review",
             "purpose": "保存正文快照，等待明确决定，恢复后重验内容",
             "notes": [
@@ -710,7 +710,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/plans/store.py",
+                "file": "src/plans/store.py",
                 "name": "FilePlanStore.read",
                 "purpose": "读取真实Markdown并返回内容哈希",
                 "notes": [
@@ -720,7 +720,7 @@
                 "guide": "审阅和执行检查都需要知道当前真实正文，因此调用这个文件读取入口。它根据本会话生成路径并检查文件归属，再返回正文、内容校验值和存储位置。父函数用这些值比较是否仍是用户看过的一份，不靠文件存在或修改时间猜测内容没变。"
               },
               {
-                "file": "src/pycode/plans/tools.py",
+                "file": "src/plans/tools.py",
                 "name": "InterruptPlanPrompt.ask",
                 "purpose": "调用原生task并验证问题身份",
                 "notes": [
@@ -729,7 +729,7 @@
                 ],
                 "helpers": [
                   {
-                    "file": "src/pycode/plans/tools.py",
+                    "file": "src/plans/tools.py",
                     "name": "plan_answer",
                     "purpose": "原生interrupt使当前图等待",
                     "notes": [
@@ -749,7 +749,7 @@
         "guide": "模型写完方案后需要请求用户阅读，普通工具执行入口因此调用当前计划服务的审阅方法。它自己不运行另一个模型，也不直接把模式改成已批准。返回要等原生问题得到有效答案并完成内容复查，之后才由统一工具流程保存正式结果。"
       },
       {
-        "file": "src/pycode/agent/runtime.py",
+        "file": "src/agent/runtime.py",
         "name": "AgentRuntime.resume",
         "purpose": "校验当前interrupt并创建Command(resume)",
         "notes": [
@@ -760,7 +760,7 @@
         "guide": "同进程使用保留的图，进程重启由 launcher 重建资源并恢复持久化 checkpoint；显式回答核对真实问题身份，再继续该任务。打开会话本身不会自动运行。"
       },
       {
-        "file": "src/pycode/plans/plans.py",
+        "file": "src/plans/plans.py",
         "name": "PlanService.save",
         "purpose": "plan_state先落会话 Store，再更新内存和后端active文件",
         "notes": [
@@ -784,7 +784,7 @@
     "groups": true,
     "nodes": [
       {
-        "file": "src/pycode/plans/plans.py",
+        "file": "src/plans/plans.py",
         "name": "PlanService.authorize",
         "purpose": "限制规划阶段的工具调用",
         "notes": [
@@ -793,7 +793,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/plans/plans.py",
+            "file": "src/plans/plans.py",
             "name": "PlanService.guard",
             "purpose": "逐次检查模式和run_id",
             "notes": [
@@ -820,7 +820,7 @@
     "groups": true,
     "nodes": [
       {
-        "file": "src/pycode/plans/plans.py",
+        "file": "src/plans/plans.py",
         "name": "PlanService.finish",
         "purpose": "仅结束属于本run的批准",
         "notes": [
@@ -830,7 +830,7 @@
         "guide": "会话保存一轮结束结果后，需要撤下只属于这一轮的批准。这里比较批准中的运行ID，匹配才保存完成状态并清掉运行绑定；其它运行或未批准方案保持原状。返回以后新任务不能继续借用旧批准，但历史仍能解释这份方案曾怎样被审阅和执行。"
       },
       {
-        "file": "src/pycode/plans/plans.py",
+        "file": "src/plans/plans.py",
         "name": "PlanService.initialize",
         "purpose": "当前分支重建状态，重启旧批准过期",
         "notes": [
@@ -840,7 +840,7 @@
         "guide": "打开会话或换分支后，内存计划不能沿用旧值，因此这里从当前分支日志找状态并检查文件路径归属。此前自动或逐项审阅批准都退回规划并清除绑定。结果交给新会话使用，旧日志用于回看，不会因为磁盘存在批准记录就让新进程免审批。"
       },
       {
-        "file": "src/pycode/plans/plans.py",
+        "file": "src/plans/plans.py",
         "name": "PlanProjection.contribute",
         "purpose": "纯历史提醒与自有checkpoint归属",
         "notes": [
@@ -863,7 +863,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/app/api.py",
+        "file": "src/app/api.py",
         "name": "Application.tui",
         "purpose": "统一应用入口连接所选UI与会话能力",
         "notes": [
@@ -872,7 +872,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/ui/tui.py",
+            "file": "src/ui/tui.py",
             "name": "PyApp.__init__",
             "purpose": "创建具体交互界面",
             "notes": [
@@ -886,7 +886,7 @@
         "guide": "用户选择终端界面时，从统一应用对象来到这里，应用把当前配置、工具和已选模块交给界面组装函数。返回的是可启动的Textual应用，不是已经请求模型的会话。真正打开由挂载后的界面发起，保证窗口与命令行复用同一套业务服务。"
       },
       {
-        "file": "src/pycode/ui/tui.py",
+        "file": "src/ui/tui.py",
         "name": "PyApp.on_mount",
         "purpose": "Textual挂载后配置补全并打开会话",
         "notes": [
@@ -896,7 +896,7 @@
         "edge": "Textual生命周期回调",
         "helpers": [
           {
-            "file": "src/pycode/ui/tui.py",
+            "file": "src/ui/tui.py",
             "name": "PyApp.switch_session",
             "purpose": "停止旧操作，再打开并替换会话对象",
             "notes": [
@@ -905,7 +905,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/ui/tui.py",
+                "file": "src/ui/tui.py",
                 "name": "PyApp.stop_active",
                 "purpose": "取消会话执行后等待UI任务等待停止并回收",
                 "notes": [
@@ -915,7 +915,7 @@
                 "guide": "切会话和退出都要先处理仍在执行或等待的任务。这里优先请真实会话取消，必要时再取消UI主任务并等待空闲；即使界面不忙，也检查会话是否保留活等待。返回后父操作才能安全换对象或关闭，不能以任务引用结束推断底层模型资源全关。"
               },
               {
-                "file": "src/pycode/app/api.py",
+                "file": "src/app/api.py",
                 "name": "ConfiguredInteractiveSessions.open",
                 "purpose": "将当前PyApp作为消费者打开应用会话",
                 "notes": [
@@ -945,7 +945,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/ui/tui.py",
+        "file": "src/ui/tui.py",
         "name": "PyApp.send_text",
         "purpose": "斜杠命令、运行中入队、空闲新任务分流",
         "notes": [
@@ -954,7 +954,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/ui/tui.py",
+            "file": "src/ui/tui.py",
             "name": "PyApp.command",
             "purpose": "命令表查找与shlex解析，不复制业务规则",
             "notes": [
@@ -963,7 +963,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/ui/commands.py",
+                "file": "src/ui/commands.py",
                 "name": "CommandRegistry.find",
                 "purpose": "静态命令与可信Skill补全共用入口",
                 "notes": [
@@ -976,7 +976,7 @@
             "guide": "输入被认作斜杠命令后，这里按静态说明查处理器并解析参数，技能原始参数保留原文，其它使用命令行拆词。未知命令或引号错误显示明确提示，不把用户文字当Python执行。选中的处理器随后调用应用能力，权限和业务状态仍留在服务层。"
           },
           {
-            "file": "src/pycode/session/agent_session.py",
+            "file": "src/session/agent_session.py",
             "name": "AgentSession.submit_input",
             "purpose": "确认运行归属后接受steer/follow_up",
             "notes": [
@@ -985,7 +985,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/session/store.py",
+                "file": "src/session/store.py",
                 "name": "SqliteSessionStore.append_entry",
                 "purpose": "在唯一存储边界接受输入",
                 "notes": [
@@ -1001,7 +1001,7 @@
         "guide": "用户回车时，这里先分清斜杠命令、运行中补充还是空闲新任务。命令交注册表，补充走持久输入队列，新任务才登记主操作。窗口自己不执行文件或Bash工具，因此再次输入不会覆盖正在跑的任务，反馈也能区分排队与已经完成。"
       },
       {
-        "file": "src/pycode/ui/tui.py",
+        "file": "src/ui/tui.py",
         "name": "PyApp.start_operation",
         "purpose": "UI只拥有一个主操作task",
         "notes": [
@@ -1010,7 +1010,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/ui/tui.py",
+            "file": "src/ui/tui.py",
             "name": "PyApp.execute_operation",
             "purpose": "主操作返回后发布RunResult并刷新状态",
             "notes": [
@@ -1020,7 +1020,7 @@
             "edge": "受拥有的asyncio任务",
             "helpers": [
               {
-                "file": "src/pycode/ui/tui.py",
+                "file": "src/ui/tui.py",
                 "name": "PyApp.maybe_wake",
                 "purpose": "空闲时把后台子 agent 的结果作为新运行送达",
                 "notes": [
@@ -1049,7 +1049,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/kernel/events.py",
+        "file": "src/kernel/events.py",
         "name": "EventStream.emit",
         "purpose": "有序发布事件，隔离失败消费者",
         "notes": [
@@ -1058,7 +1058,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/ui/tui.py",
+            "file": "src/ui/tui.py",
             "name": "PyApp.on_event",
             "purpose": "将事件交给界面",
             "notes": [
@@ -1072,7 +1072,7 @@
         "guide": "模型和工具想更新界面时，先在这个发布入口取得顺序号并把事件副本交给各消费者。普通显示失败可停用该消费者，输出管道关闭则触发受控停止。事件用于及时展示，不替代会话会话 Store；调用方不能因为界面收到事件就认定结果已经可靠保存。"
       },
       {
-        "file": "src/pycode/ui/tui.py",
+        "file": "src/ui/tui.py",
         "name": "PyApp.on_py_app_runtime_event",
         "purpose": "在消息泵回调里处理真正渲染",
         "notes": [
@@ -1082,7 +1082,7 @@
         "edge": "Textual消息泵回调",
         "helpers": [
           {
-            "file": "src/pycode/ui/tui.py",
+            "file": "src/ui/tui.py",
             "name": "PyApp.render_runtime_event",
             "purpose": "按会话身份与事件类型更新画面",
             "notes": [
@@ -1091,7 +1091,7 @@
             ],
             "helpers": [
               {
-                "file": "src/pycode/ui/tui.py",
+                "file": "src/ui/tui.py",
                 "name": "PyApp.render_history",
                 "purpose": "从正式历史增量挂载消息与工具卡片",
                 "notes": [
@@ -1100,7 +1100,7 @@
                 ],
                 "helpers": [
                   {
-                    "file": "src/pycode/session/view.py",
+                    "file": "src/session/view.py",
                     "name": "SessionView.inspect",
                     "purpose": "将原始事实、上下文与等待组成只读视图",
                     "notes": [
@@ -1109,7 +1109,7 @@
                     ],
                     "helpers": [
                       {
-                        "file": "src/pycode/session/view.py",
+                        "file": "src/session/view.py",
                         "name": "SessionView.presentation",
                         "purpose": "按不可变对象缓存entry/message展示值",
                         "notes": [
@@ -1145,7 +1145,7 @@
     "groups": true,
     "nodes": [
       {
-        "file": "src/pycode/ui/approval.py",
+        "file": "src/ui/approval.py",
         "name": "ApprovalPanel.action_select",
         "purpose": "面板只发送operation绑定的一次明确决定",
         "notes": [
@@ -1154,7 +1154,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/ui/tui.py",
+            "file": "src/ui/tui.py",
             "name": "PyApp.on_approval_panel_responded",
             "purpose": "按agent_id将答案分到主运行或子运行",
             "notes": [
@@ -1164,7 +1164,7 @@
             "edge": "Textual Responded消息回调",
             "helpers": [
               {
-                "file": "src/pycode/ui/tui.py",
+                "file": "src/ui/tui.py",
                 "name": "PyApp.answer_child",
                 "purpose": "独立等待子Agent恢复并刷新审批状态",
                 "notes": [
@@ -1173,7 +1173,7 @@
                 ],
                 "helpers": [
                   {
-                    "file": "src/pycode/subagents/subagents.py",
+                    "file": "src/subagents/subagents.py",
                     "name": "SubagentManager.answer",
                     "purpose": "把回答交给目标子 agent",
                     "notes": [
@@ -1186,7 +1186,7 @@
                 "guide": "子审批任务启动后，这里把 agent_id 和答案交给应用会话的 answer_agent，由子 agent 管理器恢复指定子运行。业务错误显示提示，最后重新读取审批状态；它不直接改子图或内部等待字典。任务登记在界面子答复集合中，退出时仍要取消和等待完成。"
               },
               {
-                "file": "src/pycode/ui/tui.py",
+                "file": "src/ui/tui.py",
                 "name": "PyApp.respond",
                 "purpose": "主问题仍经过普通排他resume操作",
                 "notes": [
@@ -1202,7 +1202,7 @@
         "guide": "用户在普通审批面板选择一次批准或拒绝后，这里只发送带操作ID和可选子成员ID的答案消息。它不调用Bash、不改永久权限，回车只是结束当前控件选择。主App随后分派到相应运行，执行端还会核问题和具体内容是否仍与答案一致。"
       },
       {
-        "file": "src/pycode/ui/tui.py",
+        "file": "src/ui/tui.py",
         "name": "PyApp.shutdown",
         "purpose": "停止主操作、等待停止并回收子答复，最后关闭会话",
         "notes": [
@@ -1211,7 +1211,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/ui/tui.py",
+            "file": "src/ui/tui.py",
             "name": "PyApp.stop_active",
             "purpose": "取消会话执行后等待UI任务等待停止并回收",
             "notes": [
@@ -1237,7 +1237,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/subagents/tools.py",
+        "file": "src/subagents/tools.py",
         "name": "AgentTool.execute",
         "purpose": "Agent 工具入口",
         "guide": "模型调用 Agent 时进入这里。它把描述、提示、模式、background、max_turns 和本次调用 ID 交给管理器启动；前台调用接着等子 agent 结束，然后把结局、结果文本和 worktree 说明作为工具结果返回。",
@@ -1247,7 +1247,7 @@
         ]
       },
       {
-        "file": "src/pycode/subagents/subagents.py",
+        "file": "src/subagents/subagents.py",
         "name": "SubagentManager.start",
         "purpose": "检查上限，建 worktree、记录和子会话，然后开跑",
         "guide": "管理器先检查并发上限，worktree 模式还要当前会话能写代码。然后建 Subagent 记录和这次运行的事件流，通过注入的 sessions 工厂打开子会话，最后把 session.run(prompt) 交给 _launch 放进后台任务。",
@@ -1257,7 +1257,7 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/app/composition.py",
+            "file": "src/app/composition.py",
             "name": "child_config",
             "purpose": "构造子 agent 的真实配置",
             "guide": "组装层按委派模式生成工作区、只读与隔离设置，再打开子会话。",
@@ -1270,7 +1270,7 @@
         ]
       },
       {
-        "file": "src/pycode/subagents/subagents.py",
+        "file": "src/subagents/subagents.py",
         "name": "SubagentManager.wait",
         "purpose": "前台调用等子 agent 结束",
         "guide": "前台的 Agent 和 SendMessage 都在这里等驱动任务结束。父运行被取消或失败时，这次等待也被取消，管理器先停止子 agent（结局 cancelled）再把取消传上去。",
@@ -1293,7 +1293,7 @@
     ],
     "nodes": [
       {
-        "file": "src/pycode/subagents/subagents.py",
+        "file": "src/subagents/subagents.py",
         "name": "SubagentManager._drive",
         "purpose": "驱动子 agent 的整个生命周期",
         "guide": "子会话 run 返回 pending 时，状态转为 waiting，问题挂在 agent.pending 上，发一条状态事件让界面刷新；然后等答案队列，取到后 resume。没有待答问题时按 outcome 定结局。",
@@ -1303,7 +1303,7 @@
         ]
       },
       {
-        "file": "src/pycode/subagents/subagents.py",
+        "file": "src/subagents/subagents.py",
         "name": "SubagentManager.answer",
         "purpose": "把回答交给目标子 agent",
         "guide": "UI 直接调用 session.subagents.answer，按 agent 身份恢复对应等待。",
@@ -1328,7 +1328,7 @@
     "groups": true,
     "nodes": [
       {
-        "file": "src/pycode/subagents/subagents.py",
+        "file": "src/subagents/subagents.py",
         "name": "SubagentManager.stop",
         "purpose": "StopAgent：取消驱动任务",
         "guide": "StopAgent 调这里。已结束的子 agent 报 agent_finished；否则取消驱动任务并等它退出。_drive 在取消分支里把结局记为 cancelled，正在等审批时还会调用子会话的 cancel 结束挂起的 run。",
@@ -1338,7 +1338,7 @@
         ]
       },
       {
-        "file": "src/pycode/subagents/subagents.py",
+        "file": "src/subagents/subagents.py",
         "name": "SubagentManager._finish",
         "purpose": "收尾：worktree 去留和后台通知",
         "guide": "worktree 没有改动且结局不是 partial，就删除 worktree 和分支；有改动就保留，结果文本写明分支和路径。后台子 agent 再通过 notify 把结果交给主会话。",
@@ -1348,7 +1348,7 @@
         ]
       },
       {
-        "file": "src/pycode/subagents/subagents.py",
+        "file": "src/subagents/subagents.py",
         "name": "SubagentManager._commit_step",
         "purpose": "worktree 里每完成一个步骤提交一次",
         "guide": "转发子 agent 事件时，看到 TaskUpdate 把某个步骤设为 completed 且执行成功，就在 worktree 里 git commit。",
@@ -1358,7 +1358,7 @@
         ]
       },
       {
-        "file": "src/pycode/subagents/subagents.py",
+        "file": "src/subagents/subagents.py",
         "name": "SubagentManager.send",
         "purpose": "SendMessage：在子 agent 自己的历史里继续",
         "guide": "只接受已经结束的子 agent，按原来的前台或后台方式再跑一次；worktree 已被删除时报 worktree_removed。",

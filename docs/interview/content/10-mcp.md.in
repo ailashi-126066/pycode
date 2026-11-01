@@ -36,4 +36,4 @@ SDK 返回的内容通过 MCPRun.normalize 变成统一结果，保留服务、�
 
 FastMCP 和 LangChain 负责协议、连接与原生工具转换；项目负责配置可信度、分支目录、公共 ToolSearch、权限、执行前定义核对和效果记录。
 
-{{inline:src/pycode/mcp/types.py:MCPServer}}
+{{inline:src/mcp/types.py:MCPServer}}

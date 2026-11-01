@@ -105,7 +105,7 @@ Plan 服务没有继承 `AgentMiddleware`。框架负责的第一件事是文件
 | `plan_state` | 当前路径、会话ID和阶段 | 从当前分支重新建立服务状态，但重启不续旧批准 |
 | `checkpoint.plan` | 压缩上下文里保存的方案提醒 | 完成后清除，不能继续提示旧方案仍在执行 |
 
-{{inline:src/pycode/plans/types.py:PlanState}}
+{{inline:src/plans/types.py:PlanState}}
 
 
 ## 遇到异常时，程序怎么处理
