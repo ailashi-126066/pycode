@@ -5,7 +5,9 @@ import pytest
 from pycode.context.services.context_projector import ContextProjector
 from pycode.kernel.domain.completion import RunResult
 from pycode.kernel.domain.errors import StorageError
+from pycode.kernel.domain.history import EntryDraft
 from pycode.kernel.domain.messages import Message
+from pycode.session.domain.execution_recovery import pending_run_entry
 from pycode.session.services.agent_session import AgentSession
 from tests.models.adapters.test_factory import configuration
 from tests.models.services.test_model_control import controller, store_for
@@ -22,7 +24,24 @@ class Launcher:
         self.started.set()
         if self.release is not None:
             await self.release.wait()
-        await store.append_message(Message("assistant-" + inputs[0].id, "assistant", "done"))
+        reply = await store.append_message(
+            Message("assistant-" + inputs[0].id, "assistant", "done")
+        )
+        # The runtime writes run_end when its RunState enters finished.
+        start = pending_run_entry(await store.snapshot())
+        await store.append_entry(
+            EntryDraft(
+                "custom",
+                data={
+                    "kind": "run_end",
+                    "input_id": inputs[0].id,
+                    "input_ids": [inputs[0].id],
+                    "reason": "completed",
+                    "final_entry_id": reply,
+                },
+                run_id=start.run_id,
+            )
+        )
         return RunResult("completed", "done", ())
 
     async def aclose(self):
@@ -74,4 +93,18 @@ async def test_interrupted_execution_with_history_is_not_blindly_reexecuted(tmp_
         await session.run(user)
     assert error.value.code == "execution_recovery_required"
     assert launcher.calls == []
+    await session.aclose()
+
+
+async def test_failure_outside_the_runtime_still_ends_the_run_once(tmp_path):
+    session, store, launcher = await assemble(tmp_path)
+
+    async def broken(provider, store, inputs, history):
+        raise RuntimeError("launcher broke")
+
+    launcher.run = broken
+    with pytest.raises(RuntimeError):
+        await session.run(Message("input-1", "user", "request"))
+    entries = (await store.snapshot()).entries
+    assert [e.data["reason"] for e in entries if e.data.get("kind") == "run_end"] == ["error"]
     await session.aclose()

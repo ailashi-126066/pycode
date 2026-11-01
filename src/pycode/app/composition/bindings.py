@@ -25,12 +25,8 @@ def build_runtime_bindings(
     discovery = tools.discovery(converter)
 
     def settlement_factory(bound: RunContext):
-        async def lifecycle(context, event, *, message="", error=""):
-            await run_hook(bound, event, message=message, error=error)
-
         return tools.settlement(
             publisher=agent.publisher(bound),
-            lifecycle=lifecycle,
             converter=models.to_framework,
             tool_extensions=tool_extensions,
             native_bindings=native_bindings,

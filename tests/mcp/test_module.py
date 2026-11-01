@@ -5,16 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from pycode.kernel import StorageError
 from pycode.mcp.framework import MCPRun
 from pycode.mcp.module import MCPModule, MCPSettings
 
 
 @pytest.mark.asyncio
-async def test_config_only_open_validates_hash_without_connections(tmp_path, monkeypatch):
+async def test_config_only_open_builds_no_connections(tmp_path, monkeypatch):
     server = SimpleNamespace(name="fixture")
     monkeypatch.setattr("pycode.mcp.module.load_servers", lambda roots, workspace: (server,))
-    monkeypatch.setattr("pycode.mcp.module.plain_data", lambda value: {"name": value.name})
 
     def forbidden(*args, **kwargs):
         raise AssertionError("config-only must not construct connections")
@@ -23,13 +21,9 @@ async def test_config_only_open_validates_hash_without_connections(tmp_path, mon
     module = MCPModule(schema=None)
     settings = MCPSettings(tmp_path, tmp_path)
     session = await module.open_session(settings, {}, connect=False)
-    assert session.config_hash
     assert session.connections is None
     assert session.prepare_run(None) is None
     await session.aclose()
-    pending = SimpleNamespace(data={"mcp_config_hash": "changed"})
-    with pytest.raises(StorageError, match="configuration changed"):
-        await module.open_session(settings, {}, pending=pending, connect=False)
 
 
 @pytest.mark.asyncio

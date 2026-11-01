@@ -145,7 +145,7 @@ def test_cli_model_selection_cannot_bypass_pending_application_state(
     after = asyncio.run(read())
     if pending_kind == "run_start":
         assert any(
-            entry.data.get("kind") == "run_end" and entry.data.get("outcome") == "interrupted"
+            entry.data.get("kind") == "run_end" and entry.data.get("reason") == "interrupted"
             for entry in after.entries
         )
     else:

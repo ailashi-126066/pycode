@@ -28,14 +28,41 @@ from pycode.agent.services.context import RunContext
 from pycode.context import apply_task_change, empty_tasks, task_evidence
 from pycode.kernel import Message, ModelError, SessionTree, TextBlock, plain_data
 
-MAX_OUTPUT_CONTINUATIONS = 3
-OUTPUT_CONTINUATION_PROMPT = (
-    "Your previous JSON response was cut off by the output limit. Return a new complete JSON "
-    "object following the task_action/message schema, not a trailing JSON fragment. The previous "
-    "task_action was not applied: restate its intended update if needed. Continue only the "
-    "message text after the already visible reply; do not repeat earlier reply text, summarize "
-    "it, or mention this instruction."
-)
+
+async def poll_steering(context):
+    """Pi: getSteeringMessages. Polled at loop start, at each turn end, and after preparation."""
+    if context.team is not None:
+        await context.team.flush_inbox(context)
+    if context.durable_inputs is not None:
+        context.inputs = await context.durable_inputs.pending(context.run_id)
+    return context.inputs.take("steer", one_at_a_time=context.one_at_a_time)
+
+
+async def end_turn(context, bindings):
+    """Pi: turn_end, derived from the RunState transition that leaves a model or tool turn."""
+    turn = context.run_state.turn
+    message = context.assistant
+    if message is not None and message.provider_metadata["pycode_turn"] != turn:
+        # The turn failed before its reply was saved.
+        message = None
+    results = [
+        item.id
+        for item in context.completed
+        if message is not None
+        and item.tool_result is not None
+        and item.tool_result.details["source_assistant_id"] == message.id
+    ]
+    await context.events.emit(
+        "turn_end",
+        {
+            "turn": turn,
+            "message_id": message.id if message is not None else None,
+            "tool_result_ids": results,
+        },
+    )
+    await bindings.run_hook(
+        context, "turn_end", message=message.text if message is not None else ""
+    )
 
 
 def take_queued(context):
@@ -50,29 +77,13 @@ def take_queued(context):
     return decision.queue, context.inputs.take(decision.queue, one_at_a_time=context.one_at_a_time)
 
 
+# Pi's runLoop hooks map onto LangChain middleware: prepareNextTurn ↔ abefore_model,
+# prepareRequest ↔ awrap_model_call, finishTurn ↔ aafter_model / aafter_agent.
 class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
     state_schema = PycodeState
 
     def __init__(self, bindings):
         self.bindings = bindings
-
-    async def continue_truncated_output(self, context, state):
-        """Resume a length-truncated response instead of ending the turn cut off."""
-
-        index = state.get("output_continuations", 0)
-        message = Message(
-            f"{context.run_id}:continue-{index}",
-            "user",
-            OUTPUT_CONTINUATION_PROMPT,
-            provider_metadata={"pycode_output_continuation": True},
-        )
-        await deliver_input(context, message, "continuation")
-        return {
-            "messages": [self.bindings.to_framework(message, context.selection)],
-            "outcome": "running",
-            "jump_to": "model",
-            "output_continuations": index + 1,
-        }
 
     async def current_projection(self, context):
         """One projection per model call, reused while the history leaf is unchanged."""
@@ -94,9 +105,23 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         for message in context.initial_inputs:
             await context.events.emit("message_start", {"message": plain_data(message)})
             await context.events.emit("message_end", {"message": plain_data(message)})
+        # Pi polls steering at loop start: the user may have typed while waiting.
+        context.steering = await poll_steering(context)
 
+    # Pi: prepareNextTurn. LangGraph's jump_to "end" implements the turn budget stop.
+    @hook_config(can_jump_to=["end"])
     async def abefore_model(self, state, runtime):
         context = runtime.context
+        run = context.run_state
+        if run.turn >= context.max_turns:
+            # The last turn has finished; end with turn_limit instead of starting another.
+            run.reason = "turn_limit"
+            return {"jump_to": "end"}
+        ended = run.apply("model")
+        if ended:
+            await end_turn(context, self.bindings)
+            context.steering = await poll_steering(context)
+        run.turn += 1
 
         async def maintain_context(current):
             for callback in self.bindings.before_model:
@@ -113,18 +138,8 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 )
             return current
 
-        async def deliver_steering(current):
-            if current.team is not None:
-                await current.team.flush_inbox(current)
-            if current.durable_inputs is not None:
-                current.inputs = await current.durable_inputs.pending(current.run_id)
-            pending = current.inputs.take("steer", one_at_a_time=current.one_at_a_time)
-            for message in pending:
-                await deliver_input(current, message, "steer")
-            return pending
-
         async def project_turn(pending):
-            turn = state.get("turn", 0) + 1
+            turn = run.turn
             await self.bindings.run_hook(context, "turn_start")
             if turn > 1:
                 await context.events.emit("turn_start", {"turn": turn})
@@ -144,9 +159,15 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             return updates
 
         await maintain_context(context)
-        pending = await deliver_steering(context)
+        if ended and not context.steering:
+            # Compaction may run long: poll again, but only if the turn-end poll took nothing.
+            context.steering = await poll_steering(context)
+        pending, context.steering = context.steering, ()
+        for message in pending:
+            await deliver_input(context, message, "steer")
         return await project_turn(pending)
 
+    # Pi: prepareRequest + streamAssistantResponse.
     async def awrap_model_call(self, request, handler):
         context = request.runtime.context
         state = cast(PycodeState, request.state)
@@ -260,7 +281,6 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         context.interrupted_calls.clear()
         context.ready_results.clear()
         context.settled_calls.clear()
-        context.turn_end_sent = False
         await self.bindings.run_hook(context, "post_receive", message=message.text)
         if assistant.invalid_tool_calls:
             calls = list(assistant.tool_calls)
@@ -278,24 +298,21 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             return updated
         return response
 
+    # Pi: finishTurn for a reply. Deep Agents decides all tool routing.
     @hook_config(can_jump_to=["model"])
     async def aafter_model(self, state, runtime):
-        # This hook records a boundary only. Deep Agents decides all tool routing.
         context = runtime.context
         message = context.assistant
         assert message is not None
         for callback in self.bindings.after_model:
             await callback()
-        outcome = "running" if message.tool_calls else "completed"
-        if message.stop_reason in {"error", "aborted"}:
-            outcome = message.stop_reason
-        elif message.stop_reason == "length" and not message.tool_calls:
-            outcome = "output_limit"
-        if not message.tool_calls:
-            await context.events.emit("turn_end", {"turn": state["turn"], "message_id": message.id})
-            await self.bindings.run_hook(context, "turn_end", message=message.text)
+        if message.tool_calls:
+            context.run_state.apply("tools")
+        else:
+            context.run_state.apply("verify")
+            await end_turn(context, self.bindings)
+            context.steering = await poll_steering(context)
         updates = {
-            "outcome": outcome,
             "final_text": message.text,
             "model_tools": plain_data(context.model_tools),
             "disclosed_tool_names": plain_data(context.disclosed_tool_names),
@@ -312,9 +329,11 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             and action["relation"] == "switch"
             and action["task_id"] != state.get("task_state", empty_tasks())["active_task_id"]
         ):
-            updates.update(outcome="running", jump_to="model")
+            updates["jump_to"] = "model"
         return updates
 
+    # Pi: the outer loop's follow-up check once the agent would stop (verifying).
+    # AgentRuntime.invoke enters finished after the graph returns.
     @hook_config(can_jump_to=["model"])
     async def aafter_agent(self, state, runtime):
         context = runtime.context
@@ -322,23 +341,25 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             await context.team.flush_inbox(context)
         if context.summary is not None:
             await context.summary.prepare(wait_for_capacity=False)
-        if (
-            state.get("outcome") == "output_limit"
-            and state.get("output_continuations", 0) < MAX_OUTPUT_CONTINUATIONS
-        ):
-            return await self.continue_truncated_output(context, state)
-        if context.durable_inputs is not None:
-            context.inputs = await context.durable_inputs.pending(context.run_id)
-        kind, pending = take_queued(context)
+        if context.run_state.reason is not None:
+            return None
+        kind, pending = "steer", context.steering
+        context.steering = ()
         if not pending:
-            await self.bindings.run_hook(context, "run_end", message=state.get("final_text", ""))
             if context.durable_inputs is not None:
-                context.inputs = await context.durable_inputs.finish_boundary(context.run_id)
-                kind, pending = take_queued(context)
-        if pending:
-            framework = []
-            for message in pending:
-                await deliver_input(context, message, kind)
-                framework.append(self.bindings.to_framework(message, context.selection))
-            return {"messages": framework, "outcome": "running", "jump_to": "model"}
-        await context.events.emit("agent_end", {"reason": state.get("outcome", "completed")})
+                context.inputs = await context.durable_inputs.pending(context.run_id)
+            kind, pending = take_queued(context)
+        if not pending and context.durable_inputs is not None:
+            context.inputs = await context.durable_inputs.finish_boundary(context.run_id)
+            kind, pending = take_queued(context)
+        if not pending:
+            return None
+        if context.run_state.turn >= context.max_turns:
+            # Queued input stays undelivered; the budget ends the run.
+            context.run_state.reason = "turn_limit"
+            return None
+        framework = []
+        for message in pending:
+            await deliver_input(context, message, kind)
+            framework.append(self.bindings.to_framework(message, context.selection))
+        return {"messages": framework, "jump_to": "model"}

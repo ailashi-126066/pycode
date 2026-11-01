@@ -3,14 +3,12 @@
 """Application commands share the same canonical history and execution owner."""
 
 import asyncio
-import logging
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from uuid import uuid4
 
 from pycode.context import ContextProjector
 from pycode.kernel import (
-    DomainError,
     EntryDraft,
     Message,
     ModelError,
@@ -48,8 +46,6 @@ class AgentSession:
         revert: RevertService | None = None,
         view: SessionView | None = None,
         skills: Skills | None = None,
-        hook_config_hash="",
-        mcp_config_hash="",
         plans=None,
         storage=None,
         memory=None,
@@ -67,8 +63,6 @@ class AgentSession:
         self._revert = revert
         self._view = view
         self._skills = skills
-        self._hook_config_hash = hook_config_hash
-        self._mcp_config_hash = mcp_config_hash
         self._plans = plans
         self._storage = storage
         self._memory = memory
@@ -135,7 +129,7 @@ class AgentSession:
                 if start is None:
                     return False
                 await self._launcher.cancel_wait(self.require_run_id(start))
-                await recover_conversation(self._store, reason="user_cancel", outcome="aborted")
+                await recover_conversation(self._store, reason="aborted")
                 if self._plans is not None:
                     await self._plans.finish(self.require_run_id(start))
                 return True
@@ -331,7 +325,7 @@ class AgentSession:
                         else ""
                     )
                     return RunResult(
-                        entry.data["outcome"],
+                        entry.data["reason"],
                         final_text,
                         (),
                         checkpoint_id=entry.data.get("checkpoint_id"),
@@ -375,8 +369,6 @@ class AgentSession:
                     "kind": "run_start",
                     "input_id": message.id,
                     "execution_session_id": before.header.session_id,
-                    "hook_config_hash": self._hook_config_hash,
-                    "mcp_config_hash": self._mcp_config_hash,
                 },
                 run_id=uuid4().hex,
             )
@@ -385,15 +377,11 @@ class AgentSession:
             result = await self._launcher.run(provider, self._store, (message,), history)
         except asyncio.CancelledError:
             if not self._handoff_requested:
-                await recover_conversation(self._store, reason="user_cancel", outcome="aborted")
+                await recover_conversation(self._store, reason="aborted")
             raise
-        except DomainError:
-            try:
-                await recover_conversation(self._store, reason="run_error", outcome="error")
-            except StorageError:
-                logging.getLogger("pycode.session").exception(
-                    "Failed-run recovery was not saved; reopen the session to reconcile"
-                )
+        except Exception:
+            # Settles a failure raised outside the runtime's own finish (G5).
+            await recover_conversation(self._store, reason="error")
             raise
         return await self.settle_run(start, result)
 
@@ -431,7 +419,7 @@ class AgentSession:
             )
         except asyncio.CancelledError:
             if not self._handoff_requested:
-                await recover_conversation(self._store, reason="user_cancel", outcome="aborted")
+                await recover_conversation(self._store, reason="aborted")
             raise
         return await self.settle_run(start, result)
 
@@ -456,36 +444,7 @@ class AgentSession:
             return result
         if result.outcome == "error" and self._launcher.has_live_task():
             return result
-        message_id = start.data["input_id"]
-        after = await self._store.snapshot()
-        path = SessionTree(after.index).path(after.leaf_id)
-        input_ids = [message_id]
-        input_ids.extend(
-            entry.require_message().id
-            for entry in path
-            if entry.type == "input_queued" and entry.run_id == self.require_run_id(start)
-        )
-        final_id = None
-        for entry in reversed(SessionTree(after.index).path(after.leaf_id)):
-            if entry.type == "message" and entry.require_message().id == message_id:
-                break
-            if entry.type == "message" and entry.require_message().role == "assistant":
-                final_id = entry.id
-                break
-        await self._store.append_entry(
-            EntryDraft(
-                "custom",
-                data={
-                    "kind": "run_end",
-                    "input_id": message_id,
-                    "input_ids": input_ids,
-                    "checkpoint_id": result.checkpoint_id,
-                    "outcome": result.outcome,
-                    "final_entry_id": final_id,
-                },
-                run_id=self.require_run_id(start),
-            )
-        )
+        # The runtime already wrote run_end when the run entered finished.
         if self._plans is not None:
             await self._plans.finish(self.require_run_id(start))
         if self._memory is not None and result.outcome == "completed":

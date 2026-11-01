@@ -29,6 +29,7 @@ def main(argv: list[str] | None = None) -> int:
         sandbox=SandboxSettings(args.sandbox, args.sandbox_network),
         project_trusted=args.trust_project,
         memory_mode=args.memory_mode,
+        max_turns=args.max_turns,
         team_max_agents=args.max_agents,
         team_idle_timeout=args.team_idle_timeout,
         team_stop_timeout=args.team_stop_timeout,

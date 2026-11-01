@@ -3,10 +3,10 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from pycode.kernel import SessionEntry, ToolSpec, data_hash, plain_data
+from pycode.kernel import ToolSpec
 from pycode.kernel.adapters.path_io import owned_io
 from pycode.mcp.api import MCP
-from pycode.mcp.config import load_servers, validate_mcp_recovery
+from pycode.mcp.config import load_servers
 from pycode.mcp.connection import MCPAdapterConnections
 from pycode.mcp.framework import MCPRun
 from pycode.mcp.history import MCPProjection as MCPProjection
@@ -21,8 +21,8 @@ class MCPSettings:
 
 
 class MCPSession:
-    def __init__(self, config_hash, connections):
-        self.config_hash, self.connections = config_hash, connections
+    def __init__(self, connections):
+        self.connections = connections
 
     def prepare_run(self, history, pending=False) -> MCPRun | None:
         connections = self.connections
@@ -44,15 +44,12 @@ class MCPModule:
         settings: MCPSettings,
         credentials,
         *,
-        pending: SessionEntry | None = None,
         connect: bool = True,
     ) -> MCPSession:
         roots = [settings.user_data / "mcp.json"]
         if settings.project_trusted:
             roots.append(settings.workspace / ".pycode" / "mcp.json")
         servers = await owned_io(load_servers, tuple(roots), settings.workspace)
-        digest = data_hash([plain_data(server) for server in servers]) if servers else ""
-        validate_mcp_recovery(pending, digest)
         connections = (
             MCPAdapterConnections(servers, credentials, validator=self.schema)
             if connect and any(server.enabled for server in servers)
@@ -61,7 +58,7 @@ class MCPModule:
         try:
             if connections is not None:
                 connections.start()
-            return MCPSession(digest, connections)
+            return MCPSession(connections)
         except BaseException:
             if connections is not None:
                 await connections.aclose()

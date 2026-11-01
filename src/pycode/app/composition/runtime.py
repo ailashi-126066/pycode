@@ -182,7 +182,7 @@ async def build_runtime(
             or (DurableInputs(session.history_store) if session.history_store else None),
             agent_id=config.agent_id if options.agent_id == "lead" else options.agent_id,
             hooks=hooks,
-            mcp_config_hash=session.mcp_config_hash,
+            max_turns=config.max_turns,
             plans=session.plans,
             workspace_files=workspace_files,
             model_tools=options.effective_tools,

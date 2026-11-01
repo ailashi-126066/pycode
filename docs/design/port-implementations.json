@@ -292,11 +292,6 @@
       "kind": "class"
     },
     {
-      "port": "pycode.tools.ports.publication.ToolLifecycle",
-      "implementation": "pycode.app.composition.bindings.build_runtime_bindings",
-      "kind": "factory"
-    },
-    {
       "port": "pycode.tools.ports.questions.QuestionPrompt",
       "implementation": "pycode.tools.adapters.questions.InterruptQuestionPrompt",
       "kind": "class"

@@ -14,7 +14,7 @@ async def test_native_result_keeps_concrete_tool_identity():
             seen.append((name, call_id))
             return ToolResult(call_id, name, "done", details={"remote": name})
 
-    middleware = ToolSettlementMiddleware(publisher=None, lifecycle=None, converter=None)
+    middleware = ToolSettlementMiddleware(publisher=None, converter=None)
     public = ToolCall("call", "mcp__server__tool", {})
     target = ToolCall("call", "mcp__server__tool", {})
     result = middleware.framework_result(
@@ -36,7 +36,7 @@ async def test_reject_only_extension_error_uses_shared_code_normalization_and_re
             raise ToolError("Invalid.Code", "api_key=private-secret-key " + "x" * 3000)
 
     middleware = ToolSettlementMiddleware(
-        publisher=None, lifecycle=None, converter=None, tool_extensions=(Constraint(),)
+        publisher=None, converter=None, tool_extensions=(Constraint(),)
     )
     context = SimpleNamespace(
         disclosed_tool_names=(),

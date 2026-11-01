@@ -14,7 +14,7 @@ from dataclasses import fields
 from pathlib import Path
 
 from pycode.hooks.types import HOOK_EVENTS, RENAMED_EVENTS, Hook, HookAction, parse_condition
-from pycode.kernel import DomainError, SessionEntry, StorageError
+from pycode.kernel import DomainError
 
 
 def parse_hooks(raw, source="user"):
@@ -116,10 +116,3 @@ def load_hooks(roots: tuple[tuple[str, Path], ...]):
         except (OSError, ValueError, KeyError) as error:
             raise DomainError("invalid_hook_config", "Cannot read Hook configuration") from error
     return tuple(merged.values())
-
-
-def validate_hooks_recovery(pending: SessionEntry | None, current_hash: str) -> None:
-    if pending is not None and pending.data.get("hook_config_hash", "") != current_hash:
-        raise StorageError(
-            "execution_configuration_changed", "Hook configuration changed during execution"
-        )

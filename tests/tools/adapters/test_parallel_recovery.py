@@ -101,16 +101,15 @@ async def test_parallel_native_interrupt_answers_preserve_call_result_order(tmp_
     runtime = build_agent_runtime(model)
     pending = await runtime.run((Message("u1", "user", "read"),), context)
     assert pending.outcome == "needs_input" and tool.executed == 0
+    approvals = 0
     async with asyncio.timeout(5):
         while pending.outcome == "needs_input":
-            answers = {}
-            for question in pending.pending:
-                answers[question["interrupt_id"]] = {
-                    "operation_id": question["operation_id"],
-                    "decision": "approve",
-                }
-            pending = await runtime.resume(context, answers)
-    assert pending.outcome == "completed" and tool.executed == 2
+            # Two parallel approvals are asked one at a time.
+            (question,) = pending.pending
+            approvals += 1
+            answer = {"operation_id": question["operation_id"], "decision": "approve"}
+            pending = await runtime.resume(context, answer)
+    assert pending.outcome == "completed" and tool.executed == 2 and approvals == 2
     assert len(model.requests) == 2
     assert [
         message.tool_result.call_id for message in context.completed if message.tool_result

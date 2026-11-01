@@ -1,7 +1,6 @@
 """Synchronous command and prompt Hooks."""
 
 from pycode.hooks.api import Hooks, ToolHookBridge, run_hook
-from pycode.hooks.config import validate_hooks_recovery
 from pycode.hooks.types import Hook, HookAction, HookContext
 
 __all__ = [
@@ -11,5 +10,4 @@ __all__ = [
     "HookContext",
     "ToolHookBridge",
     "run_hook",
-    "validate_hooks_recovery",
 ]

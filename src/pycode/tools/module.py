@@ -35,12 +35,12 @@ from pycode.tools.adapters.output_store import TempOutputStore
 from pycode.tools.adapters.permissions import InterruptToolGate, TeamToolGate
 from pycode.tools.adapters.questions import InterruptQuestionPrompt
 from pycode.tools.adapters.schema import JsonSchemaValidator
-from pycode.tools.adapters.settlement import SettlementContext, ToolSettlementMiddleware
+from pycode.tools.adapters.settlement import ToolSettlementMiddleware
 from pycode.tools.adapters.tool_errors import execute_tool_errors
 from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
 from pycode.tools.ports.hooks import ToolHooks
 from pycode.tools.ports.outputs import ToolOutputStore
-from pycode.tools.ports.publication import MessagePublisher, ToolLifecycle
+from pycode.tools.ports.publication import MessagePublisher
 from pycode.tools.ports.questions import QuestionPrompt
 from pycode.tools.ports.tools import ToolGate
 from pycode.tools.services.permissions import (
@@ -213,14 +213,12 @@ class ToolsModule:
     def settlement(
         *,
         publisher: MessagePublisher,
-        lifecycle: ToolLifecycle[SettlementContext],
         converter: Callable[[Message, ModelSelection], BaseMessage],
         tool_extensions: tuple[ToolExtension, ...] = (),
         native_bindings: tuple[NativeToolBinding, ...] = (),
     ) -> ToolSettlementMiddleware:
         return ToolSettlementMiddleware(
             publisher=publisher,
-            lifecycle=lifecycle,
             converter=converter,
             tool_extensions=tool_extensions,
             native_bindings=native_bindings,

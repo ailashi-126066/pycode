@@ -31,6 +31,7 @@ def build_parser():
     parser.add_argument("--data-dir", help="User configuration and storage directory")
     parser.add_argument("--memory-mode", choices=("auto", "off"))
     parser.add_argument("--max-agents", type=int, choices=range(1, 5), default=4)
+    parser.add_argument("--max-turns", type=int, default=100, help="Turns before a run stops")
     parser.add_argument("--team-idle-timeout", type=float, default=180)
     parser.add_argument("--team-stop-timeout", type=float, default=15)
     parser.add_argument("--team-max-handoffs", type=int, default=1)

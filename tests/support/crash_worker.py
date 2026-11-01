@@ -22,7 +22,7 @@ class CrashConsumer:
             (
                 self._boundary == "model_saved"
                 and event.kind == "message_end"
-                and event.data.get("role") == "assistant"
+                and event.data["message"]["role"] == "assistant"
             )
             or (
                 self._boundary in {"output_ready", "question_answered"}
@@ -31,7 +31,7 @@ class CrashConsumer:
             or (
                 self._boundary == "history_saved"
                 and event.kind == "message_end"
-                and event.data.get("role") == "tool_result"
+                and event.data["message"]["role"] == "tool_result"
             )
             or (self._boundary == "model_stream" and event.kind == "message_update")
             or (
@@ -47,7 +47,7 @@ class CrashConsumer:
             or (
                 self._boundary == "queue_after_model"
                 and event.kind == "message_end"
-                and event.data.get("provider_metadata", {}).get("pycode_turn") == 2
+                and event.data["message"]["provider_metadata"].get("pycode_turn") == 2
             )
         )
         if fatal:

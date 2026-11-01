@@ -14,7 +14,7 @@ from dataclasses import fields
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from pycode.kernel import DomainError, SessionEntry, StorageError
+from pycode.kernel import DomainError
 from pycode.mcp.types import MCPServer
 
 
@@ -140,10 +140,3 @@ def load_servers(roots, workspace):
         except (OSError, ValueError) as error:
             raise DomainError("invalid_mcp_config", "Cannot read MCP configuration") from error
     return tuple(merged[name] for name in sorted(merged))
-
-
-def validate_mcp_recovery(pending: SessionEntry | None, current_hash: str) -> None:
-    if pending is not None and pending.data.get("mcp_config_hash", "") != current_hash:
-        raise StorageError(
-            "execution_configuration_changed", "MCP configuration changed during execution"
-        )

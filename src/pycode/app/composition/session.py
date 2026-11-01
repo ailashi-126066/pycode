@@ -9,10 +9,8 @@ from pycode.app.composition.team import build_team, build_worktree_manager
 from pycode.app.configuration.credentials import credential_environment
 from pycode.app.lifecycle.session import ConfiguredRuntimeLauncher
 from pycode.context import InputBudget, SummarySettings
-from pycode.hooks import validate_hooks_recovery
 from pycode.kernel import ToolSpec, plain_data
 from pycode.kernel.adapters.event_journal import MemoryEventJournal
-from pycode.mcp import validate_mcp_recovery
 from pycode.mcp.module import MCPModule, MCPSettings
 from pycode.models import UsageService
 from pycode.session import (
@@ -79,20 +77,12 @@ async def open_agent_session(
                 await skills_session.initialize()
         event_journal = MemoryEventJournal()
         configured_hooks = await modules.hooks.configuration()
-        hook_hash = modules.hooks.config_hash(configured_hooks)
-        pending = pending_run_entry(await store.snapshot())
-        validate_hooks_recovery(pending, hook_hash)
         if modules.mcp is not None and config.agent_id == "lead":
             mcp_session = await modules.mcp.open_session(
                 MCPSettings(config.workspace, config.user_data, config.project_trusted),
                 credential_environment(config, providers),
-                pending=pending,
                 connect=connect_mcp,
             )
-            mcp_hash = mcp_session.config_hash
-        else:
-            mcp_hash = ""
-            validate_mcp_recovery(pending, mcp_hash)
         models = modules.models.control(catalog, modules.projector(), store)
         durable_inputs = DurableInputs(store)
         memory = build_memory_service(config, store, providers[0], consumers, modules=modules)
@@ -104,7 +94,6 @@ async def open_agent_session(
             configured_hooks,
             resource_owners=(mcp_session,) if mcp_session else (),
             projector_factory=modules.projector,
-            mcp_config_hash=mcp_hash,
             plans=plans,
             plan_backend=plan_session.files.backend,
             durable_inputs=durable_inputs,
@@ -143,8 +132,6 @@ async def open_agent_session(
             RevertService(store, modules.snapshots.store()),
             view,
             skills=skills_session.service if skills_session else None,
-            hook_config_hash=hook_hash,
-            mcp_config_hash=mcp_hash,
             plans=plans,
             storage=modules.sessions.storage(owned_session_id=session_id),
             memory=memory,

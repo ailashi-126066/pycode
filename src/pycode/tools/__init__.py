@@ -12,7 +12,7 @@ from pycode.tools.domain.tool_failures import failure_update, repeated_tool_fail
 from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
 from pycode.tools.ports.hooks import ToolHooks
 from pycode.tools.ports.outputs import OutputWriter, ToolOutputStore
-from pycode.tools.ports.publication import ContextT, MessagePublisher, ToolLifecycle
+from pycode.tools.ports.publication import MessagePublisher
 from pycode.tools.ports.questions import QuestionPrompt
 from pycode.tools.ports.tools import ToolGate
 from pycode.tools.services.permissions import (
@@ -34,7 +34,6 @@ __all__ = [
     "repeated_tool_failure",
     "failure_update",
     "ArgumentValidator",
-    "ContextT",
     "MemoryToolGate",
     "MessagePublisher",
     "NoOpToolGate",
@@ -45,7 +44,6 @@ __all__ = [
     "ToolExecutor",
     "ToolGate",
     "ToolHooks",
-    "ToolLifecycle",
     "ToolOutputStore",
     "ToolRegistry",
     "WorkerBoundaryGate",

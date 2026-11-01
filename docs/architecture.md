@@ -237,7 +237,6 @@ Private adapter-local SDK Protocols are implemented by injected PycodeBackend/fr
 | `tools.ports.outputs.ToolOutputStore` | `tools.adapters.output_store.FileToolOutputStore` |
 | `tools.ports.outputs.SessionHeaderReader` | `session.adapters.storage.header_reader.FileSessionHeaderReader` |
 | `tools.ports.publication.MessagePublisher` | `agent.adapters.boundaries.AgentMessagePublisher` |
-| `tools.ports.publication.ToolLifecycle` | `app.composition.bindings.build_runtime_bindings` (factory/callback) |
 | `tools.ports.questions.QuestionPrompt` | `tools.adapters.questions.InterruptQuestionPrompt` |
 | `tools.ports.tools.ArgumentValidator` | `tools.adapters.schema.JsonSchemaValidator` |
 | `tools.ports.tools.ToolGate` | `tools.services.permissions.ReadOnlyToolGate` |

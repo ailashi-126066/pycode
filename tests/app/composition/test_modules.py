@@ -114,7 +114,7 @@ async def test_replaced_mcp_owns_exactly_the_session_it_created(tmp_path):
             async def close():
                 closed.append("custom")
 
-            return SimpleNamespace(config_hash="custom", connections=None, aclose=close)
+            return SimpleNamespace(connections=None, aclose=close)
 
     config.user_data.mkdir()
     (config.user_data / "mcp.json").write_text("default implementation must not read this")

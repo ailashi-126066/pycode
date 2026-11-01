@@ -15,7 +15,6 @@ from langgraph.types import Command
 
 from pycode.kernel import (
     EntryDraft,
-    EventSink,
     HistoryJournal,
     Message,
     ModelSelection,
@@ -43,7 +42,7 @@ from pycode.tools.domain.tool_failures import (
     tool_failure,
 )
 from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
-from pycode.tools.ports.publication import MessagePublisher, ToolLifecycle
+from pycode.tools.ports.publication import MessagePublisher
 
 
 class SettlementMailbox(Protocol):
@@ -64,7 +63,6 @@ class SettlementContext(Protocol):
     handoff_pending: bool
     agent_id: str
     selection: ModelSelection
-    events: EventSink
     assistant: Message | None
     executor: ToolExecutor
     registry: ToolRegistry
@@ -81,7 +79,6 @@ class SettlementContext(Protocol):
     ready_results: dict[str, tuple[ToolCall, ToolResult, dict]]
     model_tools: tuple[ToolSpec, ...]
     disclosed_tool_names: tuple[str, ...] | None
-    turn_end_sent: bool
     plans: PlanService | None
     team: SettlementMailbox | None
     workspace_files: WorkspaceTools | None
@@ -130,13 +127,11 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         self,
         *,
         publisher: MessagePublisher,
-        lifecycle: ToolLifecycle[SettlementContext],
         converter,
         tool_extensions: tuple[ToolExtension, ...] = (),
         native_bindings: tuple[NativeToolBinding, ...] = (),
     ):
         self.publisher = publisher
-        self.lifecycle = lifecycle
         self.converter = converter
         self.tool_extensions = tuple(tool_extensions)
         self.native_bindings = tuple(native_bindings)
@@ -230,12 +225,6 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 if call.id not in context.settled_calls:
                     await context.settlement.wait()
             context.settlement.notify_all()
-            if len(context.settled_calls) == len(context.call_order) and not context.turn_end_sent:
-                context.turn_end_sent = True
-                await context.events.emit(
-                    "turn_end", {"turn": request.state["turn"], "message_id": context.assistant.id}
-                )
-                await self.lifecycle(context, "turn_end", message=context.assistant.text)
         assert result.operation_id is not None
         message = self.converter(
             Message("result:" + result.operation_id, "tool_result", tool_result=result),

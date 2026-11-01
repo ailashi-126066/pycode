@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 
+from pycode.agent.domain.run_state import RunState
 from pycode.agent.ports import (
     DurableInputDelivery,
     HistoryProjector,
@@ -39,6 +40,7 @@ class RunContext:
     registry: ToolRegistry
     inputs: InputQueue
     requests: RequestTracking
+    max_turns: int
     initial_inputs: tuple[Message, ...] = ()
     handoff_pending: bool = False
     one_at_a_time: bool = False
@@ -67,11 +69,12 @@ class RunContext:
     prepared_calls: set[str] = field(default_factory=set)
     team: TeamMailbox | None = None
     hooks: Hooks | None = None
-    mcp_config_hash: str = ""
     ready_results: dict[str, tuple[ToolCall, ToolResult, dict]] = field(default_factory=dict)
     settled_calls: set[str] = field(default_factory=set)
     settlement: asyncio.Condition = field(default_factory=asyncio.Condition)
-    turn_end_sent: bool = False
+    run_state: RunState = field(default_factory=RunState)
+    # Pi's pendingMessages: steering polled at a turn end, delivered before the next request.
+    steering: tuple[Message, ...] = ()
     tool_tasks: set[asyncio.Task] = field(default_factory=set)
     # Visible text of the streaming reply; None until its first chunk sent message_start.
     streamed_text: str | None = None

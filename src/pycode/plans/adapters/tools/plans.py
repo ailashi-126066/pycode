@@ -9,6 +9,8 @@ class ExitPlanMode:
         "Review the current Plan Markdown and ask for execution approval",
         {"type": "object", "properties": {}, "additionalProperties": False},
         category="read",
+        # Like AskUserQuestion: an interrupt while running must stay the batch's only one.
+        execution_mode="sequential",
         waits_for_user=True,
     )
 

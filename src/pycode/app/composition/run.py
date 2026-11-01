@@ -42,7 +42,6 @@ async def build_configured_run(
         summary_service=launcher.summary,
         event_journal=launcher.event_journal,
         configured_hooks=launcher.configured_hooks,
-        mcp_config_hash=launcher.mcp_config_hash,
         plans=launcher.plans,
         plan_backend=launcher.plan_backend,
         durable_inputs=launcher.durable_inputs,

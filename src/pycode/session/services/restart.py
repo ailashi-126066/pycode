@@ -13,8 +13,7 @@ from pycode.tools import abandoned_result, interrupted_result
 async def recover_conversation(
     store,
     *,
-    reason="process_exit",
-    outcome="interrupted",
+    reason="interrupted",
     started_only=False,
     finish_runs=True,
 ):
@@ -108,7 +107,6 @@ async def recover_conversation(
                 data={
                     "kind": "run_end",
                     "input_id": start.data["input_id"],
-                    "outcome": outcome,
                     "reason": reason,
                     "final_entry_id": None,
                 },

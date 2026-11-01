@@ -33,7 +33,6 @@ class SessionResources:
     history_store: SessionStore | None = None
     event_journal: EventJournal | None = None
     configured_hooks: tuple[Hook, ...] = ()
-    mcp_config_hash: str = ""
     plans: PlanService | None = None
     plan_backend: object | None = None  # Opaque framework backend, only passed to assembly.
     durable_inputs: DurableInputs | None = None

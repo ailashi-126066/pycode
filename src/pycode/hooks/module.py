@@ -9,7 +9,7 @@ from pycode.hooks.api import Hooks
 from pycode.hooks.config import load_hooks
 from pycode.hooks.contracts import HookActions
 from pycode.hooks.types import Hook
-from pycode.kernel import EventSink, HistoryJournal, data_hash, plain_data
+from pycode.kernel import EventSink, HistoryJournal
 from pycode.kernel.adapters.path_io import owned_io
 from pycode.sandbox import OutputSink, ProcessRunner, SandboxBackend, SandboxSettings
 
@@ -46,10 +46,6 @@ class HooksModule:
         if self.worker:
             return tuple(hook for hook in hooks if hook.action.type == "prompt")
         return hooks
-
-    @staticmethod
-    def config_hash(hooks: tuple[Hook, ...]) -> str:
-        return data_hash([plain_data(hook) for hook in hooks]) if hooks else ""
 
     @staticmethod
     def actions(

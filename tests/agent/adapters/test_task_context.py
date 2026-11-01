@@ -114,28 +114,10 @@ async def test_invalid_envelope_cannot_execute_its_tool_calls(text, disclosed_to
     )
     model.task_output = False
     result = await runtime.run((Message("u1", "user", "执行"),), context)
-    assert result.outcome == "error"
+    assert result.outcome == "model_error"
     assert not tool.executed
     assert len(journal.messages) == 1
     assert (
         next(e for e in recorder.events if e.kind == "agent_end").data["error_code"]
         == "invalid_task_output"
     )
-
-
-async def test_truncated_json_does_not_apply_task_until_complete_continuation():
-    raw = reply(new_task(), "已经找到原因，继续修改")
-    partial = raw[: raw.index("继续修改")]
-    runtime, context, model, _, journal, _ = assemble(
-        [
-            AIMessage(content=partial, response_metadata={"finish_reason": "length"}),
-            AIMessage(content=reply(new_task(), "继续修改")),
-        ]
-    )
-    result = await runtime.run((Message("u1", "user", "修复登录超时"),), context)
-    assert result.outcome == "completed"
-    assistants = [m for m in journal.messages if m.role == "assistant"]
-    assert assistants[0].text == "已经找到原因，"
-    assert assistants[0].provider_metadata.get("pycode_task_change") is None
-    assert assistants[1].provider_metadata["pycode_task_change"]["task"]["goal"] == "修复登录超时"
-    assert "new complete JSON" in str(model.requests[1])

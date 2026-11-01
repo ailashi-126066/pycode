@@ -32,7 +32,6 @@ class ConfiguredRuntimeLauncher:
         configured_hooks=(),
         resource_owners=(),
         projector_factory: Callable[[], ContextProjector] = ContextProjector,
-        mcp_config_hash="",
         plans=None,
         plan_backend=None,
         durable_inputs=None,
@@ -59,7 +58,6 @@ class ConfiguredRuntimeLauncher:
         self.configured_hooks = configured_hooks
         self.resource_owners = tuple(resource_owners)
         self.projector_factory = projector_factory
-        self.mcp_config_hash = mcp_config_hash
         self.plans = plans
         self.plan_backend = plan_backend
         self.durable_inputs = durable_inputs

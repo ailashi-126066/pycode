@@ -12,6 +12,8 @@ class AppConfig:
     workspace: Path
     user_data: Path
     summary_keep_recent_tokens: int = 20000
+    # The only run budget: a run ends with turn_limit after this many turns.
+    max_turns: int = 100
     sandbox: SandboxSettings = field(default_factory=SandboxSettings)
     project_trusted: bool = False
     skill_index_budget: int = 2000
@@ -61,6 +63,8 @@ class AppConfig:
             or self.summary_keep_recent_tokens < 1
         ):
             raise ValueError("Summary configuration is invalid")
+        if self.max_turns < 1:
+            raise ValueError("Maximum turns must be positive")
 
 
 def load_config(workspace: str | None = None, user_data: str | None = None) -> AppConfig:

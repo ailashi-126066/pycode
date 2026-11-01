@@ -59,7 +59,8 @@ class TurnStartEvent(TypedDict):
 
 class TurnEndEvent(TypedDict):
     turn: int
-    message_id: str
+    # None when the turn failed before its reply was saved.
+    message_id: str | None
     tool_result_ids: list[str]
 
 
