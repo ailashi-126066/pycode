@@ -36,15 +36,6 @@ from pycode.kernel.events import (
     TurnEndEvent,
     TurnStartEvent,
 )
-from pycode.kernel.feature import (
-    AfterToolCallResult,
-    BeforeToolCallResult,
-    CommandRunner,
-    Feature,
-    RunScope,
-    SessionScope,
-    ToolGate,
-)
 from pycode.kernel.history import (
     CustomKind,
     EntryDraft,
@@ -80,6 +71,7 @@ from pycode.kernel.messages import (
     UsageRecord,
     convert_to_llm,
 )
+from pycode.kernel.runtime import RunScope, SessionScope
 from pycode.kernel.text import (
     MAX_BYTES,
     MAX_LINES,
@@ -89,7 +81,18 @@ from pycode.kernel.text import (
     line_count,
     truncate,
 )
-from pycode.kernel.tools import AgentTool, ExecutionMode, ToolContext, ToolSpec
+from pycode.kernel.tools import (
+    AfterToolCall,
+    AfterToolCallResult,
+    AgentTool,
+    BeforeToolCall,
+    BeforeToolCallResult,
+    CommandRunner,
+    ExecutionMode,
+    ToolContext,
+    ToolGate,
+    ToolSpec,
+)
 from pycode.kernel.values import (
     SECRET_PATTERNS,
     ModelCapabilities,
@@ -112,10 +115,11 @@ from pycode.kernel.work_graph import (
 )
 
 __all__ = [
+    "AfterToolCall",
+    "BeforeToolCall",
     "AfterToolCallResult",
     "BeforeToolCallResult",
     "CommandRunner",
-    "Feature",
     "RunScope",
     "SessionScope",
     "ToolGate",

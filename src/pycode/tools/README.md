@@ -1,42 +1,44 @@
 # Tools
 
-`module.ToolsModule` owns JSON-schema validation, registry/executor construction, workspace and
-artifact backends, composite routing, output storage, questions, execution gates, settlement and the
-native framework tool adapter. It does not load AppConfig, select feature modules or create session
-storage.
+Core package: validates, authorizes, executes and settles tool calls, and provides Pi's builtin
+file tools. The application supplies concrete gates and async execution callbacks.
+
+| File | Contents |
+|---|---|
+| `executor.py` | `ToolRegistry`, `ToolExecutor`, the tool error boundary and the repeated-failure guard |
+| `settlement.py` | `ToolSettlementMiddleware`: ordered settlement inside the Deep Agents tool node |
+| `permissions.py` | Core approval (`InterruptToolGate`, `ReadOnlyToolGate`) and resume-answer validation |
+| `backend.py` | `PycodeBackend` (workspace files, receipts, ripgrep) and `ScopedBackend` |
+| `rg.py`, `output.py`, `schema.py` | ripgrep parsing, large-output temp files, JSON schema |
+| `call_state.py` | One call's state from issue to settlement |
+| `framework_tool.py`, `discovery.py` | LangChain tool adapter and ToolSearch |
+| `ask_user.py` | AskUserQuestion and its checkpoint-backed interrupt |
+| `builtin/` | Pi's `read/write/edit/grep/find/ls`; `paths.py` maps paths onto mounts |
 
 ```python
-from pathlib import Path
-from pycode.tools.module import ToolsModule
-
-tools = ToolsModule()
-workspace = tools.backend(Path.cwd(), read_only=True)
-registry = tools.registry(())
+executor = ToolExecutor(
+    registry,
+    validator,
+    InterruptToolGate(),
+    run,
+    outputs,
+    gates=gates,
+    before_tool_call=(hooks.before_tool_call, snapshots.before_tool_call),
+    after_tool_call=(snapshots.after_tool_call, skills.after_tool_call),
+)
 ```
 
-`backend` is also the explicit backend factory supplied to Skills and Plans; the latter supplies its
-own exact-path and pre-scan search restrictions. `composite(routes)` combines already selected module
-routes with a state backend.
-`builtin_tools(backend)` provides Pi's `read/write/edit/grep/find/ls` over the composite routes:
-relative `path` values resolve under `/workspace/`, absolute ones must start with a mounted prefix,
-and `edit`/`write` run inside the per-file mutation queue. Any feature can add a read-only mount
-with `read_only_mount(root)` under its own prefix (Skills use `/skills/<source>/`); only
-`/workspace/` and `/plans/` accept writes. `default_tools` provides optional
-questions; Sandbox (`bash`) and Plans supply their own tools. `output_store(session_id)` follows Pi for large outputs: past 2000 lines or 50KB the result keeps a
-preview (head for read, tail for bash) and a notice, the full text goes to
-`$TMPDIR/pycode/<session_id>/<call_id>.log`, and `details` gains `truncation` and
-`full_output_path`. The directory is mounted read-only at its own path, so the model reads it with
-`read`; Seatbelt already allows reading `$TMPDIR`.
+Authorization (design 2.3): the user's gate, then the concrete service gates in explicit order. Any
+`ToolError` denies; one `"allow"` skips approval; otherwise the core approval gate decides. Then
+each registered `before_tool_call` callback runs; `block=True` turns the call into a `hook_rejected` result.
+Only executed calls reach `after_tool_call`, whose overrides chain in list order before settlement
+persists the result.
 
-`gate` preserves the policy sequence: ordinary approval, memory and Plan gates, optional custom gate,
-then the injected feature scope. Subagents use the same chain: readonly ones get `ReadOnlyToolGate`,
-and in non-interactive runs every subagent gets it, so approval-needing calls fail. The injected
-scope is an independent `ToolGate`; it cannot replace its parent.
+Relative `path` values resolve under `/workspace/`; absolute ones must start with a mounted prefix.
+Only `/workspace/` and `/plans/` accept writes, and `edit`/`write` run in a per-file mutation
+queue. Past 2000 lines or 50KB a result keeps a preview (head for read, tail for bash) and the full
+text goes to `$TMPDIR/pycode/<session_id>/<call_id>.log`, mounted read-only at its own path.
 
-`executor` installs the official tool-error boundary. `settlement` and `framework_tool` receive ordered
-`tool_extensions` and `native_bindings`, leaving Skill and MCP lookup/normalization with their owners.
-
-The module owns no global task lifetime. Streaming writers own open output handles; the Agent/run
-owner cancels and settles in-flight tool tasks before closing shared runtime resources.
-
-`ToolSpec.exposure == "direct"` 的工具（7 个内置工具和 ToolSearch）每次请求都带完整定义，系统提示照 Pi 列出它们的 `prompt_snippet` 和 `prompt_guidelines`。其他工具是 deferred：ToolSearch 提供分类简表，按名称/关键词加载完整定义，工具查找不调用模型，成功保存搜索结果后于下一轮披露。所有定义先经过权限过滤。工具默认 `execution_mode="parallel"`，批次里有一个 sequential 就整批串行；并行时准备阶段逐个进行，执行阶段并发。
+`ToolSpec.exposure == "direct"` tools always carry their full definition; deferred ones are found
+with ToolSearch and disclosed on the next turn. Tools default to `execution_mode="parallel"`; one
+sequential tool makes the whole batch sequential.

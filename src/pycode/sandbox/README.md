@@ -1,24 +1,23 @@
 # Sandbox
 
-`module.SandboxModule` owns platform backend selection, required worker isolation, Bash discovery,
-command construction and the Python Skill read grant. It receives `SandboxSettings`, an isolated
-worker flag, validated ordinary environment names and optional Bash PATH prefixes. It does not load
-application configuration or credentials.
+Optional module. `SandboxService(settings, *, required, passthrough, path_prefix, read_roots)`:
 
-`backend()` supplies normal isolation, `worker()` adds the required-isolation wrapper when enabled,
-`bash(outputs)` supplies an executable tool, `bash_spec()` returns the pure declaration without
-probing a host shell, and `process_runner` / `skill_read_grant` are explicit
-capabilities supplied to Hooks and Skills. Policy identity contains settings and environment names,
-never environment values. A Skill read grant only extends a required worker backend for its verified
-resource root. Modules do not authorize tools; the Tools execution gate remains mandatory.
+- `tools(run)`: the `bash` tool. Its output streams to `$TMPDIR/pycode/<session>/`; child
+  processes get an allowlisted environment without credentials, plus the `passthrough` names.
+  `path_prefix` is prepended to `PATH`; `read_roots(run)` adds read-only Seatbelt roots (Python
+  Skill script directories).
+- `gates(run)`: for builtin `bash`, the source deny list (`command_denied`) and, in `on-auto` mode
+  with a usable sandbox, `"allow"` for allow-listed read-only commands. Every other call is left to
+  the other gates and the core approval step.
+- `run_command(argv, cwd, env, seconds)`: kernel `CommandRunner`, used by hooks.
+- `status()`: what the UI shows.
+
+`Sandbox` is Seatbelt on macOS after a real probe; elsewhere it is unavailable and commands run
+behind ordinary approval. `required=True` (isolated workers) refuses to run a command without an
+enabled sandbox.
 
 ```python
-from pycode.sandbox import SandboxSettings
-from pycode.sandbox.module import SandboxModule
+from pycode.sandbox import SandboxService, SandboxSettings
 
-sandbox = SandboxModule(SandboxSettings(mode="on-auto"), passthrough=("LANG",))
-backend = sandbox.worker()
+sandbox = SandboxService(SandboxSettings(mode="on-auto"), passthrough=("LANG",))
 ```
-
-The module owns no open lifetime. Individual process calls own cancellation, process termination and
-stream finalization; Bash output writers are owned by the output store.

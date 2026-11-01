@@ -2,11 +2,12 @@
 # Adaptation: explicit tool classification and workspace execution identifiers.
 """Tool declarations and the executable tool interface."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, TypedDict
 
-from pycode.kernel.messages import ToolResult
+from pycode.kernel.messages import ToolCall, ToolResult
+from pycode.kernel.runtime import RunScope
 
 ExecutionMode = Literal["parallel", "sequential"]
 ToolCategory = Literal["read", "write", "command", "external"]
@@ -70,3 +71,36 @@ class AgentTool(Protocol):
     @property
     def spec(self) -> ToolSpec: ...
     async def execute(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult: ...
+
+
+class BeforeToolCallResult(TypedDict, total=False):
+    """Pi: BeforeToolCallResult."""
+
+    block: bool
+    reason: str
+
+
+class AfterToolCallResult(TypedDict, total=False):
+    """Pi: AfterToolCallResult; set fields replace the result's fields."""
+
+    text: str
+    details: dict[str, Any]
+    is_error: bool
+
+
+class ToolGate(Protocol):
+    async def authorize(
+        self, run: RunScope, spec: ToolSpec, call: ToolCall
+    ) -> Literal["allow"] | None:
+        """None: no opinion; "allow": skip approval; raise ToolError to deny."""
+        ...
+
+
+# Runs one sandboxed command: (argv, cwd, env, timeout seconds).
+CommandRunner = Callable[
+    [tuple[str, ...], str, Mapping[str, str] | None, float], Awaitable[ToolResult]
+]
+
+
+BeforeToolCall = Callable[[RunScope, ToolSpec, ToolCall], Awaitable[BeforeToolCallResult | None]]
+AfterToolCall = Callable[[RunScope, ToolCall, ToolResult], Awaitable[AfterToolCallResult | None]]
