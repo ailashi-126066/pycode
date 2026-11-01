@@ -8,11 +8,13 @@ import re
 from dataclasses import asdict
 from pathlib import Path
 
+from langchain_deepseek import ChatDeepSeek
+
 from pycode.app.api import RunOptions, SessionResources
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel import Message, ToolResult, ToolSpec
-from pycode.models.domain.models import ProviderConfig
+from pycode.models import ProviderConfig, ReasoningDeepSeek
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -80,6 +82,10 @@ def load_credential(reference: str) -> bool:
 
 async def verify(args) -> int:
     report = {"provider": args.provider, "model": args.model, "acceptance": "remote_service"}
+    if args.no_reasoning_passback:
+        # Control run: send DeepSeek requests without the returned reasoning_content.
+        ReasoningDeepSeek._get_request_payload = ChatDeepSeek._get_request_payload
+        report["reasoning_passback"] = False
     reference = {
         "deepseek": "DEEPSEEK_API_KEY",
         "openai": "OPENAI_API_KEY",
@@ -196,6 +202,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--thinking", choices=["off", "enabled"], default="off")
     parser.add_argument("--max-output", type=int, default=256)
+    parser.add_argument("--no-reasoning-passback", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.max_output <= 4096 or (
         args.thinking == "enabled" and args.provider != "deepseek"

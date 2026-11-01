@@ -1,52 +1,55 @@
-"""Public native contracts, policies and services for models."""
+# Pi 没有，pycode 新增
+"""Models public API: provider configuration, catalog, selection, SDK models and accounting."""
 
-from pycode.models.domain.models import (
+from pycode.models.catalog import FileCatalogStore, ModelCatalog, SDKModelDirectory
+from pycode.models.control import ModelControl
+from pycode.models.factory import ReasoningDeepSeek, create_model
+from pycode.models.messages import (
+    from_assistant,
+    model_tool_text,
+    stop_reason,
+    to_framework,
+    to_framework_messages,
+)
+from pycode.models.metered import MeteredChatModel
+from pycode.models.requests import (
+    ModelRequestRunner,
+    ProviderFailureClassifier,
+    SQLiteRequestStore,
+    model_request_step,
+)
+from pycode.models.types import (
     CapabilityOverride,
     ProviderConfig,
+    RequestRecord,
+    RetryPolicy,
+    is_loopback_host,
     model_selection,
 )
-from pycode.models.domain.network import is_loopback_host
-from pycode.models.domain.requests import RequestRecord, RetryPolicy
-from pycode.models.domain.tool_text import model_tool_text
-from pycode.models.ports.context import (
-    CalibrationContext,
-    CalibrationReport,
-    Projector,
-    RegistryLookup,
-    RunOwnership,
-    SummaryBudget,
-)
-from pycode.models.ports.models import (
-    CatalogStore,
-    ModelDirectory,
-    ModelFailureClassifier,
-    ModelObservation,
-    RequestStore,
-)
-from pycode.models.services.model_catalog import ModelCatalog
-from pycode.models.services.model_control import ModelControl
-from pycode.models.services.usage import UsageService
+from pycode.models.usage import UsageService
 
 __all__ = [
-    "model_tool_text",
-    "CalibrationContext",
-    "CalibrationReport",
-    "RegistryLookup",
-    "SummaryBudget",
     "CapabilityOverride",
-    "CatalogStore",
+    "FileCatalogStore",
+    "MeteredChatModel",
     "ModelCatalog",
     "ModelControl",
-    "ModelDirectory",
-    "ModelFailureClassifier",
-    "ModelObservation",
-    "Projector",
+    "ModelRequestRunner",
     "ProviderConfig",
+    "ProviderFailureClassifier",
+    "ReasoningDeepSeek",
     "RequestRecord",
-    "RequestStore",
     "RetryPolicy",
-    "RunOwnership",
+    "SDKModelDirectory",
+    "SQLiteRequestStore",
     "UsageService",
+    "create_model",
+    "from_assistant",
     "is_loopback_host",
+    "model_request_step",
     "model_selection",
+    "model_tool_text",
+    "stop_reason",
+    "to_framework",
+    "to_framework_messages",
 ]
