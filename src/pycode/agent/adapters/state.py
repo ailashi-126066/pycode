@@ -13,3 +13,4 @@ class PycodeState(DeepAgentState):
     output_continuations: int
     model_tools: list[dict]
     disclosed_tool_names: list[str] | None
+    task_state: dict

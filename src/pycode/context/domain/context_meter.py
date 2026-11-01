@@ -3,6 +3,7 @@
 # Adaptation: extracted existing phase-5 estimator for identical runtime/UI accounting.
 """One pure context estimator, with provenance rather than fabricated live counts."""
 
+from pycode.context.domain.tasks import task_context_text
 from pycode.context.domain.token_estimate import estimate_messages
 from pycode.kernel import SessionTree, clone_value, data_hash, estimate_text, json_dumps, plain_data
 
@@ -36,6 +37,14 @@ class ContextMeter:
 
     def report(self, snapshot, projection):
         fingerprint = self.config_hash(projection)
+        task_tokens = (
+            estimate_text(
+                task_context_text(projection.checkpoint["task_state"], projection.messages)
+            )
+            + 4
+            if "task_state" in projection.checkpoint
+            else 0
+        )
         path = SessionTree(snapshot.index).path(snapshot.leaf_id)
         positions = {entry.id: index for index, entry in enumerate(path)}
         invalidating = max(
@@ -84,8 +93,13 @@ class ContextMeter:
             )
             if reported is not None and reported > 0:
                 tail = projection.messages[index + 1 :]
-                tokens = reported + estimate_messages(tail)
-                source = "provider_usage_and_estimated_tail" if tail else "provider_usage"
+                task_delta = task_tokens - message.provider_metadata.get(
+                    "pycode_task_context_tokens", task_tokens
+                )
+                tokens = reported + estimate_messages(tail) + task_delta
+                source = (
+                    "provider_usage_and_estimated_tail" if tail or task_delta else "provider_usage"
+                )
                 anchor = usage.request_id
                 break
         if tokens is None:
@@ -93,6 +107,7 @@ class ContextMeter:
                 json_dumps(self.checkpoint(projection)["tools"], sort_keys=True, ensure_ascii=False)
             )
             tokens += projection.checkpoint.get("harness_system_tokens", 0)
+            tokens += task_tokens
         budget = self._settings.budget
         return {
             "tokens": tokens,

@@ -577,7 +577,10 @@ class AgentTeam:
             steps.pop(data["request_id"], None)
             phase = "running"
         elif kind in {"message_delta", "thinking_delta"}:
-            if not data.get("text") or data.get("request_id") not in steps:
+            if (
+                not (data.get("text") or data.get("output_activity"))
+                or data.get("request_id") not in steps
+            ):
                 return
         elif kind == "tool_action_start":
             limit = data["timeout"]

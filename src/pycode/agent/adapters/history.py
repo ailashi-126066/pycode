@@ -12,17 +12,26 @@ from langchain.agents.middleware import (
 from langchain_core.messages import AIMessage, BaseMessage, RemoveMessage
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
-from pycode.agent.adapters.boundaries import deliver_input, prepare_model_boundary, save_message
+from pycode.agent.adapters.boundaries import (
+    attach_task_context,
+    deliver_input,
+    prepare_model_boundary,
+    save_message,
+)
 from pycode.agent.adapters.state import PycodeState
+from pycode.agent.adapters.task_output import decode_task_output
 from pycode.agent.domain.turn_policy import next_turn
 from pycode.agent.services.context import RunContext
-from pycode.kernel import Message, ModelError, plain_data
+from pycode.context import apply_task_change, empty_tasks, task_evidence
+from pycode.kernel import Message, ModelError, SessionTree, plain_data
 
 MAX_OUTPUT_CONTINUATIONS = 3
 OUTPUT_CONTINUATION_PROMPT = (
-    "Your previous response was cut off by the output limit. Continue it from exactly "
-    "where it stopped: do not repeat earlier content, do not summarize it, and do not "
-    "mention this instruction."
+    "Your previous JSON response was cut off by the output limit. Return a new complete JSON "
+    "object following the task_action/message schema, not a trailing JSON fragment. The previous "
+    "task_action was not applied: restate its intended update if needed. Continue only the "
+    "message text after the already visible reply; do not repeat earlier reply text, summarize "
+    "it, or mention this instruction."
 )
 
 
@@ -123,6 +132,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 for message in projection.messages:
                     messages.append(self.bindings.to_framework(message, context.selection))
                 updates.update(messages=messages, branch_leaf_id=projection.leaf_id)
+                updates["task_state"] = plain_data(projection.checkpoint["task_state"])
             elif pending:
                 updates["messages"] = [
                     self.bindings.to_framework(message, context.selection) for message in pending
@@ -162,6 +172,9 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             extension.prepares_model_boundary for extension in self.bindings.framework_extensions
         ):
             request = await prepare_model_boundary(request, self.bindings)
+        if context.history_store is not None:
+            projection = await self.current_projection(context)
+        request = attach_task_context(request, projection)
         model_step = self.bindings.model_request_step(
             context.requests, handler, logical_id=boundary
         )
@@ -180,6 +193,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                     for message in projection.messages
                 ]
             )
+            request = attach_task_context(request, projection)
             response = await model_step.ainvoke(request)
         model_response = (
             response.model_response if isinstance(response, ExtendedModelResponse) else response
@@ -194,6 +208,17 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         message = self.bindings.from_assistant(
             assistant, context.selection, context.session_id, context.run_id
         )
+        path = ()
+        if context.history_store is not None:
+            snapshot = await context.history_store.snapshot()
+            path = SessionTree(snapshot.index).path(snapshot.leaf_id)
+        message = decode_task_output(
+            message,
+            projection.checkpoint["task_state"]
+            if projection is not None
+            else state.get("task_state", empty_tasks()),
+            task_evidence(path, messages=context.completed),
+        )
         message = replace(
             message,
             provider_metadata={
@@ -201,6 +226,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 "pycode_run_id": context.run_id,
                 "pycode_turn": state["turn"],
                 "pycode_source_leaf_id": context.model_source_leaf_id,
+                "pycode_task_context_tokens": context.task_context_tokens,
                 "pycode_summary_config_hash": context.summary.config_hash(projection)
                 if context.summary is not None and projection is not None
                 else None,
@@ -229,11 +255,14 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             return updated
         return response
 
+    @hook_config(can_jump_to=["model"])
     async def aafter_model(self, state, runtime):
         # This hook records a boundary only. Deep Agents decides all tool routing.
         context = runtime.context
         message = context.assistant
         assert message is not None
+        for callback in self.bindings.after_model:
+            await callback()
         outcome = "running" if message.tool_calls else "completed"
         if message.stop_reason in {"error", "aborted", "content_filter"}:
             outcome = message.stop_reason
@@ -242,12 +271,26 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         if not message.tool_calls:
             await context.events.emit("turn_end", {"turn": state["turn"], "message_id": message.id})
             await self.bindings.run_hook(context, "turn_end", message.id, message=message.text)
-        return {
+        updates = {
             "outcome": outcome,
             "final_text": message.text,
             "model_tools": plain_data(context.model_tools),
             "disclosed_tool_names": plain_data(context.disclosed_tool_names),
+            "task_state": apply_task_change(
+                state.get("task_state", empty_tasks()),
+                message.provider_metadata["pycode_task_change"],
+            )
+            if message.provider_metadata.get("pycode_task_change") is not None
+            else state.get("task_state", empty_tasks()),
         }
+        action = message.provider_metadata.get("pycode_task_action")
+        if (
+            action is not None
+            and action["relation"] == "switch"
+            and action["task_id"] != state.get("task_state", empty_tasks())["active_task_id"]
+        ):
+            updates.update(outcome="running", jump_to="model")
+        return updates
 
     @hook_config(can_jump_to=["model"])
     async def aafter_agent(self, state, runtime):

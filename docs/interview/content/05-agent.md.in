@@ -12,7 +12,7 @@
 
 {{chain:05-agent:build}}
 
-Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，并通过注入方法设置初始标题，然后调用build。build把当时registry中的初始可见工具转换给框架，登记文件工具、Todo、可选AGENTS指令、功能扩展、History与Settlement，再调用`create_deep_agent`。MCP 后续刷新仍可能增加候选工具；这些完整定义仅在 ToolSearch 成功加载后才发送给模型。构图中的执行工具集合与模型当次看到的定义不是一回事。
+Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，并通过注入方法设置初始标题，然后调用build。build把当时registry中的候选工具转换给框架，登记文件工具、可选AGENTS指令、功能扩展、History与Settlement，再调用`create_deep_agent`。简单 Todo 中间件已移除，进度使用结构化 task_action。构图中的执行工具集合与模型当次看到的定义不是一回事。
 
 官方默认摘要和隐式通用子Agent在这里关闭，因为项目已经有需要核对来源的Context摘要流程，也只允许应用明确提供的子Agent。图拿到保存本次运行位置的对象（checkpointer）后，`invoke`才执行`graph.ainvoke`。到此，“以后该调用哪些方法”已经交清楚，下一步看第一次真正请求模型之前框架怎样回调它们。
 
@@ -24,7 +24,7 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 {{chain:05-agent:prepare}}
 
-真正发送前，prepare_model_boundary 先做权限与 Skill 范围过滤，再调用 ToolDiscovery.disclose。首次只提供 ToolSearch 的完整定义，以及按来源分类的工具名称和一句话用途。主模型通过 ToolSearch 搜索需要的工具，结果成功保存后，下一次请求才加载匹配工具的完整参数；没有额外筛选模型。calibrate_model_request 记录最终披露名单与预算，猜测未加载工具的调用会被拒绝。
+真正发送前，prepare_model_boundary 加入固定 JSON 输出契约，再做权限与 Skill 范围过滤，调用 ToolDiscovery.disclose。首次提供 ToolSearch、Bash、ReadToolResult 和常用文件工具的完整定义，同时列出所有允许工具的分类、名称和一句话用途。其他工具经 ToolSearch 搜索，结果成功保存后，下一次请求才加载完整参数；没有额外筛选模型。calibrate_model_request 记录最终披露名单与固定系统提示预算；History 随后加入单独计量的动态任务块。猜测未加载工具的调用会被拒绝。
 
 
 维护完成，第二段才读取Team消息并从持久化输入中取出尚未正式交给模型的即时要求，代码把这类输入叫`steer`。比如用户在等待测试时补充“还要覆盖空输入”，这句话此前已经保存为排队输入；现在`deliver_input`先写成正式用户消息，再通知界面它已交付，不能只把临时事件文本塞进模型。
@@ -35,11 +35,11 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 如果当前安装了Skill扩展，官方SkillsMiddleware会先根据已读取指令决定是否加入资源工具的参数说明，再调用注入的模型前方法；没有这种扩展时，由History直接调用。`prepares_model_boundary`这个标志就是为避免两边都执行一次选择器，不是跳过检查的开关。
 
-进入同一`prepare_model_boundary`后，程序依次应用功能过滤、只读/Plan过滤、Models工具选择和最终校准。第03章已经解释过为什么顺序必须如此：先决定哪些工具有资格出现，再按需要缩小集合，最后把实际名单与预算记下来。Agent这里负责把步骤连起来，不再实现另一份选择模型。
+进入同一`prepare_model_boundary`后，程序依次应用功能过滤、只读/Plan过滤、统一工具目录/定义披露和最终校准。第03章已经解释过为什么顺序必须如此：先决定哪些工具有资格出现，再按需要缩小集合，最后把实际名单与预算记下来。Agent这里负责把步骤连起来，不再实现另一份选择模型。
 
 {{chain:05-agent:model}}
 
-接着，History把请求交给Bindings中的统一请求步骤。Runner实际请求模型并记录实际用量，完整SDK响应返回以后，转换为项目Message再调用`save_message`。假设模型要读parser.py和测试文件，这条带tool_calls的assistant必须先写入journal，随后才建立`call_order`，交给后续工具回调使用。
+接着，History把请求交给Bindings中的统一请求步骤。Runner实际请求模型并记录实际用量，完整SDK响应返回以后，转换为项目Message，校验 JSON envelope 的 message 与 task_action，再调用`save_message`。已校验的任务变更和回复随同一条助手消息落盘，工具调用保持原生格式。假设模型要读parser.py和测试文件，这条带tool_calls的assistant必须先写入journal，随后才建立`call_order`，交给后续工具回调使用。
 
 模型流式输出时，`ModelEventCallbacks`可以不断告诉界面出现了哪些文字或thinking，但这些片段不是已经完成的assistant。这里等完整消息，是为了保证下一步任何文件读取、修改或运行测试，都能指回一条确实保存过的模型指令。现在才轮到框架工具节点继续。
 

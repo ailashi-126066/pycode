@@ -1,5 +1,7 @@
 """Connect feature-owned products for one run; do not construct their adapters here."""
 
+from functools import partial
+
 from pycode.agent import RunContext
 from pycode.app.composition.bindings import build_runtime_bindings
 from pycode.app.composition.factories import build_outputs, build_summary_generator
@@ -223,6 +225,8 @@ async def build_runtime(
                 await options.mcp_run.refresh(registry)
 
         preparations = (prepare_tools,) if options.mcp_run else ()
+        if session.memory is not None:
+            preparations += (session.memory.prepare_task,)
         bindings = build_runtime_bindings(
             agent=modules.agent,
             models=modules.models,
@@ -230,6 +234,9 @@ async def build_runtime(
             framework_extensions=(extension,) if extension else (),
             model_filters=(extension.filter_request,) if extension else (),
             before_model=preparations,
+            after_model=(partial(session.memory.prepare_task, settled=True),)
+            if session.memory is not None
+            else (),
             tool_extensions=tool_extensions,
             native_bindings=native_bindings,
         )

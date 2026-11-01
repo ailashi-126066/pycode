@@ -6,6 +6,7 @@
 ## 源码与功能导读
 
 当前结构见 [组件精简说明](docs/design/component-simplification.md)。
+每次发给模型的内容、任务更新和工具预加载见 [上下文组成](docs/context-request.md)。
 从各模块的 README.md 和 api.py 开始：Skills、MCP、Hooks、Team 已按职责平铺。
 [原调用链手册](docs/interview/README.md)和离线网页是精简前的教学记录，部分节点已移除，
 不作为当前接口或运行行为的依据。

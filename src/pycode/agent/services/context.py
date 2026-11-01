@@ -57,6 +57,7 @@ class RunContext:
     workspace_files: WorkspaceReadback | None = None
     model_tools: tuple[ToolSpec, ...] = ()
     system_hash: str = ""
+    task_context_tokens: int = 0
     disclosed_tool_names: tuple[str, ...] | None = None
     read_only: bool = False
     failure_guard: dict = field(default_factory=dict)

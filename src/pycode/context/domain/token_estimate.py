@@ -9,6 +9,13 @@ def estimate_messages(messages: tuple[Message, ...]) -> int:
     for message in messages:
         total += 4
         total += estimate_text(message.text)
+        if message.provider_metadata.get("pycode_task_output"):
+            total += estimate_text(
+                json_dumps(
+                    {"task_action": message.provider_metadata["pycode_task_action"], "message": ""},
+                    ensure_ascii=False,
+                )
+            )
         for thinking in message.thinking:
             total += estimate_text(thinking.text)
         for call in message.tool_calls:

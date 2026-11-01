@@ -131,3 +131,26 @@ async def test_readonly_catalog_filters_write_tools_before_search():
         ToolContext("s", "r", "op", "/workspace"), {"query": "write_external"}
     )
     assert result.structured_content == {"tools": []}
+
+
+async def test_common_tools_are_preloaded_but_permissions_still_filter_them():
+    from pycode.agent.adapters.boundaries import filter_model_tools
+    from tests.support.probe import Probe
+
+    discovery, request, context, _ = setup_request()
+    bash = Probe("Bash")
+    bash.spec = replace(bash.spec, category="external", description="Execute a shell command")
+    read = Probe("read_file")
+    for tool in (bash, read):
+        context.registry.register(tool)
+    request = request.override(
+        tools=[*request.tools, *(make_framework_tool(t.spec, context) for t in (bash, read))]
+    )
+    disclosed = await discovery.disclose(request)
+    assert {tool.name for tool in disclosed.tools} == {"ToolSearch", "Bash", "read_file"}
+    assert "echo" in disclosed.system_message.content
+    assert "echo" not in {tool.name for tool in disclosed.tools}
+    context.read_only = True
+    disclosed = await discovery.disclose(await filter_model_tools(request))
+    assert {tool.name for tool in disclosed.tools} == {"ToolSearch", "read_file"}
+    assert "Bash" not in disclosed.system_message.content

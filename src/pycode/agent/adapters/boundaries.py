@@ -1,12 +1,22 @@
 """Agent model filtering, event publication and durable input boundaries."""
 
 from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableLambda
 
-from pycode.kernel import EntryDraft, ToolError, plain_data
+from pycode.agent.adapters.task_output import TASK_OUTPUT_PROMPT, visible_partial
+from pycode.context import empty_tasks, task_context_text
+from pycode.kernel import EntryDraft, ToolError, estimate_text, plain_data
 
 
 async def prepare_model_boundary(request, bindings):
+    system = request.system_message.content if request.system_message is not None else ""
+    content = (
+        system + "\n\n" + TASK_OUTPUT_PROMPT
+        if isinstance(system, str)
+        else [*system, {"type": "text", "text": TASK_OUTPUT_PROMPT}]
+    )
+    request = request.override(system_message=SystemMessage(content=content))
     for model_filter in bindings.model_filters:
         request = await model_filter(request)
     chain = (
@@ -15,6 +25,20 @@ async def prepare_model_boundary(request, bindings):
         | RunnableLambda(bindings.calibrate_model_request)
     )
     return await chain.ainvoke(request)
+
+
+def attach_task_context(request, projection):
+    """Dynamic data is counted separately from the stable system configuration."""
+    context = request.runtime.context
+    state = (
+        projection.checkpoint["task_state"]
+        if projection is not None
+        else request.state.get("task_state", empty_tasks())
+    )
+    messages = projection.messages if projection is not None else context.completed
+    text = task_context_text(state, messages)
+    context.task_context_tokens = estimate_text(text) + 4
+    return request.override(messages=[SystemMessage(content=text), *request.messages])
 
 
 async def filter_model_tools(request):
@@ -34,7 +58,6 @@ async def filter_model_tools(request):
             "read_file",
             "glob",
             "grep",
-            "write_todos",
             "task",
         }
         permitted = []
@@ -65,6 +88,7 @@ class ModelEventCallbacks(AsyncCallbackHandler):
         self.events = events
         self.requests = requests
         self.request_source = request_source
+        self.text_streams = {}
 
     def current_request(self):
         return self.request_source() if self.request_source is not None else self.requests
@@ -72,6 +96,7 @@ class ModelEventCallbacks(AsyncCallbackHandler):
     async def on_chat_model_start(self, serialized, messages, *, run_id, **kwargs):
         if "pycode:internal" in kwargs.get("tags", ()):
             return
+        self.text_streams[run_id] = ("", "")
         await self.events.emit(
             "message_start",
             {
@@ -86,9 +111,17 @@ class ModelEventCallbacks(AsyncCallbackHandler):
         if "pycode:internal" in kwargs.get("tags", ()):
             return
         if token:
+            raw, visible = self.text_streams[kwargs["run_id"]]
+            raw += token
+            updated = visible_partial(raw)
+            self.text_streams[kwargs["run_id"]] = (raw, updated)
             await self.events.emit(
                 "message_delta",
-                {"text": token, "request_id": self.current_request().active_request_id},
+                {
+                    "text": updated[len(visible) :],
+                    "output_activity": True,
+                    "request_id": self.current_request().active_request_id,
+                },
             )
         if chunk is None:
             return
@@ -107,6 +140,12 @@ class ModelEventCallbacks(AsyncCallbackHandler):
                             "thinking_delta",
                             {"text": text, "request_id": self.current_request().active_request_id},
                         )
+
+    async def on_llm_end(self, response, *, run_id, **kwargs):
+        self.text_streams.pop(run_id, None)
+
+    async def on_llm_error(self, error, *, run_id, **kwargs):
+        self.text_streams.pop(run_id, None)
 
 
 async def save_message(context, message, *, emit_start=False):

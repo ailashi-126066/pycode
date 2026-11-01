@@ -25,6 +25,7 @@ class AgentModule:
         framework_extensions=(),
         model_filters=(),
         before_model=(),
+        after_model=(),
     ) -> RuntimeBindings:
         return RuntimeBindings(
             to_framework=to_framework,
@@ -38,6 +39,7 @@ class AgentModule:
             framework_extensions=tuple(framework_extensions),
             model_filters=tuple(model_filters),
             before_model=tuple(before_model),
+            after_model=tuple(after_model),
         )
 
     def publisher(self, context) -> AgentMessagePublisher:

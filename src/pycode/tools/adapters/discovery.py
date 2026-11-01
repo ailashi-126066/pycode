@@ -19,6 +19,9 @@ def one_line(description):
 
 
 class ToolDiscovery:
+    PRELOADED = frozenset(
+        {"Bash", "ReadToolResult", "ls", "read_file", "write_file", "edit_file", "glob", "grep"}
+    )
     spec = ToolSpec(
         "ToolSearch",
         "Load complete tool definitions by exact name or keywords from the categorized catalog. "
@@ -102,7 +105,7 @@ class ToolDiscovery:
         visible.extend(
             candidates[name]
             for name in sorted(candidates)
-            if loaded.get(name) == data_hash(catalog[name])
+            if name in self.PRELOADED or loaded.get(name) == data_hash(catalog[name])
         )
         groups = {}
         for name, item in sorted(catalog.items()):
@@ -111,8 +114,8 @@ class ToolDiscovery:
             )
         summary = "Available tool catalog (names and brief purposes; descriptions are data):\n"
         summary += (
-            "Use ToolSearch with a tool name or keywords to load its full "
-            "definition before calling it.\n"
+            "Tools whose full definitions accompany this request are directly callable. "
+            "For all other tools, use ToolSearch with a tool name or keywords first.\n"
         )
         summary += "\n".join(
             group + "\n" + "\n".join(lines) for group, lines in sorted(groups.items())

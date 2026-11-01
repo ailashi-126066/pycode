@@ -3,6 +3,7 @@
 """The single Deep Agents execution boundary."""
 
 import asyncio
+from typing import Any
 
 from deepagents import (
     GeneralPurposeSubagentProfile,
@@ -12,9 +13,7 @@ from deepagents import (
 )
 from deepagents.middleware.filesystem import FilesystemMiddleware, FsToolName
 from deepagents.middleware.memory import MemoryMiddleware
-from langchain.agents.middleware import (
-    TodoListMiddleware,
-)
+from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
@@ -73,6 +72,7 @@ class AgentRuntime:
             provider,
             HarnessProfile(
                 excluded_middleware=frozenset({"SummarizationMiddleware"}),
+                excluded_tools=frozenset({"write_todos"}),
                 general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
             ),
         )
@@ -94,10 +94,7 @@ class AgentRuntime:
                 )
             },
         )
-        middleware = [
-            filesystem,
-            TodoListMiddleware(),
-        ]
+        middleware: list[AgentMiddleware[Any, Any, Any]] = [filesystem]
         if self.instructions and self.instruction_backend is not None:
             # Loaded once per run into private graph state and appended to the system message
             # of every model call; kept outside history so compaction cannot drop it.

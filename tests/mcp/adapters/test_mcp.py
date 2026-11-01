@@ -59,7 +59,8 @@ async def test_real_mcp_tool_through_native_sdk_model_and_shared_executor(
             result = await session.run(Message("u1", "user", "call MCP"))
             assert result.outcome == "completed" and len(requests) == 3
             specs = {item["function"]["name"] for item in requests[0]["body"]["tools"]}
-            assert specs == {"ToolSearch"}
+            assert {"ToolSearch", "Bash", "read_file"} <= specs
+            assert name not in specs
             assert "mcp__srv__echo" in {t["function"]["name"] for t in requests[1]["body"]["tools"]}
             state = await session.inspect()
             outputs = [

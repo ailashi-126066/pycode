@@ -30,3 +30,8 @@ callbacks. An extension that prepares the model boundary declares that capabilit
 explicitly; history then avoids preparing the same request twice. The agent does
 not parse Skill scopes or open MCP connections. `RunContext` contains per-run
 execution state and native capabilities; it is not a service locator.
+
+Main-model text follows the task_action/message JSON contract; native tool calls remain
+framework-owned. Validated task changes share the durable assistant record. The graph
+carries a derived task_state, and Context rebuilds it from the active branch. UI deltas
+expose only message text. See docs/context-request.md.

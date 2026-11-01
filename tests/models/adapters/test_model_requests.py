@@ -14,7 +14,7 @@ from pycode.models.adapters.model_requests import ModelRequestRunner
 from pycode.models.domain.requests import RetryPolicy
 from tests.agent.adapters.test_agent import assemble, tool_response
 from tests.models.adapters.test_failures import status_error
-from tests.support.model import ScriptedChatModel
+from tests.support.model import ScriptedChatModel, task_reply
 from tests.support.requests import MemoryRequestStore, TestTiming
 
 VECTORS = json.loads((Path(__file__).parents[2] / "fixtures/pi-retry.json").read_text())
@@ -29,7 +29,10 @@ class FlakyModel(ScriptedChatModel):
         self.call_index += 1
         if isinstance(value, Exception):
             raise value
-        return deepcopy(value)
+        response = deepcopy(value)
+        if "PYCODE_TASK_OUTPUT" in str(messages):
+            response.content = task_reply(response.content)
+        return response
 
 
 def assemble_attempts(attempts, policy=None, timing=None):

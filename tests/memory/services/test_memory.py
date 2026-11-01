@@ -163,25 +163,25 @@ async def test_automatic_scopes_include_project_only_when_trusted(tmp_path):
         await history.aclose()
 
 
-async def test_recall_injects_all_entries_below_threshold_and_selects_above(tmp_path):
+async def test_recall_always_selects_and_never_fills_empty_or_failed_selection(tmp_path):
     _, history, service = await service_at(tmp_path, FakeUpdater(chosen=[]))
     try:
         user_ns = service.user_namespace
         await service.store.aput(user_ns, "k0", text("memory 0"))
-        assert [r.memory_id for r in await service.select("anything")] == ["k0"]
-        assert not service.updater.selections
+        assert await service.select("anything") == ()
+        assert service.updater.selections == [("anything", 1)]
         for index in range(1, 25):
             await service.store.aput(user_ns, f"k{index}", text(f"memory {index}"))
         service.updater.chosen = [("user", "k3"), ("user", "k7")]
         selected = await service.select("query")
         assert {r.memory_id for r in selected} == {"k3", "k7"}
-        assert service.updater.selections == [("query", 25)]
+        assert service.updater.selections == [("anything", 1), ("query", 25)]
         service.updater.chosen = ModelError("memory_model_failed", "down")
         fallback = await service.select("query")
-        assert len(fallback) == 10
+        assert fallback == ()
         snapshot = await history.snapshot()
         loads = [e for e in snapshot.entries if e.type == "memory_load"]
-        assert len(loads) == 3 and len(loads[-1].data["records"]) == 10
+        assert len(loads) == 3 and len(loads[-1].data["records"]) == 0
         assert any(e.type == "memory_recall_error" for e in snapshot.entries)
     finally:
         await service.aclose()

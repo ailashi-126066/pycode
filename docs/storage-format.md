@@ -20,6 +20,8 @@ SessionEntry 保留 id、parent_id、type、timestamp、data、message、selecti
 
 ## 执行恢复与审批
 
+单 Agent 的任务更新随助手消息一起提交：metadata.pycode_task_change 保存已校验的任务变更，pycode_task_action 保留模型的提案，正文只保存用户可读回复。TaskProjection 从当前分支生成 task_state，压缩快照和图 State 保留其派生视图。没有另一份可独立写入的 todos 或任务文件；Team 的任务板仍使用 team_transition。
+
 run_start/run_wait/run_end 保存业务运行身份。打开会话不会自动执行任务；已有 checkpoint 时保留未结束运行，显式 resume 重建图和模型/工具资源。审批由原生 interrupt 的 response_schema 校验操作 ID 和决定值。
 
 非只读工具实际调用前记录 tool_started。进程退出后，已开始但没有保存结果的操作记录 tool_interrupted；没有开始的审批不会被误标记成已经执行。已经保存的结果参与恢复，即使尚未成为完整 checkpoint，也不重复执行。
@@ -41,3 +43,7 @@ TeamState 的 agents/tasks/mailboxes 业务变化继续通过 team_transition �
 ## 其他存储
 
 模型请求与计费使用 runtime.sqlite。长期记忆的 JSON 文件及 changes.jsonl、存储/worktree 清理审计日志属于独立用途，未改为 Agent 执行 State。评测结果仍可使用 results.jsonl；会话证据导出改为 .session.sqlite.gz，不把数据库按文本行截断。
+
+## 任务范围内的记忆参考
+
+memory_load 保存 task_id、input_id、records 和 loaded_at；同任务复用，切换重新筛选并替换，完成或取消后追加空批次。记忆投影也会根据已保存的任务变更撤下过期批次。压缩保留 memories 与 memory_task_id，长期 JSON 记忆库不随任务结束删除。

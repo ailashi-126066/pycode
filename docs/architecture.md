@@ -50,7 +50,7 @@ feature cycles, aliases/TYPE_CHECKING/dynamic imports, and real native-port impl
 is separate from the framework-free `agent/services/context.py` RunContext and its consumer
 Protocols. History middleware records model responses before tools; tool settlement owns
 only its private failure-state fields. Composition injects model converters, calibration,
-request metering, Skills and tool middleware. A bound message publisher preserves JSONL →
+request metering, Skills and tool middleware. A bound message publisher preserves session Store →
 output binding → snapshot fact → completion-event order; tool lifecycle callbacks run after
 durable publication. Revert orchestration and conversation transactions belong to session;
 snapshot owns only Git/file versions and restores.
@@ -58,8 +58,8 @@ snapshot owns only Git/file versions and restores.
 Skill and Plan backends delegate to explicitly injected filesystem operations, rather than
 inheriting another feature's adapter. Skill files remain read-only and version-pinned. Plan
 resolution restricts every operation to the active file, and its search scope makes rg scan
-only that file. Python Skill sandbox grants are issued only after catalog verification for
-that exact source root; worker write roots and credential/environment restrictions remain.
+only that file. Skill scripts execute through Bash with the existing permission boundary;
+worker write roots and credential/environment restrictions remain.
 
 FilesystemMiddleware uses PycodeBackend and explicit routes: `/workspace/`, `/plans/`,
 `/skills/<source>/`, `/large_tool_results/`, `/conversation_history/`.
@@ -68,15 +68,14 @@ search, ignoring internal state and default hidden paths; complete large results
 before native display truncation. SkillsMiddleware owns loading/disclosure, including budgeted
 catalogue reload through its public methods. LangChain MCPAdapter owns MCP connections/protocol.
 
-Main-chat InMemorySaver exists only for the live run. JSONL is the sole restart authority.
-Lost calls, memory tools included, get one interrupted result; no old approval or disk Graph
-state is reused. Recovery never
-reexecutes old business tools. EventStream isolates failed consumers; closed CLI output requests
-controlled cancellation. JSONL contains one original result; large bytes live in one scoped
+Main-chat execution uses AsyncSqliteSaver in execution.sqlite. Full branch records live in
+session.sqlite through SqliteStore. Explicit resume restores the graph; effects started without
+a saved result receive an interrupted result. Saved business effects are not executed again. EventStream isolates failed consumers; closed CLI output requests
+controlled cancellation. The session Store contains one original result; large bytes live in one scoped
 object. Memory/summary/Plan metadata reference original facts rather than another conversation.
 
 Settlement normally follows declared tool order. An interrupted call does not hold completed
-later calls: their JSONL results settle before the native graph returns the waiting state.
+later calls: their saved results settle before the native graph returns the waiting state.
 Resume clears only transient interrupt barriers; confirmed results are not executed again.
 The repeated-failure barrier applies only to the matching name/arguments, and yields when
 that call interrupts. Each completion event and Hook retains its own operation identity.
@@ -264,3 +263,9 @@ process/grant callbacks and strict worker sandbox remain injected through the se
 ## Team 框架复用边界
 
 成员图负责 TimeoutPolicy、有效活动 heartbeat、审批等待和交接路由；engine 保留实际子执行的停止确认、成员资源、邮箱与 worktree。公共 TeamState 更新直接使用 reducer。子图 checkpoint 保存执行位置，JSONL 提供中断边界已持久化的工具事实；不复制旧 RunContext 的整套执行字段。后台摘要和工具输出清理保持原实现。
+
+Single-agent task updates use the main model task_action/message JSON envelope. History
+validates changes before publishing the assistant or executing its native tool calls.
+TaskProjection replays assistant metadata from the active Store branch; compaction retains
+task_state, and the graph uses a derived plain-data view. Common tools are preloaded; other
+local/MCP schemas load through ToolSearch. See docs/context-request.md for request assembly.

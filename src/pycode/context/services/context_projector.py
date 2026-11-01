@@ -8,6 +8,7 @@ from pycode.context.domain.retention import retained_context_entries
 from pycode.context.domain.tool_pairing import repair_tool_pairing
 from pycode.context.ports.projection import ProjectionContributor
 from pycode.context.services.prompt_projection import SystemPromptProjection
+from pycode.context.services.task_projection import TaskProjection
 from pycode.kernel import (
     Message,
     ProjectedContext,
@@ -35,9 +36,8 @@ class ContextProjector:
     )
 
     def __init__(self, contributors: tuple[ProjectionContributor, ...] | None = None):
-        self._contributors = (
-            contributors if contributors is not None else (SystemPromptProjection(),)
-        )
+        selected = contributors if contributors is not None else (SystemPromptProjection(),)
+        self._contributors = (*selected, TaskProjection())
         names = set()
         keys = set()
         for contributor in self._contributors:
@@ -78,6 +78,10 @@ class ContextProjector:
             }:
                 return None
             if entry.type == "message" and entry.require_message().role == "system":
+                return None
+            if entry.message is not None and entry.message.provider_metadata.get(
+                "pycode_task_change"
+            ):
                 return None
             if (
                 entry.type == "message"

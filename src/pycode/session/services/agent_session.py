@@ -370,8 +370,6 @@ class AgentSession:
                 )
             history = self._projector.project(before).messages
             await self._store.append_message(message)
-            if self._memory is not None:
-                await self._memory.select(message.text)
             if await self._models.current() is None:
                 await self._models.select(self._default.name, self._default.model_id)
         if self._skills is not None:

@@ -23,6 +23,7 @@ from pycode.kernel import (
     ToolCall,
     UsageRecord,
     clone_value,
+    json_dumps,
 )
 from pycode.models.domain.tool_text import model_tool_text
 
@@ -49,6 +50,15 @@ def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
         )
     if message.role == "assistant":
         content = message.text
+        if message.provider_metadata.get("pycode_task_output"):
+            content = json_dumps(
+                {
+                    "task_action": message.provider_metadata["pycode_task_action"],
+                    "message": message.text,
+                },
+                ensure_ascii=False,
+            )
+        reply_content = content
         additional = {}
         if selection.implementation == "deepseek" and message.thinking:
             additional["reasoning_content"] = "".join(block.text for block in message.thinking)
@@ -62,8 +72,8 @@ def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
                 for block in message.thinking
                 if block.provider_data.get("type") == "reasoning"
             ]
-            if message.text:
-                reasoning_blocks.append({"type": "text", "text": message.text})
+            if reply_content:
+                reasoning_blocks.append({"type": "text", "text": reply_content})
             if reasoning_blocks:
                 content = reasoning_blocks
         if selection.implementation == "anthropic" and message.thinking:
@@ -75,8 +85,8 @@ def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
                     blocks.append(
                         {"type": "thinking", "thinking": block.text, "signature": block.signature}
                     )
-            if message.text:
-                blocks.append({"type": "text", "text": message.text})
+            if reply_content:
+                blocks.append({"type": "text", "text": reply_content})
             content = blocks
         calls: list[FrameworkToolCall] = [
             {
