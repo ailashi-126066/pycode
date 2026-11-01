@@ -1,5 +1,6 @@
 """Public native contracts, policies and services for tools."""
 
+from pycode.tools.adapters.backend import ScopedBackend
 from pycode.tools.adapters.schema import JsonSchemaValidator
 from pycode.tools.domain.approvals import validate_operation_answer
 from pycode.tools.domain.progress_guard import ProgressGuard, enter_tree, reset_repeats
@@ -39,6 +40,7 @@ __all__ = [
     "PlanToolGate",
     "QuestionPrompt",
     "ReadOnlyToolGate",
+    "ScopedBackend",
     "ToolExecutor",
     "ToolGate",
     "ToolHooks",

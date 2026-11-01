@@ -462,3 +462,67 @@ class PycodeBackend(BackendProtocol):
                 FileUploadResponse(path=path, error="permission_denied" if result.error else None)
             )
         return results
+
+
+class ScopedBackend(BackendProtocol):
+    """One directory seen through another backend: optional path guard and read-only mode.
+
+    The async methods are BackendProtocol's defaults (asyncio.to_thread of these).
+    """
+
+    def __init__(self, inner: BackendProtocol, root: Path, *, read_only: bool, path_guard=None):
+        self.inner = inner
+        self.root = root.resolve()
+        self.read_only = read_only
+        self.path_guard = path_guard
+
+    def guard(self, path: str) -> None:
+        if self.path_guard is not None:
+            self.path_guard(path)
+
+    def resolve(self, value: str) -> Path:
+        self.guard(value)
+        path = (self.root / value.lstrip("/")).resolve()
+        if not path.is_relative_to(self.root):
+            raise ToolError("path_outside_scope", f"{value} is outside {self.root}")
+        return path
+
+    def ls(self, path):
+        self.guard(path)
+        return self.inner.ls(path)
+
+    def read(self, file_path, offset=0, limit=2000):
+        self.guard(file_path)
+        return self.inner.read(file_path, offset, limit)
+
+    def grep(self, pattern, path=None, glob=None, *, max_count=None):
+        self.guard(path or "/")
+        return self.inner.grep(pattern, path, glob, max_count=max_count)
+
+    def glob(self, pattern, path=None):
+        self.guard(path or "/")
+        return self.inner.glob(pattern, path)
+
+    def write(self, file_path, content):
+        self.guard(file_path)
+        if self.read_only:
+            return WriteResult(error="read_only: this location is read-only")
+        return self.inner.write(file_path, content)
+
+    def edit(self, file_path, old_string, new_string, replace_all=False):
+        self.guard(file_path)
+        if self.read_only:
+            return EditResult(error="read_only: this location is read-only")
+        return self.inner.edit(file_path, old_string, new_string, replace_all)
+
+    def download_files(self, paths):
+        for path in paths:
+            self.guard(path)
+        return self.inner.download_files(paths)
+
+    def upload_files(self, files):
+        for path, _ in files:
+            self.guard(path)
+        if self.read_only:
+            return [FileUploadResponse(path=path, error="permission_denied") for path, _ in files]
+        return self.inner.upload_files(files)
