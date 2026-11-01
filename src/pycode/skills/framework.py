@@ -197,8 +197,6 @@ class SkillsScopeConstraint:
         scope = skill_scope(SessionTree(snapshot.index).path(snapshot.leaf_id))
         if scope is None:
             return None
-        if any(not isinstance(name, str) for name in scope):
-            raise ToolError("invalid_skill_scope", "Skill tool names must be strings")
         return {ALIASES.get(name, name) for name in scope} | {"SkillSearch", "ToolSearch"}
 
     async def authorize(self, context, spec, call):
