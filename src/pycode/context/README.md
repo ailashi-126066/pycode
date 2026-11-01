@@ -1,8 +1,8 @@
 # Context
 
 负责上下文投影、预算、压缩、安全采用和大输出驱逐。系统提示位于本模块 `resources/`。
-也负责单 Agent 任务契约与 TaskProjection；任务更新随助手消息保存，图 State 使用派生视图。
-完整请求组成见 `docs/context-request.md`。固定 JSON 契约在模型边界组装；动态任务块由 History 加入请求并单独计量。
+也负责 TaskProjection：沿当前分支取最后一份任务板快照（工具结果的 `details.task_board`）。
+完整请求组成见 `docs/context-request.md`。有 active 任务板时由 History 加入请求并单独计量。
 `domain/` 是纯策略，`ports/` 描述摘要存储/生成与投影贡献，`services/` 编排事实，
 `adapters/` 连接框架和文件。此模块不解析 Skill、MCP、Plan 或 Memory 的内部记录。
 

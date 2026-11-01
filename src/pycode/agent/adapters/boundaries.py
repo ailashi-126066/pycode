@@ -4,19 +4,11 @@ from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableLambda
 
-from pycode.agent.adapters.task_output import TASK_OUTPUT_PROMPT, visible_partial
-from pycode.context import empty_tasks, task_context_text
-from pycode.kernel import EntryDraft, estimate_text, plain_data
+from pycode.context import board_from_data, task_board_text
+from pycode.kernel import EntryDraft, plain_data
 
 
 async def prepare_model_boundary(request, bindings):
-    system = request.system_message.content if request.system_message is not None else ""
-    content = (
-        system + "\n\n" + TASK_OUTPUT_PROMPT
-        if isinstance(system, str)
-        else [*system, {"type": "text", "text": TASK_OUTPUT_PROMPT}]
-    )
-    request = request.override(system_message=SystemMessage(content=content))
     for model_filter in bindings.model_filters:
         request = await model_filter(request)
     chain = (
@@ -27,17 +19,17 @@ async def prepare_model_boundary(request, bindings):
     return await chain.ainvoke(request)
 
 
-def attach_task_context(request, projection):
-    """Dynamic data is counted separately from the stable system configuration."""
+def attach_task_board(request, projection):
+    """Only an active board is injected: its view each request, the full view once after
+    a compaction. Without a board nothing is added."""
+    if projection is None:
+        return request
+    board = projection.checkpoint["task_board"]
+    if board is None or board["status"] != "active":
+        return request
     context = request.runtime.context
-    state = (
-        projection.checkpoint["task_state"]
-        if projection is not None
-        else request.state.get("task_state", empty_tasks())
-    )
-    messages = projection.messages if projection is not None else context.completed
-    text = task_context_text(state, messages)
-    context.task_context_tokens = estimate_text(text) + 4
+    text = task_board_text(board_from_data(board), full=context.board_full_view)
+    context.board_full_view = False
     return request.override(messages=[SystemMessage(content=text), *request.messages])
 
 
@@ -74,12 +66,10 @@ async def filter_model_tools(request):
 class ModelEventCallbacks(AsyncCallbackHandler):
     def __init__(self, context):
         self.context = context
-        self.text_streams = {}
 
     async def on_chat_model_start(self, serialized, messages, *, run_id, **kwargs):
         if "pycode:internal" in kwargs.get("tags", ()):
             return
-        self.text_streams[run_id] = ("", "")
         self.context.streamed_text = None
 
     async def on_llm_new_token(self, token, *, chunk=None, **kwargs):
@@ -103,12 +93,8 @@ class ModelEventCallbacks(AsyncCallbackHandler):
                 },
             )
         if token:
-            raw, visible = self.text_streams[kwargs["run_id"]]
-            raw += token
-            updated = visible_partial(raw)
-            self.text_streams[kwargs["run_id"]] = (raw, updated)
-            context.streamed_text = updated
-            await self.update(context, "text", updated[len(visible) :])
+            context.streamed_text += token
+            await self.update(context, "text", token)
         if chunk is None:
             return
         reasoning = chunk.message.additional_kwargs.get("reasoning_content")
@@ -127,12 +113,6 @@ class ModelEventCallbacks(AsyncCallbackHandler):
             "message_update",
             {"request_id": context.requests.active_request_id, "kind": kind, "delta": delta},
         )
-
-    async def on_llm_end(self, response, *, run_id, **kwargs):
-        self.text_streams.pop(run_id, None)
-
-    async def on_llm_error(self, error, *, run_id, **kwargs):
-        self.text_streams.pop(run_id, None)
 
 
 async def save_message(context, message):

@@ -17,7 +17,6 @@ def build_runtime_bindings(
     framework_extensions=(),
     model_filters=(),
     before_model=(),
-    after_model=(),
     tool_extensions=(),
     native_bindings=(),
 ):
@@ -45,7 +44,6 @@ def build_runtime_bindings(
         framework_extensions=framework_extensions,
         model_filters=model_filters,
         before_model=before_model,
-        after_model=after_model,
     )
 
 

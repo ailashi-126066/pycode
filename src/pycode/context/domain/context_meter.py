@@ -5,7 +5,7 @@
 # model_change also invalidates provider usage.
 """One pure context estimator, with provenance rather than fabricated live counts."""
 
-from pycode.context.domain.tasks import task_context_text
+from pycode.context.domain.tasks import board_from_data, task_board_text
 from pycode.context.domain.token_estimate import estimate_messages
 from pycode.kernel import SessionTree, estimate_text, json_dumps, plain_data
 
@@ -68,13 +68,10 @@ class ContextMeter:
                 )
             )
             tokens += projection.checkpoint.get("harness_system_tokens", 0)
-            if "task_state" in projection.checkpoint:
-                tokens += (
-                    estimate_text(
-                        task_context_text(projection.checkpoint["task_state"], projection.messages)
-                    )
-                    + 4
-                )
+            # The injected board view is counted on its own, as the request adds it.
+            board = projection.checkpoint["task_board"]
+            if board is not None and board["status"] == "active":
+                tokens += estimate_text(task_board_text(board_from_data(board))) + 4
         budget = self._settings.budget
         return {
             "tokens": tokens,

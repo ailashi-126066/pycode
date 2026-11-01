@@ -1,70 +1,70 @@
-"""Task state uses the same durable record and branch as the assistant message."""
+"""The task board is the last board snapshot on the current branch."""
 
-from dataclasses import replace
-
-from pycode.context import ContextProjector, empty_tasks
-from pycode.kernel import EntryDraft, Message, SessionHeader
+from pycode.context import ContextProjector, board_from_data
+from pycode.kernel import (
+    Board,
+    EntryDraft,
+    Message,
+    SessionHeader,
+    Step,
+    ToolCall,
+    ToolResult,
+    plain_data,
+)
 from pycode.session.adapters.storage.session import SqliteSessionStore
-from tests.agent.adapters.test_task_context import new_task, validate
 from tests.support.requests import TestTiming
 
 
-async def test_task_state_reopens_branches_and_survives_compaction(tmp_path):
-    header = SessionHeader("s1", str(tmp_path), "created")
+def board(revision):
+    return Board("b1", "fix login", ("tests pass",), (Step("s1", "locate", ()),), revision=revision)
 
-    def open_store():
-        return SqliteSessionStore(tmp_path / "session", header, TestTiming())
 
-    store = open_store()
-    root = await store.append_message(Message("u1", "user", "修复登录超时"))
-    first = validate(empty_tasks(), new_task())
-    first_entry = await store.append_message(
-        Message("a1", "assistant", "开始定位", provider_metadata={"pycode_task_change": first})
+async def save_board(store, revision):
+    call = f"call-{revision}"
+    await store.append_message(
+        Message(f"a-{revision}", "assistant", (ToolCall(call, "TaskUpdate", {}),))
+    )
+    details = {"task_board": plain_data(board(revision)), "source_assistant_id": f"a-{revision}"}
+    return await store.append_message(
+        Message(
+            f"r-{revision}",
+            "tool_result",
+            tool_result=ToolResult(call, "TaskUpdate", "saved", details=details),
+        )
+    )
+
+
+async def test_board_follows_the_branch_and_survives_compaction(tmp_path):
+    store = SqliteSessionStore(
+        tmp_path / "session", SessionHeader("s1", str(tmp_path), "created"), TestTiming()
     )
     projector = ContextProjector()
-    projection = projector.transform_context(await store.snapshot())
-    state = projection.checkpoint["task_state"]
-    second = validate(state, new_task("整理部署脚本"))
-    await store.append_message(
-        Message("a2", "assistant", "先处理脚本", provider_metadata={"pycode_task_change": second})
-    )
-    await store.aclose()
-    store = open_store()
     try:
-        snapshot = await store.snapshot()
-        state = projector.transform_context(snapshot).checkpoint["task_state"]
-        assert state["active_task_id"] == second["task_id"]
-        assert state["tasks"][first["task_id"]]["status"] == "paused"
-        await store.branch(first_entry)
-        state = projector.transform_context(await store.snapshot()).checkpoint["task_state"]
-        assert state["active_task_id"] == first["task_id"]
-        assert second["task_id"] not in state["tasks"]
-        compact = await store.append_entry(
+        root = await store.append_message(Message("u1", "user", "fix login"))
+        assert projector.transform_context(await store.snapshot()).checkpoint["task_board"] is None
+        first = await save_board(store, 1)
+        current = projector.transform_context(await store.snapshot()).checkpoint["task_board"]
+        assert board_from_data(current) == board(1)
+        await save_board(store, 2)
+        # The cached projection must not reuse the old board for an appended snapshot.
+        current = projector.transform_context(await store.snapshot()).checkpoint["task_board"]
+        assert current["revision"] == 2
+        await store.branch(first)
+        current = projector.transform_context(await store.snapshot()).checkpoint["task_board"]
+        assert current["revision"] == 1
+        await store.append_entry(
             EntryDraft(
                 "compaction",
                 data={
-                    "summary": "已开始定位",
+                    "summary": "located",
                     "first_kept_entry_id": root,
-                    "checkpoint": {"task_state": state},
+                    "checkpoint": {"task_board": current},
                 },
             )
         )
-        snapshot = await store.snapshot()
-        after = ContextProjector().transform_context(snapshot)
-        assert after.checkpoint["task_state"] == state
-        # A compacted export may contain only its state snapshot and retained messages.
-        compact_entry = snapshot.entries_by_id[compact.id]
-        exported = replace(
-            snapshot,
-            entries=(replace(compact_entry, parent_id=None),),
-            entries_by_id=None,
-            active_path_ids=(),
-        )
-        assert ContextProjector().transform_context(exported).checkpoint["task_state"] == state
+        compacted = ContextProjector().transform_context(await store.snapshot())
+        assert compacted.checkpoint["task_board"]["revision"] == 1
         await store.branch(root)
-        assert (
-            projector.transform_context(await store.snapshot()).checkpoint["task_state"]
-            == empty_tasks()
-        )
+        assert projector.transform_context(await store.snapshot()).checkpoint["task_board"] is None
     finally:
         await store.aclose()

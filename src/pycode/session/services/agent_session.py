@@ -429,7 +429,7 @@ class AgentSession:
 
     async def record_run_result(self, start, result):
         result = replace(result, run_id=self.require_run_id(start))
-        if result.outcome == "needs_input":
+        if result.pending:
             await self._store.append_entry(
                 EntryDraft(
                     "custom",
@@ -447,8 +447,6 @@ class AgentSession:
         # The runtime already wrote run_end when the run entered finished.
         if self._plans is not None:
             await self._plans.finish(self.require_run_id(start))
-        if self._memory is not None and result.outcome == "completed":
-            await self._memory.settled(self.require_run_id(start))
         return result
 
     async def aclose(self) -> None:

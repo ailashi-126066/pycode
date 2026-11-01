@@ -11,7 +11,15 @@ RunStatus = Literal[
 ]
 RunTrigger = Literal["model", "tools", "wait", "resume", "verify", "finish"]
 RunEndReason = Literal[
-    "completed", "aborted", "model_error", "error", "interrupted", "turn_limit", "loop_detected"
+    "completed",
+    "aborted",
+    "model_error",
+    "error",
+    "interrupted",
+    "turn_limit",
+    "loop_detected",
+    # A blocked task board ends the run with its question for the user.
+    "needs_input",
 ]
 
 RUN_TRANSITIONS: StateMachine[RunStatus, RunTrigger] = StateMachine(
@@ -36,7 +44,7 @@ RUN_TRANSITIONS: StateMachine[RunStatus, RunTrigger] = StateMachine(
 class RunState:
     status: RunStatus = "starting"
     turn: int = 0
-    # Set when the loop itself stops early (turn_limit); otherwise the run completes.
+    # Set when the loop itself stops early (turn_limit, needs_input); otherwise it completes.
     reason: RunEndReason | None = None
 
     def apply(self, trigger: RunTrigger) -> bool:

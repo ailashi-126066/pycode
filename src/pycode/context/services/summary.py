@@ -94,8 +94,8 @@ class SummaryService:
         self._meter = ContextMeter(self._settings)
 
     def config_hash(self):
-        # Only what shapes the summary text or its cut. Checkpoint state (task_state, plan,
-        # memories, mcp, skills, prompt, tools) is taken again at adoption, so it is not hashed.
+        # Only what shapes the summary text or its cut. Checkpoint state (task_board, plan,
+        # mcp, skills, prompt, tools) is taken again at adoption, so it is not hashed.
         return data_hash(
             {
                 "selection": plain_data(self._settings.selection),

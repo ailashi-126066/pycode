@@ -7,24 +7,6 @@ from pycode.kernel import ModelError, ModelSelection
 from pycode.models.adapters.messages import from_assistant, normalize_usage, to_framework
 
 
-@pytest.mark.parametrize("implementation", ["anthropic", "openai"])
-def test_task_action_with_empty_reply_survives_thinking_message_replay(implementation):
-    import json
-
-    from pycode.kernel import Message, ThinkingBlock
-
-    action = {"relation": "switch", "task_id": "task_1", "update": None}
-    message = Message(
-        "a1",
-        "assistant",
-        (ThinkingBlock("reason", signature="signature", provider_data={"type": "reasoning"}),),
-        provider_metadata={"pycode_task_output": True, "pycode_task_action": action},
-    )
-    selection = ModelSelection("p", "m", implementation, api_mode="responses")
-    replay = to_framework(message, selection)
-    assert json.loads(replay.text) == {"task_action": action, "message": ""}
-
-
 @pytest.mark.parametrize(
     ("implementation", "metadata", "expected"),
     [
@@ -198,7 +180,8 @@ def test_failed_reply_and_its_tool_results_are_not_replayed():
     ]
     replay = to_framework_messages(messages, selection)
     assert [type(message).__name__ for message in replay] == ["HumanMessage", "HumanMessage"]
-    assert replay[1].content == "summary"
+    # convert_to_llm wraps the summary as Pi does; only the failed reply was skipped.
+    assert "<summary>\nsummary\n</summary>" in replay[1].content
 
 
 def test_interleaved_provider_blocks_keep_their_order():

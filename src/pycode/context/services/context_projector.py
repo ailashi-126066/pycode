@@ -108,9 +108,12 @@ class ContextProjector:
                 return None
             if entry.type == "message" and entry.require_message().role == "system":
                 return None
-            if entry.message is not None and entry.message.provider_metadata.get(
-                "pycode_task_change"
+            if (
+                entry.message is not None
+                and entry.message.tool_result is not None
+                and "task_board" in entry.message.tool_result.details
             ):
+                # A new board snapshot changes the checkpoint, not just the message tail.
                 return None
             if (
                 entry.type == "message"

@@ -58,7 +58,6 @@ class RunContext:
     workspace_files: WorkspaceReadback | None = None
     model_tools: tuple[ToolSpec, ...] = ()
     system_hash: str = ""
-    task_context_tokens: int = 0
     disclosed_tool_names: tuple[str, ...] | None = None
     read_only: bool = False
     failure_guard: dict = field(default_factory=dict)
@@ -78,6 +77,10 @@ class RunContext:
     tool_tasks: set[asyncio.Task] = field(default_factory=set)
     # Visible text of the streaming reply; None until its first chunk sent message_start.
     streamed_text: str | None = None
+    # Set when a compaction is adopted: the next request carries the full task board view.
+    board_full_view: bool = False
+    # The end-of-run reminder for an active task board is sent at most once per run.
+    board_checked: bool = False
 
     @property
     def assistant(self) -> Message | None:

@@ -16,17 +16,21 @@ from langchain_core.messages import AIMessage, BaseMessage, RemoveMessage
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from pycode.agent.adapters.boundaries import (
-    attach_task_context,
+    attach_task_board,
     deliver_input,
     prepare_model_boundary,
     save_message,
 )
 from pycode.agent.adapters.state import PycodeState
-from pycode.agent.adapters.task_output import decode_task_output
 from pycode.agent.domain.turn_policy import next_turn
 from pycode.agent.services.context import RunContext
-from pycode.context import apply_task_change, empty_tasks, task_evidence
-from pycode.kernel import Message, ModelError, SessionTree, TextBlock, plain_data
+from pycode.kernel import EntryDraft, Message, ModelError, TextBlock, plain_data
+
+BOARD_EXIT_REMINDER = (
+    "The task board is still active. Before finishing, close it with "
+    'TaskUpdate(target="board"): completed (evidence for every done_when item), '
+    "failed (note what was tried), blocked (note the question for the user) or abandoned."
+)
 
 
 async def poll_steering(context):
@@ -63,6 +67,18 @@ async def end_turn(context, bindings):
     await bindings.run_hook(
         context, "turn_end", message=message.text if message is not None else ""
     )
+
+
+def blocked_board_note(context):
+    """The note of a board the last tool batch blocked; the run then ends to ask the user."""
+    for message in reversed(context.completed):
+        if message.role == "assistant":
+            return None
+        result = message.tool_result
+        if result is not None and "task_board" in result.details:
+            board = result.details["task_board"]
+            return board["outcome"] if board["status"] == "blocked" else None
+    return None
 
 
 def take_queued(context):
@@ -113,6 +129,11 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
     async def abefore_model(self, state, runtime):
         context = runtime.context
         run = context.run_state
+        note = blocked_board_note(context)
+        if note is not None:
+            # A blocked board ends the run with its question; the user answers in a new run.
+            run.reason = "needs_input"
+            return {"jump_to": "end", "final_text": note}
         if run.turn >= context.max_turns:
             # The last turn has finished; end with turn_limit instead of starting another.
             run.reason = "turn_limit"
@@ -131,6 +152,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 current.summary.set_tools(current.model_tools or current.registry.model_specs())
                 summary = await current.summary.prepare()
                 if summary.applied_job_id is not None:
+                    current.board_full_view = True
                     await self.bindings.run_hook(current, "compact")
             if current.eviction is not None:
                 await current.eviction.apply(
@@ -151,7 +173,6 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                     *self.bindings.to_framework_messages(projection.messages, context.selection),
                 ]
                 updates.update(messages=messages, branch_leaf_id=projection.leaf_id)
-                updates["task_state"] = plain_data(projection.checkpoint["task_state"])
             elif pending:
                 updates["messages"] = [
                     self.bindings.to_framework(message, context.selection) for message in pending
@@ -196,7 +217,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             request = await prepare_model_boundary(request, self.bindings)
         if context.history_store is not None:
             projection = await self.current_projection(context)
-        request = attach_task_context(request, projection)
+        request = attach_task_board(request, projection)
         model_step = self.bindings.model_request_step(
             context.requests, handler, logical_id=boundary
         )
@@ -210,13 +231,14 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 report = await context.summary.prepare(force=True)
                 if report.applied_job_id is None:
                     raise
+                context.board_full_view = True
                 projection = await self.current_projection(context)
                 request = request.override(
                     messages=self.bindings.to_framework_messages(
                         projection.messages, context.selection
                     )
                 )
-                request = attach_task_context(request, projection)
+                request = attach_task_board(request, projection)
                 response = await model_step.ainvoke(request)
         except (ModelError, asyncio.CancelledError) as error:
             # Pi keeps a failed reply (stopReason error|aborted) and transform_messages skips it.
@@ -243,24 +265,11 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         )
         if isinstance(model_response, AIMessage):
             model_response = ModelResponse(result=[model_response])
-        if context.history_store is not None:
-            projection = await self.current_projection(context)
         assistant = model_response.result[-1]
         if not isinstance(assistant, AIMessage):
             raise ModelError("invalid_model_response", "Model response must end with an AI message")
         message = self.bindings.from_assistant(
             assistant, context.selection, context.session_id, context.run_id
-        )
-        path = ()
-        if context.history_store is not None:
-            snapshot = await context.history_store.snapshot()
-            path = SessionTree(snapshot.index).path(snapshot.leaf_id)
-        message = decode_task_output(
-            message,
-            projection.checkpoint["task_state"]
-            if projection is not None
-            else state.get("task_state", empty_tasks()),
-            task_evidence(path, messages=context.completed),
         )
         message = replace(
             message,
@@ -295,38 +304,21 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         return response
 
     # Pi: finishTurn for a reply. Deep Agents decides all tool routing.
-    @hook_config(can_jump_to=["model"])
     async def aafter_model(self, state, runtime):
         context = runtime.context
         message = context.assistant
         assert message is not None
-        for callback in self.bindings.after_model:
-            await callback()
         if message.tool_calls:
             context.run_state.apply("tools")
         else:
             context.run_state.apply("verify")
             await end_turn(context, self.bindings)
             context.steering = await poll_steering(context)
-        updates = {
+        return {
             "final_text": message.text,
             "model_tools": plain_data(context.model_tools),
             "disclosed_tool_names": plain_data(context.disclosed_tool_names),
-            "task_state": apply_task_change(
-                state.get("task_state", empty_tasks()),
-                message.provider_metadata["pycode_task_change"],
-            )
-            if message.provider_metadata.get("pycode_task_change") is not None
-            else state.get("task_state", empty_tasks()),
         }
-        action = message.provider_metadata.get("pycode_task_action")
-        if (
-            action is not None
-            and action["relation"] == "switch"
-            and action["task_id"] != state.get("task_state", empty_tasks())["active_task_id"]
-        ):
-            updates["jump_to"] = "model"
-        return updates
 
     # Pi: the outer loop's follow-up check once the agent would stop (verifying).
     # AgentRuntime.invoke enters finished after the graph returns.
@@ -336,7 +328,9 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         if context.team is not None:
             await context.team.flush_inbox(context)
         if context.summary is not None:
-            await context.summary.prepare(wait_for_capacity=False)
+            report = await context.summary.prepare(wait_for_capacity=False)
+            if report.applied_job_id is not None:
+                context.board_full_view = True
         if context.run_state.reason is not None:
             return None
         kind, pending = "steer", context.steering
@@ -345,6 +339,10 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             if context.durable_inputs is not None:
                 context.inputs = await context.durable_inputs.pending(context.run_id)
             kind, pending = take_queued(context)
+        if not pending:
+            reminder = await self.board_exit_reminder(context)
+            if reminder is not None:
+                return reminder
         if not pending and context.durable_inputs is not None:
             context.inputs = await context.durable_inputs.finish_boundary(context.run_id)
             kind, pending = take_queued(context)
@@ -359,3 +357,20 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             await deliver_input(context, message, kind)
             framework.append(self.bindings.to_framework(message, context.selection))
         return {"messages": framework, "jump_to": "model"}
+
+    async def board_exit_reminder(self, context):
+        """The end-of-run check: an active board must choose an exit, reminded once per run."""
+        if (
+            context.history_store is None
+            or context.board_checked
+            or context.run_state.turn >= context.max_turns
+        ):
+            return None
+        board = (await self.current_projection(context)).checkpoint["task_board"]
+        if board is None or board["status"] != "active":
+            return None
+        context.board_checked = True
+        await context.history_store.append_entry(
+            EntryDraft("custom_message", data={"text": BOARD_EXIT_REMINDER}, run_id=context.run_id)
+        )
+        return {"jump_to": "model"}

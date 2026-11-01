@@ -6,13 +6,10 @@ from pycode.context.domain.history_boundaries import valid_kept_boundary
 from pycode.context.domain.retention import retained_context_entries
 from pycode.context.domain.summaries import SummaryReport, SummarySettings
 from pycode.context.domain.tasks import (
-    TaskOutput,
-    apply_task_change,
-    empty_tasks,
-    task_context,
-    task_context_text,
+    board_from_data,
+    task_board,
+    task_board_text,
     task_evidence,
-    validate_task_action,
 )
 from pycode.context.domain.token_estimate import estimate_messages
 from pycode.context.domain.tool_eviction import EvictionBudget
@@ -23,13 +20,10 @@ from pycode.context.services.summary import SummaryService
 from pycode.context.services.tool_eviction import ToolEvictionService
 
 __all__ = [
-    "TaskOutput",
-    "apply_task_change",
-    "empty_tasks",
-    "task_context",
-    "task_context_text",
+    "board_from_data",
+    "task_board",
+    "task_board_text",
     "task_evidence",
-    "validate_task_action",
     "ProjectionContribution",
     "ProjectionContributor",
     "ProjectedContext",

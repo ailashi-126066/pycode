@@ -9,6 +9,7 @@ from pycode.kernel import ExecutableTool, HistoryJournal
 from pycode.plans.adapters.plans import InterruptPlanPrompt
 from pycode.plans.adapters.storage.plans import BackendOperations, FilePlanStore
 from pycode.plans.adapters.tools.plans import ExitPlanMode
+from pycode.plans.adapters.tools.task_board import TaskUpdate, TaskWrite
 from pycode.plans.ports.plans import QuestionPrompt
 from pycode.plans.services.plans import PlanService
 from pycode.plans.services.projection import PlanProjection
@@ -51,6 +52,14 @@ class PlansModule:
     @staticmethod
     def exit_spec():
         return ExitPlanMode.spec
+
+    @staticmethod
+    def task_tools(history: HistoryJournal) -> tuple[ExecutableTool, ...]:
+        return (TaskWrite(history), TaskUpdate(history))
+
+    @staticmethod
+    def task_specs():
+        return (TaskWrite.spec, TaskUpdate.spec)
 
     def session(
         self, session_id: str, history: HistoryJournal, *, prompt: QuestionPrompt | None = None

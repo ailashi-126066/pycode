@@ -147,7 +147,7 @@ class ConfiguredRuntimeLauncher:
                 result = await container.runtime.run(inputs, container.context, history=history)
             if result.outcome == "completed":
                 self._handoff_requested = False
-            keep_waiting = result.outcome == "needs_input" or (
+            keep_waiting = bool(result.pending) or (
                 self.config.agent_id != "lead" and result.outcome == "error"
             )
             return result
@@ -205,7 +205,7 @@ class ConfiguredRuntimeLauncher:
         try:
             await container.prepare_tools()
             result = await container.runtime.continue_task(fresh)
-            keep = result.outcome in {"needs_input", "error"}
+            keep = bool(result.pending) or result.outcome == "error"
             return result
         finally:
             if not keep and not self._handoff_requested:

@@ -31,7 +31,6 @@ from pycode.kernel import (
     UsageRecord,
     clone_value,
     convert_to_llm,
-    json_dumps,
 )
 from pycode.models.domain.tool_text import model_tool_text
 
@@ -136,15 +135,6 @@ def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
         )
     if message.role == "assistant":
         content = message.text
-        if message.provider_metadata.get("pycode_task_output"):
-            content = json_dumps(
-                {
-                    "task_action": message.provider_metadata["pycode_task_action"],
-                    "message": message.text,
-                },
-                ensure_ascii=False,
-            )
-        reply_content = content
         additional = {}
         # transform_messages kept thinking only for the model that produced it.
         if selection.implementation == "deepseek" and message.thinking:
@@ -159,8 +149,8 @@ def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
                 for block in message.thinking
                 if block.provider_data.get("type") == "reasoning"
             ]
-            if reply_content:
-                reasoning_blocks.append({"type": "text", "text": reply_content})
+            if message.text:
+                reasoning_blocks.append({"type": "text", "text": message.text})
             if reasoning_blocks:
                 content = reasoning_blocks
         if selection.implementation == "anthropic" and message.thinking:
@@ -172,8 +162,8 @@ def to_framework(message: Message, selection: ModelSelection) -> AnyMessage:
                     blocks.append(
                         {"type": "thinking", "thinking": block.text, "signature": block.signature}
                     )
-            if reply_content:
-                blocks.append({"type": "text", "text": reply_content})
+            if message.text:
+                blocks.append({"type": "text", "text": message.text})
             content = blocks
         calls: list[FrameworkToolCall] = [
             {

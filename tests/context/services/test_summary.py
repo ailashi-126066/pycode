@@ -3,17 +3,18 @@ from dataclasses import replace
 
 import pytest
 
+from pycode.context import board_from_data
 from pycode.context.adapters.storage.summaries import FileSummaryStore
 from pycode.context.adapters.summary import prepare_summary
 from pycode.context.domain.context_budget import InputBudget
 from pycode.context.domain.summaries import SummaryCompletion, SummarySettings
 from pycode.context.services.context_projector import ContextProjector
 from pycode.context.services.summary import SummaryService
-from pycode.kernel import ModelSelection
+from pycode.kernel import Board, ModelSelection, Step, plain_data
 from pycode.kernel.domain.errors import ModelError
 from pycode.kernel.domain.history import EntryDraft, SessionHeader
 from pycode.kernel.domain.history_tree import SessionTree
-from pycode.kernel.domain.messages import Message, UsageRecord
+from pycode.kernel.domain.messages import Message, ToolCall, ToolResult, UsageRecord
 from pycode.kernel.services.events import EventStream
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from tests.support.requests import TestTiming
@@ -452,13 +453,20 @@ async def test_task_update_during_generation_keeps_the_summary_and_lands_in_the_
     try:
         await service.prepare()
         await generator.started.wait()
-        task = {"task_id": "t1", "goal": "ship it", "status": "in_progress"}
+        board = Board("b1", "ship it", ("released",), (Step("s1", "build", ()),))
+        await history.append_message(
+            Message("task-call", "assistant", (ToolCall("call-1", "TaskWrite", {}),))
+        )
         await history.append_message(
             Message(
                 "task-update",
-                "assistant",
-                "working",
-                provider_metadata={"pycode_task_change": {"task_id": "t1", "task": task}},
+                "tool_result",
+                tool_result=ToolResult(
+                    "call-1",
+                    "TaskWrite",
+                    "saved",
+                    details={"task_board": plain_data(board), "source_assistant_id": "task-call"},
+                ),
             )
         )
         generator.release.set()
@@ -467,9 +475,9 @@ async def test_task_update_during_generation_keeps_the_summary_and_lands_in_the_
         assert len(generator.sources) == 1
         snapshot = await history.snapshot()
         compaction = SessionTree(snapshot.index).get(snapshot.leaf_id)
-        assert compaction.data["checkpoint"]["task_state"]["tasks"]["t1"] == task
+        assert board_from_data(compaction.data["checkpoint"]["task_board"]) == board
         projection = ContextProjector().transform_context(snapshot)
-        assert projection.checkpoint["task_state"]["active_task_id"] == "t1"
+        assert projection.checkpoint["task_board"]["id"] == "b1"
     finally:
         await service.aclose()
         await history.aclose()

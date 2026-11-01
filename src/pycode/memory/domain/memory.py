@@ -24,8 +24,6 @@ WRITE_SECRET_PATTERNS = (
 )
 MAX_ENTRY_CHARS = 2000
 MAX_ENTRIES = 200
-# Recall always selects relevant entries; an empty selection is valid.
-RECALL_SELECTED_LIMIT = 10
 Identity = Annotated[
     str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
 ]

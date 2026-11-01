@@ -1,21 +1,19 @@
-"""Memory lifecycle: recall, background consolidation, change log, undo and user edits."""
+"""Memory lifecycle: background consolidation, change log, undo and user edits."""
 
 import asyncio
 import contextvars
 import logging
 from uuid import uuid4
 
-from pycode.context import ContextProjector, retained_context_entries
+from pycode.context import retained_context_entries
 from pycode.kernel import (
-    DomainError,
-    EntryDraft,
     Message,
     SessionTree,
     StorageError,
     ToolError,
     plain_data,
 )
-from pycode.memory.domain.memory import RECALL_SELECTED_LIMIT, memory_record
+from pycode.memory.domain.memory import memory_record
 from pycode.memory.ports.memory import MemoryUpdater
 
 logger = logging.getLogger(__name__)
@@ -68,7 +66,6 @@ class MemoryService:
     ):
         self.history, self.store, self.scopes, self.timing = history, store, scopes, timing
         self.changes = changes
-        self.projector = ContextProjector(())
         self.updater = updater
         self.mode = mode
         self.user_namespace = next(ns for ns, scope in scopes.items() if scope == "user")
@@ -91,10 +88,6 @@ class MemoryService:
             await self.collect(cancel=True)
         await self.store.set_mode(self.user_namespace, mode)
         self.mode = mode
-        if mode == "off":
-            await self.history.append_entry(
-                EntryDraft("memory_load", data={"records": [], "loaded_at": self.timing.now()})
-            )
 
     async def records(self):
         found = []
@@ -106,125 +99,6 @@ class MemoryService:
 
     async def list(self):
         return {"mode": self.mode, "records": plain_data(await self.records())}
-
-    async def publish_recall(self, records, *, task_id=None, input_id=None):
-        await self.history.append_entry(
-            EntryDraft(
-                "memory_load",
-                data={
-                    "records": plain_data(records),
-                    "task_id": task_id,
-                    "input_id": input_id,
-                    "loaded_at": self.timing.now(),
-                },
-            )
-        )
-
-    async def select(self, query, *, task_id=None, input_id=None):
-        """Select relevant entries, including an empty selection; never fill with recent ones."""
-        if self.mode == "off":
-            return ()
-        records = await self.records()
-        selected = []
-        if records and self.updater is not None:
-            snapshot = await self.history.snapshot()
-            try:
-                chosen = await self.updater.select(
-                    snapshot.header.session_id,
-                    "memory-recall-" + uuid4().hex,
-                    query,
-                    records,
-                    limit=RECALL_SELECTED_LIMIT,
-                )
-                candidates = {(r.scope, r.memory_id): r for r in records}
-                identities = list(dict.fromkeys(chosen or ()))
-                if not set(identities) <= candidates.keys():
-                    raise ToolError("invalid_memory_selection", "Unknown memory ID in selection")
-                selected = [candidates[key] for key in identities[:RECALL_SELECTED_LIMIT]]
-            except DomainError as error:
-                logger.warning("Memory recall selection failed: %s", error.code)
-                await self.history.append_entry(
-                    EntryDraft("memory_recall_error", data={"reason": error.code})
-                )
-        await self.publish_recall(selected, task_id=task_id, input_id=input_id)
-        return tuple(selected)
-
-    async def prepare_task(self, *, settled=False):
-        """Keep one recall batch for the active task, across turns and process restarts."""
-        snapshot = await self.history.snapshot()
-        path = SessionTree(snapshot.index).path(snapshot.leaf_id)
-        state = self.projector.transform_context(snapshot).checkpoint["task_state"]
-        task_id = state["active_task_id"]
-        task = state["tasks"].get(task_id)
-        loaded = None
-        user = None
-        user_position = change_position = -1
-        action = None
-        assistant = None
-        for position, entry in enumerate(path):
-            if entry.type == "memory_load":
-                loaded = entry.data
-            message = entry.message if entry.type == "message" else None
-            if message is None:
-                continue
-            if message.role == "user" and not message.provider_metadata.get(
-                "pycode_output_continuation"
-            ):
-                user, user_position = message, position
-            elif message.role == "assistant":
-                assistant = message
-            if message.provider_metadata.get("pycode_task_change") is not None:
-                change_position = position
-                action = message.provider_metadata.get("pycode_task_action")
-        terminal = task is not None and task["status"] in {"completed", "cancelled"}
-        finished = (
-            assistant is not None and not assistant.tool_calls and assistant.stop_reason == "stop"
-        )
-        release = (
-            self.mode == "off"
-            or terminal
-            and (change_position > user_position or settled and finished)
-            or task is None
-            and settled
-            and finished
-        )
-        input_id = user.id if user is not None else None
-        if release:
-            if loaded is not None and loaded["records"]:
-                await self.publish_recall([], task_id=task_id, input_id=input_id)
-            return
-        if user is None:
-            return
-        owner = task_id if task is not None and not terminal else None
-        if loaded is not None:
-            if owner is not None and loaded.get("task_id") == owner:
-                return
-            if (
-                owner is None
-                and loaded.get("task_id") is None
-                and loaded.get("input_id") == input_id
-            ):
-                return
-            if (
-                owner is not None
-                and loaded.get("task_id") is None
-                and loaded.get("input_id") == input_id
-                and action is not None
-                and action["relation"] == "new"
-            ):
-                await self.publish_recall(loaded["records"], task_id=owner, input_id=input_id)
-                return
-        query = user.text
-        if owner is not None and task is not None:
-            step = next(
-                (item for item in task["steps"] if item["id"] == task["current_step"]), None
-            )
-            query = (
-                f"Current user input: {user.text}\nTask goal: {task['goal']}\n"
-                f"Current step: {step['title'] if step is not None else 'not planned'}\n"
-                "Current user instructions take priority over the saved task."
-            )
-        await self.select(query, task_id=owner, input_id=input_id)
 
     async def settled(self, run_id, reason="session_end"):
         """Schedule one background consolidation; at most one runs at a time."""

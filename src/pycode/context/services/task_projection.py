@@ -1,22 +1,13 @@
-"""Task facts follow the session branch and survive history compaction."""
+"""The task board follows the session branch; compaction checkpoints keep a copy of it."""
 
 from pycode.context.domain.projection import ProjectionContribution
-from pycode.context.domain.tasks import apply_task_change, empty_tasks
-from pycode.kernel import clone_value
+from pycode.context.domain.tasks import branch_task_board
 
 
 class TaskProjection:
     name = "tasks"
     incremental_safe = True
-    checkpoint_keys = frozenset({"task_state"})
+    checkpoint_keys = frozenset({"task_board"})
 
     def contribute(self, snapshot, path, entries, checkpoint):
-        state = empty_tasks()
-        for entry in path:
-            if entry.type == "compaction" and "task_state" in entry.data.get("checkpoint", {}):
-                state = clone_value(entry.data["checkpoint"]["task_state"])
-            if entry.type == "message" and entry.message is not None:
-                change = entry.message.provider_metadata.get("pycode_task_change")
-                if change is not None:
-                    state = apply_task_change(state, change)
-        return ProjectionContribution(checkpoint_updates={"task_state": state})
+        return ProjectionContribution(checkpoint_updates={"task_board": branch_task_board(path)})

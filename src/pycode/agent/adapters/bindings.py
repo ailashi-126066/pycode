@@ -42,4 +42,3 @@ class RuntimeBindings:
     framework_extensions: tuple[FrameworkExtension, ...] = ()
     model_filters: tuple[Callable[[object], Awaitable[object]], ...] = ()
     before_model: tuple[Callable[[], Awaitable[None]], ...] = ()
-    after_model: tuple[Callable[[], Awaitable[None]], ...] = ()

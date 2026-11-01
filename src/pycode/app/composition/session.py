@@ -205,6 +205,7 @@ async def build_session_view(
         *modules.tools.registry(snapshots).list_specs(),
         modules.sandbox.bash_spec(),
         modules.plans.exit_spec(),
+        *modules.plans.task_specs(),
     )
 
     def settings(projection):

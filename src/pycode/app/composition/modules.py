@@ -139,7 +139,6 @@ def default_modules(config: AppConfig) -> ApplicationModules:
         skills=skills,
         mcp=MCPModule(schema=tools.validator()),
         history_contributors=(
-            memory.projection(),
             plans.projection(),
             context.prompt_projection(),
             MCPProjection(),

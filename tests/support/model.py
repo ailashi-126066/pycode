@@ -1,7 +1,6 @@
 """Scripted responses from a real LangChain BaseChatModel test implementation."""
 
 import asyncio
-import json
 from copy import deepcopy
 from typing import Any
 
@@ -19,7 +18,6 @@ class ScriptedChatModel(BaseChatModel):
     cleaned: Any = Field(default_factory=asyncio.Event)
     release: Any = None
     partial_text: str | None = None
-    task_output: bool = True
 
     @property
     def _llm_type(self):
@@ -32,16 +30,6 @@ class ScriptedChatModel(BaseChatModel):
         self.requests.append(deepcopy(messages))
         response = deepcopy(self.responses[self.call_index])
         self.call_index += 1
-        if self.task_output and "PYCODE_TASK_OUTPUT" in str(messages):
-            if isinstance(response.content, str):
-                response.content = task_reply(response.content)
-            else:
-                response.content = [
-                    {**block, "text": task_reply(block["text"])}
-                    if isinstance(block, dict) and block.get("type") == "text"
-                    else block
-                    for block in response.content
-                ]
         return response
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
@@ -51,8 +39,7 @@ class ScriptedChatModel(BaseChatModel):
         try:
             self.started.set()
             if self.partial_text is not None:
-                partial = '{"task_action":null,"message":' + json.dumps(self.partial_text)[:-1]
-                yield ChatGenerationChunk(message=AIMessageChunk(content=partial))
+                yield ChatGenerationChunk(message=AIMessageChunk(content=self.partial_text))
             if self.release is not None:
                 await self.release.wait()
             response = self.next_response(messages)
@@ -69,10 +56,3 @@ class ScriptedChatModel(BaseChatModel):
             )
         finally:
             self.cleaned.set()
-
-
-def task_reply(text):
-    """The scripted provider follows the requested text protocol; explicit JSON stays exact."""
-    if not text or text.lstrip().startswith("{"):
-        return text
-    return json.dumps({"task_action": None, "message": text}, ensure_ascii=False)

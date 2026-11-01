@@ -9,7 +9,6 @@ from pycode.memory.adapters.memory_tools import memory_tools
 from pycode.memory.adapters.storage.json_memory import JsonMemoryStore, MemoryChangeLog
 from pycode.memory.domain.namespaces import automatic_namespaces, scoped_memory_namespaces
 from pycode.memory.services.memory import MemoryService
-from pycode.memory.services.projection import MemoryProjection
 from pycode.models import RetryPolicy
 
 
@@ -62,6 +61,3 @@ class MemoryModule:
 
     def tools(self, memory, *, read_only=False):
         return memory_tools(memory, read_only=read_only)
-
-    def projection(self):
-        return MemoryProjection()

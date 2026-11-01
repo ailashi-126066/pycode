@@ -4,10 +4,8 @@ import json
 import threading
 from collections import deque
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-from tests.support.model import task_reply
 
 
 @dataclass
@@ -48,8 +46,6 @@ def protocol_server(responses):
                     self.send_error(500, "No response fixture remains")
                     return
                 response = pending.popleft()
-            if "PYCODE_TASK_OUTPUT" in str(request["body"]) and response.status == 200:
-                response = task_response(response)
             if response.started is not None:
                 response.started.set()
             if response.release is not None:
@@ -81,49 +77,6 @@ def protocol_server(responses):
         server.server_close()
         worker.join(timeout=2)
         assert not worker.is_alive()
-
-
-def task_response(response):
-    """Loopback providers honor the main agent's envelope, leaving SDK/component tests raw."""
-    if response.content_type == "application/json":
-        value = json.loads(response.body)
-        for choice in value.get("choices", []):
-            message = choice.get("message", {})
-            if message.get("content"):
-                message["content"] = task_reply(message["content"])
-        return replace(response, body=json.dumps(value).encode())
-    if response.content_type != "text/event-stream":
-        return response
-    lines = response.body.decode().splitlines(keepends=True)
-    events = []
-    for index, line in enumerate(lines):
-        if line.startswith("data: ") and line.strip() != "data: [DONE]":
-            events.append((index, json.loads(line[6:])))
-    fields = []
-    for _, event in events:
-        for choice in event.get("choices", []):
-            if choice.get("delta", {}).get("content"):
-                fields.append((choice["delta"], "content"))
-        if event.get("type") == "content_block_start":
-            block = event["content_block"]
-            if block.get("type") == "text":
-                fields.append((block, "text"))
-        if event.get("type") == "content_block_delta" and event["delta"]["type"] == "text_delta":
-            fields.append((event["delta"], "text"))
-        if event.get("type") == "response.output_text.delta":
-            fields.append((event, "delta"))
-        if event.get("type") == "response.output_item.done":
-            for block in event["item"].get("content", []):
-                if block.get("type") == "output_text":
-                    block["text"] = task_reply(block["text"])
-    if fields:
-        text = "".join(item[key] for item, key in fields)
-        for item, key in fields:
-            item[key] = ""
-        fields[0][0][fields[0][1]] = task_reply(text)
-    for index, event in events:
-        lines[index] = "data: " + json.dumps(event) + "\n"
-    return replace(response, body="".join(lines).encode())
 
 
 def chat_completion(*, tool=False, deepseek=False):

@@ -1,4 +1,4 @@
-"""MemoryService: recall, one-shot consolidation, change log, undo and explicit edits."""
+"""MemoryService: one-shot consolidation, change log, undo and explicit edits."""
 
 import asyncio
 
@@ -16,12 +16,10 @@ from pycode.memory.services.memory import MemoryService, consolidation_source
 
 
 class FakeUpdater:
-    def __init__(self, writes=(), *, fail=None, chosen=None):
+    def __init__(self, writes=(), *, fail=None):
         self.writes = list(writes)
         self.fail = fail
-        self.chosen = chosen
         self.calls = []
-        self.selections = []
 
     async def consolidate(self, store, namespace, summary, messages, session_id, run_id):
         self.calls.append((namespace, summary, tuple(m.text for m in messages)))
@@ -29,12 +27,6 @@ class FakeUpdater:
             await store.aput(namespace, key, value)
         if self.fail is not None:
             raise self.fail
-
-    async def select(self, session_id, run_id, query, records, *, limit=10):
-        self.selections.append((query, len(records)))
-        if isinstance(self.chosen, Exception):
-            raise self.chosen
-        return self.chosen
 
 
 def text(content):
@@ -158,31 +150,6 @@ async def test_automatic_scopes_include_project_only_when_trusted(tmp_path):
         assert len(service.auto_namespaces) == 2
         await service.consolidate("run")
         assert {call[0] for call in service.updater.calls} == set(service.scopes)
-    finally:
-        await service.aclose()
-        await history.aclose()
-
-
-async def test_recall_always_selects_and_never_fills_empty_or_failed_selection(tmp_path):
-    _, history, service = await service_at(tmp_path, FakeUpdater(chosen=[]))
-    try:
-        user_ns = service.user_namespace
-        await service.store.aput(user_ns, "k0", text("memory 0"))
-        assert await service.select("anything") == ()
-        assert service.updater.selections == [("anything", 1)]
-        for index in range(1, 25):
-            await service.store.aput(user_ns, f"k{index}", text(f"memory {index}"))
-        service.updater.chosen = [("user", "k3"), ("user", "k7")]
-        selected = await service.select("query")
-        assert {r.memory_id for r in selected} == {"k3", "k7"}
-        assert service.updater.selections == [("anything", 1), ("query", 25)]
-        service.updater.chosen = ModelError("memory_model_failed", "down")
-        fallback = await service.select("query")
-        assert fallback == ()
-        snapshot = await history.snapshot()
-        loads = [e for e in snapshot.entries if e.type == "memory_load"]
-        assert len(loads) == 3 and len(loads[-1].data["records"]) == 0
-        assert any(e.type == "memory_recall_error" for e in snapshot.entries)
     finally:
         await service.aclose()
         await history.aclose()
