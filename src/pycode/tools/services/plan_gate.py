@@ -10,7 +10,7 @@ class PlanToolGate:
         self.parent = parent
 
     async def authorize(self, context, spec, call):
-        if spec.name == "Bash":
+        if spec.name == "bash":
             reason = denied_command(call.arguments.get("command", ""))
             if reason is not None:
                 raise ToolError("command_denied", reason)

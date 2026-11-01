@@ -39,21 +39,39 @@ def find_bash() -> str:
     return executable
 
 
+# Pi: bash.ts (https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/tools/bash.ts).
+# Parallel by default like Pi; the output store keeps the tail and the complete output.
 class Bash:
     spec = ToolSpec(
-        name="Bash",
-        description="Run a shell command with complete output storage and a bounded tail preview.",
+        name="bash",
+        description=(
+            "Execute a bash command in the current working directory. Returns stdout and stderr. "
+            "Output is truncated to last 2000 lines or 50KB (whichever is hit first). If "
+            "truncated, the full output is saved; read it with ReadToolResult. Optionally "
+            "provide a timeout in seconds."
+        ),
         category="command",
-        execution_mode="sequential",
         input_schema={
             "type": "object",
             "properties": {
-                "command": {"type": "string", "minLength": 1},
-                "timeout": {"type": "number", "minimum": 0.1, "maximum": 600, "default": 120},
+                "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Shell command to execute",
+                },
+                "timeout": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 600,
+                    "default": 120,
+                    "description": "Timeout in seconds",
+                },
             },
             "required": ["command"],
             "additionalProperties": False,
         },
+        exposure="direct",
+        prompt_snippet="Execute bash commands (ls, grep, find, etc.)",
     )
 
     def __init__(

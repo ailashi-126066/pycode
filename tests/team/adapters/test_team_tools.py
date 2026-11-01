@@ -91,13 +91,13 @@ async def test_worker_boundary_keeps_custom_denials_and_requires_command_approva
     context = ToolContext("child", "run", "op", "/worker")
     deny = SimpleNamespace(authorize=AsyncMock(side_effect=ToolError("custom_denied", "denied")))
     mandatory = SimpleNamespace(authorize=AsyncMock())
-    write = ToolSpec("write_file", "write", {}, category="write")
-    call = ToolCall("write", "write_file", {})
+    write = ToolSpec("write", "write", {}, category="write")
+    call = ToolCall("write", "write", {})
     with pytest.raises(ToolError, match="denied"):
         await WorkerBoundaryGate(deny, mandatory).authorize(context, write, call)
-    command = ToolSpec("Bash", "command", {}, category="command")
+    command = ToolSpec("bash", "command", {}, category="command")
     await WorkerBoundaryGate(NoOpToolGate(), mandatory).authorize(
-        context, command, ToolCall("bash", "Bash", {})
+        context, command, ToolCall("bash", "bash", {})
     )
     mandatory.authorize.assert_awaited_once()
     with pytest.raises(ToolError):

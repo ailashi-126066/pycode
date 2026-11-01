@@ -20,6 +20,16 @@ class Truncation:
     output_bytes: int
     partial_line: bool = False
     first_line_exceeds_limit: bool = False
+    truncated_by: Literal["lines", "bytes"] | None = None
+
+
+# Pi: formatSize.
+def format_size(size: int) -> str:
+    if size < 1024:
+        return f"{size}B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f}KB"
+    return f"{size / (1024 * 1024):.1f}MB"
 
 
 def line_count(text: str) -> int:
@@ -41,17 +51,28 @@ def truncate(
     if text.endswith("\n"):
         lines.pop()
     if mode == "head" and len(lines[0].encode()) > max_bytes:
-        return Truncation("", True, total_lines, total_bytes, 0, 0, first_line_exceeds_limit=True)
+        return Truncation(
+            "",
+            True,
+            total_lines,
+            total_bytes,
+            0,
+            0,
+            first_line_exceeds_limit=True,
+            truncated_by="bytes",
+        )
     candidates = lines if mode == "head" else reversed(lines)
     selected = []
     size = 0
     partial = False
+    truncated_by: Literal["lines", "bytes"] = "lines"
     for line in candidates:
         if len(selected) == max_lines:
             break
         encoded = line.encode("utf-8")
         needed = len(encoded) + (1 if selected else 0)
         if size + needed > max_bytes:
+            truncated_by = "bytes"
             if mode == "tail" and not selected:
                 start = len(encoded) - max_bytes
                 while start < len(encoded) and encoded[start] & 0xC0 == 0x80:
@@ -73,4 +94,5 @@ def truncate(
         len(selected),
         len(preview.encode()),
         partial,
+        truncated_by=truncated_by,
     )

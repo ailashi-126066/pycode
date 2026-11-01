@@ -1,4 +1,3 @@
-import ast
 import json
 
 import pytest
@@ -10,7 +9,7 @@ from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
 
-def search_response(root=False):
+def search_response(relative=False):
     response = chat_completion(tool=True)
     rows = []
     for line in response.body.decode().splitlines():
@@ -21,14 +20,14 @@ def search_response(root=False):
                     choice["delta"]["tool_calls"] = [
                         {
                             "index": 0,
-                            "id": "glob-first",
+                            "id": "find-first",
                             "type": "function",
                             "function": {
-                                "name": "glob",
+                                "name": "find",
                                 "arguments": json.dumps(
-                                    {"pattern": "**/*.py", "path": "/"}
-                                    if root
-                                    else {"pattern": "/workspace/**/*.py"}
+                                    {"pattern": "*.py"}
+                                    if relative
+                                    else {"pattern": "*.py", "path": "/workspace/"}
                                 ),
                             },
                         },
@@ -42,8 +41,7 @@ def search_response(root=False):
                                     {
                                         "pattern": "needle",
                                         "glob": "*.py",
-                                        "path": "/" if root else "/workspace/",
-                                        "output_mode": "content",
+                                        "path": "." if relative else "/workspace/",
                                     }
                                 ),
                             },
@@ -57,16 +55,16 @@ def search_response(root=False):
 
 
 @pytest.mark.requires_rg
-@pytest.mark.parametrize("root", [False, True])
+@pytest.mark.parametrize("relative", [False, True])
 async def test_public_agent_executes_parallel_read_searches_without_approval_and_pairs_outputs(
-    tmp_path, monkeypatch, root
+    tmp_path, monkeypatch, relative
 ):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     (tmp_path / "one.py").write_text("needle one\n", encoding="utf-8")
     (tmp_path / "nested").mkdir()
     (tmp_path / "nested/你好.py").write_text("needle two\n", encoding="utf-8")
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
-    with protocol_server([search_response(root), chat_completion()]) as (url, requests):
+    with protocol_server([search_response(relative), chat_completion()]) as (url, requests):
         session = await compose_application(config, (provider(url),)).open_session(
             "s1", create=True, refresh_models=False
         )
@@ -74,21 +72,17 @@ async def test_public_agent_executes_parallel_read_searches_without_approval_and
             result = await session.run(Message("u1", "user", "search project"))
             assert result.outcome == "completed" and len(requests) == 2
             names = {item["function"]["name"] for item in requests[0]["body"]["tools"]}
-            assert {"read_file", "write_file", "edit_file", "Bash", "grep", "glob"} <= names
+            assert {"read", "write", "edit", "bash", "grep", "find", "ls"} <= names
             outputs = {
                 message.tool_result.call_id: message.tool_result
                 for message in result.messages
                 if message.tool_result
             }
-            assert set(outputs) == {"glob-first", "grep-second"}
-            found = ast.literal_eval(outputs["glob-first"].text)
-            assert [path for path in found if path.startswith("/workspace/")] == [
-                "/workspace/nested/你好.py",
-                "/workspace/one.py",
-            ]
+            assert set(outputs) == {"find-first", "grep-second"}
+            # Pi: paths relative to the search directory.
+            assert outputs["find-first"].text == "nested/你好.py\none.py"
             assert (
-                "/workspace/one.py:\n  1: needle one" in outputs["grep-second"].text
-                and "/workspace/nested/你好.py:\n  1: needle two" in outputs["grep-second"].text
+                outputs["grep-second"].text == "nested/你好.py:1: needle two\none.py:1: needle one"
             )
             assert all(not item.is_error and item.operation_id for item in outputs.values())
             assert (

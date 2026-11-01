@@ -16,7 +16,7 @@ class IsolatedWorkerToolGate:
         self.external_gate = external_gate
 
     async def authorize(self, context, spec, call):
-        if spec.category == "read" or spec.name in {"write_file", "edit_file"}:
+        if spec.category == "read" or spec.name in {"write", "edit"}:
             return
         await self.external_gate.authorize(context, spec, call)
 
@@ -54,9 +54,9 @@ class WorkerBoundaryGate:
         if spec.source.startswith("mcp") or spec.source.startswith("hook:"):
             raise ToolError("worker_tool_denied", "Child cannot execute unisolated external tools")
         await self.constraints.authorize(context, spec, call)
-        if spec.category == "read" or spec.name in {"write_file", "edit_file"}:
+        if spec.category == "read" or spec.name in {"write", "edit"}:
             return
-        if spec.name == "Bash" or spec.source.startswith("skill:"):
+        if spec.name == "bash" or spec.source.startswith("skill:"):
             if self.sandbox is not None:
                 status = await self.sandbox.status(self.settings)
                 if not status.available or not status.enabled:

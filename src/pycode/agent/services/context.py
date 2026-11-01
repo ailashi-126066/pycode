@@ -63,6 +63,8 @@ class RunContext:
     interrupted_calls: set[str] = field(default_factory=set)
     duplicate_calls: asyncio.Condition = field(default_factory=asyncio.Condition)
     dispatched_calls: set[str] = field(default_factory=set)
+    # Calls that finished preparing (executing or settled); parallel preparation waits on it.
+    prepared_calls: set[str] = field(default_factory=set)
     team: TeamMailbox | None = None
     hooks: Hooks | None = None
     mcp_config_hash: str = ""

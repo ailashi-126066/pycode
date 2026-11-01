@@ -30,8 +30,8 @@ async def test_model_loads_instructions_at_next_boundary_and_all_tools_keep_comm
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
     await write_skill(config.user_data / "skills", body="Private instructions $ARGUMENTS")
     replies = [
-        skill_reply("read_file", {"file_path": "/skills/user/example/SKILL.md"}, "load-1"),
-        skill_reply("Bash", {"command": "echo forbidden"}, "bash-1"),
+        skill_reply("read", {"path": "/skills/user/example/SKILL.md"}, "load-1"),
+        skill_reply("bash", {"command": "echo forbidden"}, "bash-1"),
         chat_completion(),
     ]
     with protocol_server(replies) as (url, requests):
@@ -77,7 +77,7 @@ async def test_actual_compaction_and_restart_keep_exact_skill_once(tmp_path, mon
     await seed(config)
     with protocol_server(
         [
-            skill_reply("read_file", {"file_path": "/skills/user/example/SKILL.md"}, "load"),
+            skill_reply("read", {"path": "/skills/user/example/SKILL.md"}, "load"),
             chat_completion(),
             chat_completion(),
             chat_completion(),
@@ -124,10 +124,10 @@ async def test_root_branch_recreates_catalog_without_restoring_old_activation(
     await write_skill(config.user_data / "skills", body="Instructions $ARGUMENTS")
     with protocol_server(
         [
-            skill_reply("read_file", {"file_path": "/skills/user/example/SKILL.md"}, "load-old"),
+            skill_reply("read", {"path": "/skills/user/example/SKILL.md"}, "load-old"),
             chat_completion(),
             chat_completion(),
-            skill_reply("read_file", {"file_path": "/skills/user/example/SKILL.md"}, "load-new"),
+            skill_reply("read", {"path": "/skills/user/example/SKILL.md"}, "load-new"),
             chat_completion(),
         ]
     ) as (url, requests):

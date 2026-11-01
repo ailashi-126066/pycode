@@ -222,13 +222,11 @@ async def test_parallel_tool_end_does_not_clear_another_active_operation(tmp_pat
                 event(
                     number,
                     "tool_action_start",
-                    {"name": "read_file", "category": "read", "timeout": None},
+                    {"name": "read", "category": "read", "timeout": None},
                     str(number),
                 ),
             )
-        await team.activity(
-            a["agent_id"], 1, event(3, "tool_action_end", {"name": "read_file"}, "1")
-        )
+        await team.activity(a["agent_id"], 1, event(3, "tool_action_end", {"name": "read"}, "1"))
         assert set(team.records[a["agent_id"]]["active_steps"]) == {"2"}
     finally:
         await close(team)

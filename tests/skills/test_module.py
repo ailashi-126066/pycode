@@ -43,14 +43,15 @@ async def test_skill_receipts_follow_successful_result_persistence():
             recorded.append((path, entry_id))
 
     extension = SkillsToolExtension(Recorder(), SimpleNamespace(dispatch=False))
-    call = ToolCall("c", "read_file", {"file_path": "/skills/user/review/SKILL.md"})
+    call = ToolCall("c", "read", {"path": "/skills/user/review/SKILL.md"})
     context = ToolContext("s", "r", "o", "/workspace", agent_id="lead")
     await extension.before_call(context, call)
-    result = extension.prepare_result(call, ToolResult("c", "read_file", "body"))
-    assert result.details["protected_content"] is True
+    override = extension.after_tool_call(call, ToolResult("c", "read", "body"))
+    assert override == {"details": {"protected_content": True}}
+    result = ToolResult("c", "read", "body", details=override["details"])
     assert recorded == []
     await extension.after_persist(context, call, result, "entry")
-    assert recorded == [(call.arguments["file_path"], "entry")]
+    assert recorded == [(call.arguments["path"], "entry")]
 
 
 @pytest.mark.asyncio
@@ -64,10 +65,10 @@ async def test_scope_preserves_instruction_reads_but_denies_external_tools(monke
     context = ToolContext("s", "r", "o", "/workspace")
     await constraint.authorize(
         context,
-        ToolSpec("read_file", "read", {}),
-        ToolCall("c", "read_file", {"file_path": "/skills/user/x/SKILL.md"}),
+        ToolSpec("read", "read", {}),
+        ToolCall("c", "read", {"path": "/skills/user/x/SKILL.md"}),
     )
     with pytest.raises(ToolError, match="Active Skill scope"):
         await constraint.authorize(
-            context, ToolSpec("Bash", "shell", {}), ToolCall("b", "Bash", {})
+            context, ToolSpec("bash", "shell", {}), ToolCall("b", "bash", {})
         )

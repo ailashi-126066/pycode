@@ -1,9 +1,16 @@
 """Consumer-owned native boundaries for optional tool capabilities."""
 
 from contextlib import AbstractAsyncContextManager
-from typing import Protocol
+from typing import Any, Protocol, TypedDict
 
 from pycode.kernel import ToolCall, ToolContext, ToolResult
+
+
+# Pi: AfterToolCallResult. Present fields replace the executed result's fields.
+class AfterToolCallResult(TypedDict, total=False):
+    text: str
+    details: dict[str, Any]
+    is_error: bool
 
 
 class ToolExtension(Protocol):
@@ -19,7 +26,8 @@ class ToolExtension(Protocol):
         """Execution preparation, called only after the executor authorizes."""
         ...
 
-    def prepare_result(self, call: ToolCall, result: ToolResult) -> ToolResult: ...
+    # Pi: AgentLoopConfig.afterToolCall; only executed calls reach it, before persistence.
+    def after_tool_call(self, call: ToolCall, result: ToolResult) -> AfterToolCallResult | None: ...
     async def after_persist(
         self, context: ToolContext, call: ToolCall, result: ToolResult, entry_id: str
     ) -> None: ...

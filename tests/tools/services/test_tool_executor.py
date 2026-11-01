@@ -235,3 +235,17 @@ def test_registry_declarations_are_stable_after_registration():
     exposed = registry.get_spec("echo")
     exposed.input_schema.clear()
     assert registry.get_spec("echo") == original
+
+
+async def test_updates_after_the_tool_returned_are_dropped():
+    class LateUpdates(EchoTool):
+        async def execute(self, context, arguments):
+            self.progress = context.progress
+            await context.progress("during")
+            return await super().execute(context, arguments)
+
+    executor, context, tool, recorder = make_executor(LateUpdates())
+    await executor.execute(context, ToolCall("tool-1", "echo", {"value": "x"}), "tool_use")
+    await tool.progress("after")
+    updates = [e.data["text"] for e in recorder.events if e.kind == "tool_execution_update"]
+    assert updates == ["during"]

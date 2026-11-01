@@ -17,11 +17,9 @@ async def test_native_result_keeps_concrete_tool_identity():
     middleware = ToolSettlementMiddleware(publisher=None, lifecycle=None, converter=None)
     public = ToolCall("call", "mcp__server__tool", {})
     target = ToolCall("call", "mcp__server__tool", {})
-    result = await middleware.framework_result(
+    result = middleware.framework_result(
         SimpleNamespace(content="done", status="success", artifact=None),
-        None,
         public,
-        None,
         target,
         Binding(),
     )

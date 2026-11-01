@@ -92,7 +92,7 @@ async def test_bash_must_emit_output_progress_before_completion(tmp_path, monkey
     events = Recorder()
     command = "printf 'first\\n'; sleep 0.8; printf 'last\\n'"
     with protocol_server(
-        [skill_reply("Bash", {"command": command}, "bash"), chat_completion()]
+        [skill_reply("bash", {"command": command}, "bash"), chat_completion()]
     ) as (url, _):
         session = await compose_application(
             AppConfig(tmp_path, tmp_path / "data", memory_mode="off"), (provider(url),)
@@ -115,7 +115,7 @@ async def test_actual_tui_renderer_failure_must_not_close_app(tmp_path, monkeypa
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     (tmp_path / "code.txt").write_text("readable")
     with protocol_server(
-        [skill_reply("read_file", {"file_path": "/workspace/code.txt"}, "read"), chat_completion()]
+        [skill_reply("read", {"path": "/workspace/code.txt"}, "read"), chat_completion()]
     ) as (url, _):
         app = compose_application(
             AppConfig(tmp_path, tmp_path / "data", memory_mode="off"), (provider(url),)

@@ -122,7 +122,7 @@ def test_selector_model_reference_and_limits_are_loaded_without_new_credentials(
     data["tool_selector"] = {
         "model": {"provider": "openai-instance", "model_id": "configured-model"},
         "max_tools": 3,
-        "always_include": ["read_file"],
+        "always_include": ["read"],
     }
     with pytest.raises(DomainError, match="Provider configuration"):
         load_providers(write_config(tmp_path, [data]))

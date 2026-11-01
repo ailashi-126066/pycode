@@ -14,7 +14,7 @@ async def test_backend_reads_writes_edits_and_rejects_external_changes(tmp_path)
     assert isinstance(backend, BackendProtocol)
     assert (await backend.awrite("/main.py", "one\ntwo\n")).error is None
     result = await backend.aread("/main.py", 1, 1)
-    assert result.file_data["content"] == "two\n"
+    assert result.file_data["content"] == "two"
     assert result.start_line == 2
     assert (await backend.aedit("/main.py", "two", "three")).error is None
     assert (tmp_path / "main.py").read_text() == "one\nthree\n"

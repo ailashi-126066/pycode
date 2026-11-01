@@ -80,10 +80,10 @@ class SkillsProjection:
                 for previous in path:
                     if previous.message is not None:
                         for candidate in previous.message.tool_calls:
-                            if candidate.id == result.call_id and candidate.name == "read_file":
+                            if candidate.id == result.call_id and candidate.name == "read":
                                 call = candidate
                 if call is None:
-                    call = ToolCall(result.call_id, "read_file", {"file_path": item["path"]})
+                    call = ToolCall(result.call_id, "read", {"path": item["path"]})
                 replay = Message("skill-read:" + source.id, "assistant", (call,))
                 pinned.append(ProjectedEntry(source.id, (replay, original)))
             else:

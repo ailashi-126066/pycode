@@ -117,7 +117,7 @@ async def test_parallel_native_interrupt_answers_preserve_call_result_order(tmp_
     ] == ["c1", "c2"]
 
 
-async def test_completed_read_settles_while_an_earlier_call_waits_for_permission():
+async def test_later_call_is_not_prepared_while_an_earlier_call_waits_for_permission():
     _, context, model, _, journal, events = assemble(
         [parallel_reply(), AIMessage(id="done", content="done")]
     )
@@ -138,9 +138,10 @@ async def test_completed_read_settles_while_an_earlier_call_waits_for_permission
     )
     runtime = build_agent_runtime(model)
     pending = await asyncio.wait_for(runtime.run((Message("u", "user", "read"),), context), 5)
-    assert pending.outcome == "needs_input" and tool.executed == 1
-    saved = [item.tool_result for item in journal.messages if item.tool_result]
-    assert [item.call_id for item in saved] == ["c2"]
+    # Pi prepares parallel calls one by one: c2 neither runs nor starts while c1 awaits approval.
+    assert pending.outcome == "needs_input" and len(pending.pending) == 1 and tool.executed == 0
+    assert not [item for item in journal.messages if item.tool_result]
+    assert [e.data["call_id"] for e in events.events if e.kind == "tool_execution_start"] == ["c1"]
     question = pending.pending[0]
     result = await asyncio.wait_for(
         runtime.resume(context, {"operation_id": question["operation_id"], "decision": "approve"}),
@@ -148,10 +149,12 @@ async def test_completed_read_settles_while_an_earlier_call_waits_for_permission
     )
     assert result.outcome == "completed" and tool.executed == 2
     assert [item.tool_result.call_id for item in journal.messages if item.tool_result] == [
-        "c2",
         "c1",
+        "c2",
     ]
     assert len(model.requests) == 2
+    starts = [e.data["call_id"] for e in events.events if e.kind == "tool_execution_start"]
+    assert starts == ["c1", "c2"]
     for event in events.events:
         if event.kind == "tool_execution_end":
             assert event.operation_id == event.data["operation_id"]
@@ -193,7 +196,7 @@ async def test_unrelated_prior_failure_does_not_serialize_two_parallel_reads():
                 await running
 
 
-async def test_matching_failure_barrier_yields_all_permission_interrupts():
+async def test_matching_failure_barrier_asks_one_permission_at_a_time():
     previous = AIMessage(
         id="previous", content="", tool_calls=[{"id": "prior", "name": "echo", "args": {}}]
     )
@@ -223,16 +226,15 @@ async def test_matching_failure_barrier_yields_all_permission_interrupts():
         registry, validator, AskRepeatedRead(), context.events, error_boundary=execute_tool_errors
     )
     runtime = build_agent_runtime(model)
-    pending = await asyncio.wait_for(runtime.run((Message("u", "user", "read"),), context), 5)
-    assert pending.outcome == "needs_input" and len(pending.pending) == 2
-    answers = {}
-    for question in pending.pending:
-        answers[question["interrupt_id"]] = {
-            "operation_id": question["operation_id"],
-            "decision": "approve",
-        }
-    result = await asyncio.wait_for(runtime.resume(context, answers), 5)
-    assert result.outcome == "completed" and tool.executed == 3
+    result = await asyncio.wait_for(runtime.run((Message("u", "user", "read"),), context), 5)
+    questions = 0
+    while result.outcome == "needs_input":
+        assert len(result.pending) == 1
+        questions += 1
+        question = result.pending[0]
+        answer = {"operation_id": question["operation_id"], "decision": "approve"}
+        result = await asyncio.wait_for(runtime.resume(context, answer), 5)
+    assert result.outcome == "completed" and tool.executed == 3 and questions == 2
 
 
 # This suite tests execution with tool definitions already disclosed.

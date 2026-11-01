@@ -17,10 +17,10 @@ async def test_tui_skill_arguments_reload_and_new_session_do_not_leak_activation
     root = config.user_data / "skills"
     await write_skill(root)
     replies = [
-        skill_reply("read_file", {"file_path": "/skills/user/example/SKILL.md"}, "old-read"),
+        skill_reply("read", {"path": "/skills/user/example/SKILL.md"}, "old-read"),
         chat_completion(),
         chat_completion(),
-        skill_reply("read_file", {"file_path": "/skills/user/example/SKILL.md"}, "new-read"),
+        skill_reply("read", {"path": "/skills/user/example/SKILL.md"}, "new-read"),
         chat_completion(),
         chat_completion(),
     ]

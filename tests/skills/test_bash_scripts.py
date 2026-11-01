@@ -40,9 +40,9 @@ async def test_skill_script_uses_bash_and_never_registers_python_tools(
     await asyncio.to_thread(write)
     command = shlex.join([sys.executable, str(skill / "scripts/check.py")])
     replies = [
-        skill_reply("read_file", {"file_path": "/skills/user/check/SKILL.md"}, "load"),
-        skill_reply("read_file", {"file_path": "/skills/user/check/scripts/check.py"}, "source"),
-        skill_reply("Bash", {"command": command}, "run"),
+        skill_reply("read", {"path": "/skills/user/check/SKILL.md"}, "load"),
+        skill_reply("read", {"path": "/skills/user/check/scripts/check.py"}, "source"),
+        skill_reply("bash", {"command": command}, "run"),
         chat_completion(),
     ]
     with protocol_server(replies) as (url, requests):
@@ -52,7 +52,7 @@ async def test_skill_script_uses_bash_and_never_registers_python_tools(
         try:
             waiting = await session.load_skill("check")
             assert waiting.outcome == "needs_input"
-            assert waiting.pending[0]["call"]["name"] == "Bash"
+            assert waiting.pending[0]["call"]["name"] == "bash"
             assert not (tmp_path / "ran.txt").exists()
             result = await session.resume(
                 {
@@ -66,7 +66,7 @@ async def test_skill_script_uses_bash_and_never_registers_python_tools(
             for request in requests:
                 names = {item["function"]["name"] for item in request["body"]["tools"]}
                 assert "legacy_python_tool" not in names
-                assert "Bash" in names
+                assert "bash" in names
             entries = (await session.inspect())["snapshot"]["entries"]
             results = [
                 entry["message"]["tool_result"]

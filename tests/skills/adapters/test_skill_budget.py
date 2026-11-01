@@ -20,7 +20,7 @@ async def test_skill_search_bounds_native_catalogue_and_leaves_unselected_bodies
     await write_skill(config.user_data / "skills", "unselected", body="UNSELECTED PRIVATE BODY")
     replies = [
         skill_reply("SkillSearch", {"query": "selected", "limit": 1}, "search"),
-        skill_reply("read_file", {"file_path": "/skills/user/selected/SKILL.md"}, "read"),
+        skill_reply("read", {"path": "/skills/user/selected/SKILL.md"}, "read"),
         chat_completion(),
     ]
     with protocol_server(replies) as (url, requests):

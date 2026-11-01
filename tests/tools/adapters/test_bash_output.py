@@ -64,7 +64,7 @@ async def test_real_command_output_is_complete_on_disk_and_bounded_in_model_resu
         "sys.stdout.buffer.write(''.join(f'line-{i:04d}\\n' for i in range(1,8001)).encode())"
     )
     result = await executor.execute(
-        context, ToolCall("call-1", "Bash", {"command": python_command(code)}), "tool_use"
+        context, ToolCall("call-1", "bash", {"command": python_command(code)}), "tool_use"
     )
     assert not result.is_error
     assert result.exit_code == 0
@@ -85,7 +85,7 @@ async def test_command_environment_excludes_inherited_credentials(tmp_path, monk
     executor, context, journal, outputs = await assemble(tmp_path)
     try:
         result = await executor.execute(
-            context, ToolCall("call-1", "Bash", {"command": "env"}), "tool_use"
+            context, ToolCall("call-1", "bash", {"command": "env"}), "tool_use"
         )
         assert not result.is_error and result.exit_code == 0
         variables = dict(line.split("=", 1) for line in result.text.splitlines() if "=" in line)
@@ -109,7 +109,7 @@ async def test_explicit_proxy_and_agent_socket_passthrough_does_not_include_othe
     )
     try:
         result = await executor.execute(
-            context, ToolCall("call-1", "Bash", {"command": "env"}), "tool_use"
+            context, ToolCall("call-1", "bash", {"command": "env"}), "tool_use"
         )
         assert not result.is_error
         variables = dict(line.split("=", 1) for line in result.text.splitlines() if "=" in line)
@@ -124,7 +124,7 @@ async def test_evaluation_path_prefix_survives_final_child_environment_filter(
     tmp_path, monkeypatch
 ):
     _, context, journal, outputs = await assemble(tmp_path)
-    context = replace(context, call_id="path-prefix", tool_name="Bash")
+    context = replace(context, call_id="path-prefix", tool_name="bash")
     prefix = tmp_path / "evaluation-python-bin"
     config = AppConfig(tmp_path, tmp_path / "state", bash_path_prefix=(str(prefix),))
     bash = compose_application(config)._modules.sandbox.bash(outputs)
@@ -150,7 +150,7 @@ async def test_cancelled_command_cannot_write_after_owner_returns(tmp_path):
     )
     running = asyncio.create_task(
         executor.execute(
-            context, ToolCall("call-1", "Bash", {"command": python_command(code)}), "tool_use"
+            context, ToolCall("call-1", "bash", {"command": python_command(code)}), "tool_use"
         )
     )
     try:
@@ -182,7 +182,7 @@ async def test_timeout_stops_owned_command_and_preserves_known_output(tmp_path):
         context,
         ToolCall(
             "call-1",
-            "Bash",
+            "bash",
             {
                 "command": python_command(code),
                 "timeout": 0.3,
@@ -209,7 +209,7 @@ async def test_timeout_kills_descendant_even_after_original_process_exits(tmp_pa
         context,
         ToolCall(
             "call-1",
-            "Bash",
+            "bash",
             {
                 "command": python_command(parent),
                 "timeout": 0.4,
@@ -240,7 +240,7 @@ async def test_descendant_output_after_parent_exit_is_not_cut_off_by_fixed_grace
         context,
         ToolCall(
             "call-1",
-            "Bash",
+            "bash",
             {
                 "command": python_command(parent),
                 "timeout": 3,

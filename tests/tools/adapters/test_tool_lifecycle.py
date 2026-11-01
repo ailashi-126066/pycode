@@ -222,3 +222,40 @@ async def test_cancelled_serial_batch_interrupts_running_call_and_abandons_the_r
 
 # This suite tests execution with tool definitions already disclosed.
 pytestmark = pytest.mark.usefixtures("disclosed_tools")
+
+
+async def test_after_tool_call_overrides_executed_results_before_persistence():
+    from pycode.agent.module import AgentModule
+    from pycode.app.composition.bindings import build_runtime_bindings
+    from pycode.models.module import ModelsModule
+    from pycode.tools.module import ToolsModule
+
+    runtime, context, _, _, journal, recorder = assemble(
+        [reply(("ok", "echo"), ("missing", "nope")), AIMessage(id="done", content="done")]
+    )
+    seen = []
+
+    class Rewrite:
+        async def validate_call(self, current, call):
+            return None
+
+        async def before_call(self, current, call):
+            return None
+
+        def after_tool_call(self, call, result):
+            seen.append(call.id)
+            return {"text": "rewritten", "is_error": True}
+
+        async def after_persist(self, current, call, result, entry_id):
+            return None
+
+    runtime.bindings = build_runtime_bindings(
+        agent=AgentModule(), models=ModelsModule, tools=ToolsModule(), tool_extensions=(Rewrite(),)
+    )
+    await runtime.run((Message("u", "user", "go"),), context)
+    # Only the executed call reaches the hook; the rejection keeps its own result.
+    assert seen == ["ok"]
+    saved = {m.tool_result.call_id: m.tool_result for m in journal.messages if m.tool_result}
+    assert (saved["ok"].text, saved["ok"].is_error) == ("rewritten", True)
+    assert saved["missing"].error_code == "unknown_tool"
+    assert outcomes(recorder)["ok"] == "error"

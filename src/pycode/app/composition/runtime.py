@@ -50,10 +50,30 @@ async def build_runtime(
             else ()
         )
         supplied = (*session.tools, *memory_tools, *team_tools)
+        workspace_files = modules.tools.backend(
+            config.workspace,
+            read_only=config.read_only,
+            excluded_roots=(config.user_data,),
+            write_roots=config.sandbox.write_roots,
+        )
+        routes: dict[str, object] = {"/workspace/": workspace_files}
+        if session.plan_backend is not None:
+            routes["/plans/"] = session.plan_backend
+        if session.history_store is not None:
+            routes["/large_tool_results/"] = modules.tools.artifacts(outputs, session.history_store)
+            routes["/conversation_history/"] = modules.sessions.history_backend(
+                session.history_store
+            )
+        # Feature mounts are read-only for the builtin tools unless listed in path_utils.WRITABLE.
+        if skills_run:
+            routes.update(skills_run.routes)
+        # One backend serves the builtin file tools and the framework's SkillsMiddleware.
+        backend = modules.tools.composite(routes)
         enabled = (
             (
                 *supplied,
                 *(skills_run.tools if skills_run else ()),
+                *modules.tools.builtin_tools(backend),
                 *modules.tools.default_tools(
                     outputs, modules.tools.question_prompt() if config.agent_id == "lead" else None
                 ),
@@ -132,12 +152,6 @@ async def build_runtime(
             if session.history_store is not None
             else None
         )
-        workspace_files = modules.tools.backend(
-            config.workspace,
-            read_only=config.read_only,
-            excluded_roots=(config.user_data,),
-            write_roots=config.sandbox.write_roots,
-        )
         owner = await modules.models.owner(
             provider,
             session.consumers,
@@ -205,17 +219,7 @@ async def build_runtime(
         tool_extensions = (
             (skills_run.tool_extension,) if skills_run and skills_run.tool_extension else ()
         )
-        routes: dict[str, object] = {"/workspace/": workspace_files}
-        if session.plan_backend is not None:
-            routes["/plans/"] = session.plan_backend
-        if session.history_store is not None:
-            routes["/large_tool_results/"] = modules.tools.artifacts(outputs, session.history_store)
-            routes["/conversation_history/"] = modules.sessions.history_backend(
-                session.history_store
-            )
         extension = skills_run.extension if skills_run else None
-        if skills_run:
-            routes.update(skills_run.routes)
         instructions, instruction_backend = modules.context.instructions(
             config.workspace, config.user_data, trusted=config.project_trusted
         )
@@ -247,8 +251,7 @@ async def build_runtime(
             if session.history_store
             else None,
             checkpointer=checkpointer,
-            backend=modules.tools.composite(routes),
-            read_only=config.read_only,
+            backend=backend,
             instructions=instructions,
             instruction_backend=instruction_backend,
         )

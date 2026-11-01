@@ -4,7 +4,7 @@ from pathlib import Path
 
 from deepagents.backends.protocol import GlobResult, GrepResult
 
-from pycode.kernel import MAX_BYTES, MAX_LINES, ToolError, ToolResult
+from pycode.kernel import MAX_BYTES, MAX_LINES, ToolError
 
 
 class RipgrepMatches:
@@ -66,11 +66,8 @@ class RipgrepMatches:
     def content(self, piece, ending):
         body = piece.rstrip(b"\r")
         if body:
-            while self.trailing_cr:
-                amount = min(self.trailing_cr, 8192)
-                yield self.remember(b"\r" * amount)
-                self.trailing_cr -= amount
-            yield self.remember(body)
+            self.remember(b"\r" * self.trailing_cr)
+            self.remember(body)
             self.trailing_cr = len(piece) - len(body)
         else:
             self.trailing_cr += len(piece)
@@ -83,7 +80,6 @@ class RipgrepMatches:
             self.truncated = True
         if len(self.matches) < self.limit:
             self.text.extend(piece[:remaining])
-        return piece
 
     def feed(self, data):
         offset = 0
@@ -91,7 +87,7 @@ class RipgrepMatches:
             if self.phase == "text":
                 end = data.find(b"\n", offset)
                 stop = len(data) if end < 0 else end
-                yield from self.content(data[offset:stop], end >= 0)
+                self.content(data[offset:stop], end >= 0)
                 offset = stop + 1
                 if end >= 0:
                     self.finish_match()
@@ -107,11 +103,7 @@ class RipgrepMatches:
                 continue
             if self.phase == "path":
                 self.filename()
-                if self.count:
-                    yield b"\n"
-                prefix = ("/workspace" + self.require_path()).encode()
                 if self.files:
-                    yield prefix
                     self.finish_match()
                 else:
                     self.phase = "line"
@@ -123,7 +115,6 @@ class RipgrepMatches:
                 if self.line < 1:
                     raise ToolError("search_incomplete", "Invalid rg line number")
                 self.header.clear()
-                yield ("/workspace" + self.require_path() + ":" + str(self.line) + ":").encode()
                 self.phase = "text"
 
     def finish(self):
@@ -142,53 +133,3 @@ class RipgrepMatches:
                 truncation_reason="unreadable" if error else "budget" if truncated else None,
             )
         return GrepResult(error=error, matches=self.matches, truncated=truncated)
-
-
-class SearchOutput:
-    def __init__(self, invocation):
-        self.invocation = invocation
-        self.buffer = bytearray()
-        self.writer = None
-
-    async def offload(self):
-        if self.writer is not None or self.invocation is None or self.invocation.outputs is None:
-            return
-        self.writer = await self.invocation.outputs.begin(self.invocation.context, "head")
-        if self.buffer:
-            await self.writer.append(bytes(self.buffer))
-            self.buffer.clear()
-
-    async def append(self, piece):
-        if self.writer is None and len(self.buffer) + len(piece) > MAX_BYTES - 512:
-            await self.offload()
-        if self.writer is None:
-            if len(self.buffer) < MAX_BYTES:
-                self.buffer.extend(piece[: MAX_BYTES - len(self.buffer)])
-            return
-        self.buffer.extend(piece)
-        if len(self.buffer) >= 64 * 1024:
-            await self.writer.append(bytes(self.buffer))
-            self.buffer.clear()
-
-    async def finish(self, parser, error):
-        if parser.truncated:
-            await self.offload()
-        if self.writer is None:
-            return
-        if self.buffer:
-            await self.writer.append(bytes(self.buffer))
-            self.buffer.clear()
-        context = self.invocation.context
-        self.invocation.result = await self.writer.finish(
-            ToolResult(
-                context.call_id,
-                context.tool_name,
-                "",
-                is_error=error is not None,
-                error_code="search_incomplete" if error else None,
-            )
-        )
-
-    async def abort(self):
-        if self.writer is not None:
-            await self.writer.abort()

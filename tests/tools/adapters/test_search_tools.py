@@ -71,15 +71,6 @@ async def test_search_rejects_escape_invalid_regex_and_prunes_state_and_owned_da
     assert (await backend.aglob("../*")).error
 
 
-async def test_grep_large_result_is_stored_and_readable_beyond_native_preview(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
-    from tests.tools.adapters.test_native_grep_output import run_large_grep
-
-    await run_large_grep(tmp_path)
-
-
 async def test_rg_avoids_python_regex_backtracking_and_is_cancellable(tmp_path):
     root = prepare(tmp_path)
     target = root / "slow.txt"

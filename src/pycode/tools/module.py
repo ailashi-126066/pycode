@@ -25,6 +25,12 @@ from pycode.snapshot import SnapshotStore
 from pycode.tools.adapters.artifacts_backend import ToolArtifactsBackend
 from pycode.tools.adapters.ask_user import AskUserQuestion
 from pycode.tools.adapters.backend import PycodeBackend
+from pycode.tools.adapters.builtin.edit import Edit
+from pycode.tools.adapters.builtin.find import Find
+from pycode.tools.adapters.builtin.grep import Grep
+from pycode.tools.adapters.builtin.ls import Ls
+from pycode.tools.adapters.builtin.read import Read
+from pycode.tools.adapters.builtin.write import Write
 from pycode.tools.adapters.discovery import ToolDiscovery
 from pycode.tools.adapters.framework_tool import make_framework_tool
 from pycode.tools.adapters.output_store import FileToolOutputStore
@@ -108,6 +114,15 @@ class ToolsModule:
         )
 
     @staticmethod
+    def read_only_mount(root: Path) -> PycodeBackend:
+        """A directory the builtin tools can read under a virtual prefix (/skills/, /memory/).
+
+        Mounts outside path_utils.WRITABLE never accept write/edit, and reads run in this
+        process, so the sandbox does not need access to the directory.
+        """
+        return PycodeBackend(root, read_only=True, empty_missing_root=True)
+
+    @staticmethod
     def artifacts(outputs: ToolOutputStore, history: HistoryJournal) -> BackendProtocol:
         return ToolArtifactsBackend(outputs, history)
 
@@ -121,6 +136,18 @@ class ToolsModule:
                 raise TypeError(f"Invalid framework backend for route {prefix}")
             backends[prefix] = backend
         return CompositeBackend(default=StateBackend(), routes=backends)
+
+    @staticmethod
+    def builtin_tools(backend: CompositeBackend) -> tuple[ExecutableTool, ...]:
+        """Pi's file tools; bash is owned by the sandbox feature."""
+        return (
+            Read(backend),
+            Write(backend),
+            Edit(backend),
+            Grep(backend),
+            Find(backend),
+            Ls(backend),
+        )
 
     @staticmethod
     def question_prompt() -> QuestionPrompt:

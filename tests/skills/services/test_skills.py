@@ -251,7 +251,7 @@ class ParentGate:
 
     async def authorize(self, context, spec, call):
         self.calls.append(spec.name)
-        if spec.name == "Bash":
+        if spec.name == "bash":
             raise ToolError("approval_required", "Parent policy still applies")
 
 
@@ -265,18 +265,18 @@ async def test_allowed_tools_intersect_and_cannot_bypass_parent_gate(tmp_path):
         catalog = FileSkillCatalog((("user", path.parent.parent),))
         await read_skill(store, catalog, "second")
         with pytest.raises(ToolError) as error:
-            await gate.authorize(None, ToolSpec("Bash", "command", {}), ToolCall("b1", "Bash", {}))
+            await gate.authorize(None, ToolSpec("bash", "command", {}), ToolCall("b1", "bash", {}))
         assert error.value.code == "approval_required"
         await read_skill(store, catalog, "example")
         with pytest.raises(ToolError) as error:
-            await gate.authorize(None, ToolSpec("Bash", "command", {}), ToolCall("b2", "Bash", {}))
-        assert error.value.code == "skill_tool_not_allowed" and parent.calls == ["Bash"]
+            await gate.authorize(None, ToolSpec("bash", "command", {}), ToolCall("b2", "bash", {}))
+        assert error.value.code == "skill_tool_not_allowed" and parent.calls == ["bash"]
         await gate.authorize(
             None,
-            ToolSpec("read_file", "read", {}),
-            ToolCall("r1", "read_file", {"file_path": "/workspace/test"}),
+            ToolSpec("read", "read", {}),
+            ToolCall("r1", "read", {"path": "/workspace/test"}),
         )
-        assert parent.calls == ["Bash", "read_file"]
+        assert parent.calls == ["bash", "read"]
     finally:
         await store.aclose()
 
@@ -308,5 +308,28 @@ async def test_project_sources_require_explicit_trust_and_request_does_not_activ
         assert all(
             item["name"] != "review" for item in active_skills((await store.snapshot()).entries)
         )
+    finally:
+        await store.aclose()
+
+
+async def test_disable_model_invocation_skill_is_only_reachable_by_command(tmp_path):
+    hidden = tmp_path / "skills" / "manual" / "SKILL.md"
+    hidden.parent.mkdir(parents=True)
+    hidden.write_text(
+        "---\nname: manual\ndescription: Manual task\ndisable-model-invocation: true\n---\nBody"
+    )
+    await write_skill(tmp_path / "skills")
+    store = store_for(tmp_path)
+    await store.append_message(Message("u1", "user", "Task"))
+    module = SkillsModule(backend_factory=ToolsModule.backend)
+    session = module.open_session(
+        SkillsSettings(tmp_path, tmp_path), store, catalog_write_guard=SessionCatalogWriteGuard()
+    )
+    try:
+        run = await session.prepare_run()
+        listing = run.routes["/skills/user/"].ls("/")
+        assert [entry["path"] for entry in listing.entries] == ["/example"]
+        assert [item["name"] for item in await session.service.search("task")] == ["example"]
+        assert (await session.service.load("manual"))["path"] == "/skills/user/manual/SKILL.md"
     finally:
         await store.aclose()

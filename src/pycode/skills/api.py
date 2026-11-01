@@ -79,6 +79,8 @@ class Skills:
         terms = query.casefold().split()
         found = []
         for entry in (await self.index())["entries"]:
+            if entry["disable_model_invocation"]:
+                continue
             text = (entry["name"] + " " + entry["description"]).casefold()
             score = sum(term in text for term in terms)
             if not terms or score:

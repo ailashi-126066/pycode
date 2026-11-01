@@ -66,8 +66,8 @@ async def test_handoff_after_tool_keeps_disclosure_and_does_not_repeat_tool(tmp_
     held = chat_completion()
     held.started, held.release = threading.Event(), threading.Event()
     replies = [
-        skill_reply("ToolSearch", {"query": "read_file"}, "search"),
-        skill_reply("read_file", {"file_path": "/workspace/code.py"}, "read"),
+        skill_reply("ToolSearch", {"query": "read"}, "search"),
+        skill_reply("read", {"path": "/workspace/code.py"}, "read"),
         held,
         chat_completion(),
     ]
@@ -91,9 +91,9 @@ async def test_handoff_after_tool_keeps_disclosure_and_does_not_repeat_tool(tmp_
                 for e in snapshot.entries
                 if e.message and e.message.tool_result
             ]
-            assert [result.name for result in results] == ["ToolSearch", "read_file"]
+            assert [result.name for result in results] == ["ToolSearch", "read"]
             assert "unique-task-code" in str(requests[-1]["body"]["messages"])
-            assert "read_file" in str(requests[-1]["body"]["tools"])
+            assert "read" in str(requests[-1]["body"]["tools"])
             assert len(requests) == 4
         finally:
             held.release.set()
@@ -124,10 +124,8 @@ async def test_cancelled_write_is_recorded_and_not_replayed_by_replacement(tmp_p
 
     monkeypatch.setattr(PycodeBackend, "awrite", write_then_wait)
     replies = [
-        skill_reply("ToolSearch", {"query": "write_file"}, "search"),
-        skill_reply(
-            "write_file", {"file_path": "/workspace/new.py", "content": "changed\n"}, "write"
-        ),
+        skill_reply("ToolSearch", {"query": "write"}, "search"),
+        skill_reply("write", {"path": "/workspace/new.py", "content": "changed\n"}, "write"),
         chat_completion(),
     ]
     with protocol_server(replies) as (url, _):
@@ -158,9 +156,7 @@ async def test_cancelled_write_is_recorded_and_not_replayed_by_replacement(tmp_p
             results = [
                 e.message.tool_result
                 for e in snapshot.entries
-                if e.message
-                and e.message.tool_result
-                and e.message.tool_result.name == "write_file"
+                if e.message and e.message.tool_result and e.message.tool_result.name == "write"
             ]
             assert len(results) == 1 and results[0].error_code == "tool_interrupted"
         finally:
@@ -182,14 +178,13 @@ async def test_handoff_keeps_file_read_version_for_later_edit(tmp_path, monkeypa
     held.started, held.release = threading.Event(), threading.Event()
     replies = [
         skill_reply("ToolSearch", {"query": "read_file edit_file", "limit": 2}, "search"),
-        skill_reply("read_file", {"file_path": "/workspace/base.py"}, "read"),
+        skill_reply("read", {"path": "/workspace/base.py"}, "read"),
         held,
         skill_reply(
-            "edit_file",
+            "edit",
             {
-                "file_path": "/workspace/base.py",
-                "old_string": "value = 1",
-                "new_string": "value = 2",
+                "path": "/workspace/base.py",
+                "edits": [{"oldText": "value = 1", "newText": "value = 2"}],
             },
             "edit",
         ),
@@ -317,10 +312,8 @@ async def test_handoff_publishes_completed_parallel_result_before_dropping_queue
                             "id": name,
                             "type": "function",
                             "function": {
-                                "name": "read_file",
-                                "arguments": json.dumps(
-                                    {"file_path": "/workspace/" + name + ".py"}
-                                ),
+                                "name": "read",
+                                "arguments": json.dumps({"path": "/workspace/" + name + ".py"}),
                             },
                         }
                         for index, name in enumerate(("slow", "fast"))
@@ -330,7 +323,7 @@ async def test_handoff_publishes_completed_parallel_result_before_dropping_queue
     parallel.body = "\n\n".join(blocks).encode()
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
     with protocol_server(
-        [skill_reply("ToolSearch", {"query": "read_file"}, "search"), parallel, chat_completion()]
+        [skill_reply("ToolSearch", {"query": "read"}, "search"), parallel, chat_completion()]
     ) as (url, _):
         selected = provider(url)
         lead = await compose_application(config, (selected,)).open_session(

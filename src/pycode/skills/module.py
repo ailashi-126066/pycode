@@ -58,7 +58,11 @@ class SkillsSession:
         index = await self.catalog.scan()
         indexed = await self.service.refresh(index)
         paths = tuple(self.catalog.virtual_path(entry) for entry in index.entries)
-        selection = SkillSelection(indexed["dispatch"], paths)
+        invocable_by_command = (entry for entry in index.entries if entry.disable_model_invocation)
+        hidden = tuple(
+            self.catalog.virtual_path(entry) for entry in (*invocable_by_command, *index.shadowed)
+        )
+        selection = SkillSelection(indexed["dispatch"], paths, hidden=hidden)
         for saved in SessionTree(snapshot.index).path(snapshot.leaf_id):
             if saved.message is not None and saved.message.role == "user":
                 selected_path = saved.message.provider_metadata.get("skill_request", {}).get("path")
@@ -92,6 +96,7 @@ class SkillsModule:
         for source, root in self._roots(settings):
             if root.is_dir():
                 prefix = "/skills/" + source + "/"
+                # The generic read-only mount, plus Skill version checks and listing filters.
                 routes[prefix] = SkillBackend(
                     self.backend_factory(root, read_only=True), prefix=prefix, selection=selection
                 )

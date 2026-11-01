@@ -10,15 +10,19 @@ ExecutionMode = Literal["parallel", "sequential"]
 ToolCategory = Literal["read", "write", "command", "external"]
 # Borrowed from pi-durable: "safe" calls rerun after a restart instead of settling as interrupted.
 Replay = Literal["never", "safe"]
+# Pi: ToolDefinition.exposure. Direct tools are declared on every request; deferred ones
+# become callable after ToolSearch loads them.
+Exposure = Literal["direct", "deferred"]
 
 
+# Pi: AgentTool (label, promptSnippet, promptGuidelines, executionMode default "parallel").
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
     description: str
     input_schema: dict[str, Any]
     category: ToolCategory = "external"
-    execution_mode: ExecutionMode = "sequential"
+    execution_mode: ExecutionMode = "parallel"
     source: str = "builtin"
     implementation_hash: str | None = None
     waits_for_user: bool = False
@@ -27,6 +31,12 @@ class ToolSpec:
     approval_details: dict[str, Any] = field(default_factory=dict)
     # None resolves to "safe" for read tools and "never" for everything else.
     replay: Replay | None = None
+    # None resolves to the tool name.
+    label: str | None = None
+    exposure: Exposure = "deferred"
+    # One line in the system prompt's tool list; tools without a snippet are not listed.
+    prompt_snippet: str | None = None
+    prompt_guidelines: tuple[str, ...] = ()
     # Pi: AgentTool.prepareArguments, applied by prepare_tool_call before schema validation.
     prepare_arguments: Callable[[dict[str, Any]], dict[str, Any]] | None = field(
         default=None, compare=False, repr=False, metadata={"serialize": False}
@@ -35,6 +45,10 @@ class ToolSpec:
     def __post_init__(self) -> None:
         if self.replay is None:
             object.__setattr__(self, "replay", "safe" if self.category == "read" else "never")
+        if self.label is None:
+            object.__setattr__(self, "label", self.name)
+        # Specs restored from checkpoints carry lists.
+        object.__setattr__(self, "prompt_guidelines", tuple(self.prompt_guidelines))
 
 
 @dataclass(frozen=True)

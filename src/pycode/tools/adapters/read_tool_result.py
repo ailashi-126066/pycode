@@ -9,7 +9,7 @@ class ReadToolResult:
         name="ReadToolResult",
         description="Read a bounded range of a saved tool result. Offsets are 1-based lines.",
         category="read",
-        execution_mode="parallel",
+        exposure="direct",
         input_schema={
             "type": "object",
             "properties": {

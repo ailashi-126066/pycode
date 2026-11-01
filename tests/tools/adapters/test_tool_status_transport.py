@@ -14,7 +14,7 @@ async def test_nonzero_command_exit_is_visible_in_real_openai_tool_content(tmp_p
     response = chat_completion(tool=True)
     response.body = (
         response.body.decode()
-        .replace('"name": "echo"', '"name": "Bash"')
+        .replace('"name": "echo"', '"name": "bash"')
         .replace(
             json.dumps('{"value":"wire"}'),
             json.dumps(json.dumps({"command": "printf 'ordinary output'; exit 7"})),

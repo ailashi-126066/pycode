@@ -18,6 +18,8 @@ class SkillEntry:
     context: Literal["full", "recent", "none"] = "full"
     model: str | None = None
     resource_hash: str | None = None
+    # Pi: disable-model-invocation; only the /skill command loads such a skill.
+    disable_model_invocation: bool = False
 
 
 @dataclass(frozen=True)
@@ -25,12 +27,15 @@ class SkillDocument:
     entry: SkillEntry
     raw: str
     body: str
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class SkillIndex:
     entries: tuple[SkillEntry, ...]
     issues: tuple[str, ...] = ()
+    # Later skills whose name was already taken.
+    shadowed: tuple[SkillEntry, ...] = ()
 
 
 def skill_entry(data):
@@ -76,6 +81,8 @@ class SkillSelection:
     allowed_paths: tuple[str, ...]
     paths: tuple[str, ...] = ()
     revision: int = 0
+    # SKILL.md paths kept out of SkillsMiddleware's listing.
+    hidden: tuple[str, ...] = ()
 
     def select(self, paths):
         selected = []
@@ -93,9 +100,11 @@ class SkillSelection:
             self.revision += 1
 
     def visible(self, directory):
+        prefix = directory.rstrip("/") + "/"
+        if prefix + "SKILL.md" in self.hidden:
+            return False
         if not self.dispatch:
             return True
-        prefix = directory.rstrip("/") + "/"
         for path in self.paths:
             if path.startswith(prefix):
                 return True

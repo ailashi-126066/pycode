@@ -255,7 +255,7 @@ class ToolHookBridge:
                 event_name,
                 call.name,
                 clone_value(call.arguments),
-                str(call.arguments.get("file_path", call.arguments.get("path", ""))),
+                str(call.arguments.get("path", "")),
                 result.text if result is not None else "",
                 result.error_code or "" if result is not None else "",
             )

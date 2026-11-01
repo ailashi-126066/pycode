@@ -10,6 +10,8 @@
 # Source: MewCode local skills/loader.py; SHA-256:
 # 5888d912116f3a08cca7d75e54234299d6d2e8aa2789ca42c017d804390cc9b3
 # Adaptation: ordered trusted roots, recursive discovery, hashes and no resource imports.
+# Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/skills.ts
+# (frontmatter validation, first-found collisions, disable-model-invocation).
 
 import hashlib
 import os
@@ -39,15 +41,19 @@ def parse_skill(raw: str, path: str, source: str, *, content_hash=None) -> Skill
         raise ToolError("invalid_skill", "Skill frontmatter is invalid YAML") from error
     if not isinstance(meta, dict):
         raise ToolError("invalid_skill", "Skill frontmatter must be a mapping")
-    name, description = meta.get("name"), meta.get("description")
-    if (
-        not isinstance(name, str)
-        or len(name) > 64
-        or re.fullmatch(r"[a-z][a-z0-9-]*", name) is None
-    ):
-        raise ToolError("invalid_skill", "Skill name must be lowercase letters, digits and hyphens")
-    if not isinstance(description, str) or not description.strip() or len(description) > 2048:
-        raise ToolError("invalid_skill", "Skill description must be a nonempty string")
+    description = meta.get("description")
+    # Pi: a missing description is the only frontmatter problem that skips the skill.
+    if not isinstance(description, str) or not description.strip():
+        raise ToolError("invalid_skill", "description is required")
+    name = meta.get("name")
+    if not isinstance(name, str) or not name:
+        # Pi: fall back to the parent directory name.
+        name = Path(path).parent.name
+    warnings = validate_name(name)
+    if len(description) > MAX_DESCRIPTION_LENGTH:
+        warnings.append(
+            f"description exceeds {MAX_DESCRIPTION_LENGTH} characters ({len(description)})"
+        )
     mode, context = meta.get("mode", "inline"), meta.get("context", "full")
     if mode == "fork":
         raise ToolError(
@@ -81,8 +87,28 @@ def parse_skill(raw: str, path: str, source: str, *, content_hash=None) -> Skill
         tuple(allowed),
         cast(Literal["full", "recent", "none"], context),
         model,
+        disable_model_invocation=meta.get("disable-model-invocation") is True,
     )
-    return SkillDocument(entry, raw, "".join(lines[closing + 1 :]).lstrip("\n"))
+    body = "".join(lines[closing + 1 :]).lstrip("\n")
+    return SkillDocument(entry, raw, body, tuple(warnings))
+
+
+MAX_NAME_LENGTH = 64
+MAX_DESCRIPTION_LENGTH = 1024
+
+
+# Pi: validateName. Problems are warnings; the skill still loads.
+def validate_name(name: str) -> list[str]:
+    errors = []
+    if len(name) > MAX_NAME_LENGTH:
+        errors.append(f"name exceeds {MAX_NAME_LENGTH} characters ({len(name)})")
+    if re.fullmatch(r"[a-z0-9-]+", name) is None:
+        errors.append("name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)")
+    if name.startswith("-") or name.endswith("-"):
+        errors.append("name must not start or end with a hyphen")
+    if "--" in name:
+        errors.append("name must not contain consecutive hyphens")
+    return errors
 
 
 MAX_SKILL_BYTES = 256 * 1024
@@ -111,6 +137,9 @@ class FileSkillCatalog:
         if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_SKILL_BYTES:
             raise ToolError("invalid_skill", "Skill must be bounded UTF-8 text")
         document = parse_skill(content, "SKILL.md", scope)
+        # The name becomes a directory, so authoring accepts no frontmatter warnings.
+        if document.warnings:
+            raise ToolError("invalid_skill", "; ".join(document.warnings))
         if name != document.entry.name:
             raise ToolError("invalid_skill", "Skill name must match its frontmatter")
         root = next((root for source, root in self._roots if source == scope), None)
@@ -204,7 +233,7 @@ class FileSkillCatalog:
 
     async def scan(self):
         def scan():
-            entries, issues = {}, []
+            entries, issues, shadowed = {}, [], []
             for source, root in self._roots:
                 if not root.exists():
                     continue
@@ -221,15 +250,23 @@ class FileSkillCatalog:
                     if "SKILL.md" not in files:
                         continue
                     path = parent / "SKILL.md"
+                    location = source + ": " + str(path.relative_to(root))
                     try:
                         document = self.document(path, source)
                     except ToolError as error:
-                        issues.append(
-                            source + ": " + str(path.relative_to(root)) + ": " + error.code
-                        )
+                        issues.append(location + ": " + error.code)
                         continue
-                    entries[document.entry.name] = document.entry
-            return SkillIndex(tuple(entries[name] for name in sorted(entries)), tuple(issues))
+                    issues.extend(location + ": " + warning for warning in document.warnings)
+                    name = document.entry.name
+                    if name in entries:
+                        # Pi: the first skill found keeps the name.
+                        issues.append(location + f': name "{name}" collision')
+                        shadowed.append(document.entry)
+                        continue
+                    entries[name] = document.entry
+            return SkillIndex(
+                tuple(entries[name] for name in sorted(entries)), tuple(issues), tuple(shadowed)
+            )
 
         return await self.io(scan)
 

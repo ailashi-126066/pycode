@@ -65,8 +65,7 @@ class PlanService:
         if state.mode == "planning":
             if spec.category == "read":
                 return True
-            path = call.arguments.get("file_path", "")
-            if call.name in {"write_file", "edit_file"} and path == state.virtual_path:
+            if call.name in {"write", "edit"} and call.arguments["path"] == state.virtual_path:
                 return True
             raise ToolError(
                 "plan_read_only",
@@ -90,10 +89,7 @@ class PlanService:
                 "plan_changed",
                 "Plan Markdown changed after approval; review and approve its new contents",
             )
-        if (
-            call.name in {"write_file", "edit_file"}
-            and call.arguments.get("file_path") == state.virtual_path
-        ):
+        if call.name in {"write", "edit"} and call.arguments["path"] == state.virtual_path:
             raise ToolError(
                 "approved_plan_read_only", "Approved Plan Markdown is fixed during execution"
             )

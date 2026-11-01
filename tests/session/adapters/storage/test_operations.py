@@ -23,9 +23,7 @@ async def test_restart_pairs_unfinished_call_by_whether_it_started(tmp_path, sta
         Message(
             "a1",
             "assistant",
-            content=(
-                ToolCall("c1", "write_file", {"file_path": "/workspace/new.txt", "content": "new"}),
-            ),
+            content=(ToolCall("c1", "write", {"path": "/workspace/new.txt", "content": "new"}),),
         )
     )
     if started:

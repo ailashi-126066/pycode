@@ -51,8 +51,8 @@ async def test_spawn_readonly_has_own_history_and_cannot_write(
                 return skill_reply("wait_agents", {}, "wait")
             return finished("parent finished")
         if step == 0:
-            name = "write_file" if write_attempt else "read_file"
-            arguments = {"file_path": "/workspace/code.py"}
+            name = "write" if write_attempt else "read"
+            arguments = {"path": "/workspace/code.py"}
             if write_attempt:
                 arguments["content"] = "bad"
             return skill_reply(name, arguments, "child-tool")
@@ -72,7 +72,7 @@ async def test_spawn_readonly_has_own_history_and_cannot_write(
             assert (await session.usage())["team"]["request_count"] == 2
             assert any(e["type"] == "team_agent" for e in state["snapshot"]["entries"])
             child_requests = [r for r in requests if "spawn_agent" not in str(r["body"]["tools"])]
-            assert all("write_file" not in str(r["body"]["tools"]) for r in child_requests)
+            assert all("write" not in str(r["body"]["tools"]) for r in child_requests)
         finally:
             await session.aclose()
     child_history = (
@@ -104,8 +104,8 @@ async def test_worker_native_file_write_keeps_lead_unchanged_and_history_retaine
     with protocol_server(
         [
             skill_reply(
-                "write_file",
-                {"file_path": "/workspace/new.py", "content": "worker change\n"},
+                "write",
+                {"path": "/workspace/new.py", "content": "worker change\n"},
                 "write",
             ),
             finished("created file; tests not run"),
@@ -158,8 +158,8 @@ async def test_worker_review_merge_requires_live_user_approval_then_cleans_workt
             return finished("merged")
         if step == 0:
             return skill_reply(
-                "write_file",
-                {"file_path": "/workspace/new.py", "content": "worker code\n"},
+                "write",
+                {"path": "/workspace/new.py", "content": "worker code\n"},
                 "write",
             )
         return finished("worker done")

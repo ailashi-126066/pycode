@@ -6,7 +6,7 @@ from langchain_core.runnables import RunnableLambda
 
 from pycode.agent.adapters.task_output import TASK_OUTPUT_PROMPT, visible_partial
 from pycode.context import empty_tasks, task_context_text
-from pycode.kernel import EntryDraft, ToolError, estimate_text, plain_data
+from pycode.kernel import EntryDraft, estimate_text, plain_data
 
 
 async def prepare_model_boundary(request, bindings):
@@ -52,35 +52,22 @@ async def filter_model_tools(request):
             and context.plans.state.mode != "completed"
         )
     )
-    if context.read_only or planning:
-        readonly_native = {
-            "ls",
-            "read_file",
-            "glob",
-            "grep",
-            "task",
-        }
-        permitted = []
-        for tool in request.tools:
-            if isinstance(tool, dict):
-                continue
-            try:
-                category = context.registry.get_spec(tool.name).category
-            except ToolError:
-                category = "read" if tool.name in readonly_native else "external"
-            if (
-                category == "read"
-                or planning
-                and not context.read_only
-                and tool.name
-                in {
-                    "write_file",
-                    "edit_file",
-                }
-            ):
+    # Only registered tools reach the model; Deep Agents' own tools (read_file) stay hidden.
+    specs = {spec.name: spec for spec in context.registry.list_specs()}
+    permitted = []
+    for tool in request.tools:
+        if isinstance(tool, dict):
+            if not (context.read_only or planning):
                 permitted.append(tool)
-        request = request.override(tools=permitted)
-    return request
+        elif tool.name in specs and (
+            not (context.read_only or planning)
+            or specs[tool.name].category == "read"
+            or planning
+            and not context.read_only
+            and tool.name in {"write", "edit"}
+        ):
+            permitted.append(tool)
+    return request.override(tools=permitted)
 
 
 # This uses LangChain streaming callbacks to implement Pi's message_start/update events.

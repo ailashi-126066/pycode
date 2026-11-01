@@ -17,7 +17,7 @@ async def test_tui_plan_inline_review_drives_same_live_agent(tmp_path, monkeypat
     replies = [
         write,
         skill_reply("ExitPlanMode", {}, "exit"),
-        skill_reply("Bash", {"command": "printf implemented > done.txt"}, "run"),
+        skill_reply("bash", {"command": "printf implemented > done.txt"}, "run"),
         chat_completion(),
     ]
     with protocol_server(replies) as (url, requests):

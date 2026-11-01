@@ -14,9 +14,7 @@ from tests.support.http_provider import chat_completion, protocol_server
 
 
 def write_plan_reply(content="# Plan\nold step\n"):
-    return skill_reply(
-        "write_file", {"file_path": "/plans/PLAN_ID.md", "content": content}, "plan-write"
-    )
+    return skill_reply("write", {"path": "/plans/PLAN_ID.md", "content": content}, "plan-write")
 
 
 def fix_plan_path(reply, plan_id):
@@ -39,7 +37,7 @@ async def test_plan_writes_only_current_markdown_then_approves_execution(
     replies = [
         write,
         skill_reply("ExitPlanMode", {}, "plan-exit"),
-        skill_reply("Bash", {"command": "printf approved > executed.txt"}, "execute"),
+        skill_reply("bash", {"command": "printf approved > executed.txt"}, "execute"),
         chat_completion(),
     ]
     with protocol_server(replies) as (url, requests):
@@ -89,9 +87,9 @@ async def test_plan_denies_workspace_writes_commands_and_other_plan_files(tmp_pa
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
     replies = [
-        skill_reply("write_file", {"file_path": "/workspace/blocked.txt", "content": "bad"}, "w1"),
-        skill_reply("Bash", {"command": "printf bad > blocked.txt"}, "b1"),
-        skill_reply("write_file", {"file_path": "/plans/other.md", "content": "bad"}, "p1"),
+        skill_reply("write", {"path": "/workspace/blocked.txt", "content": "bad"}, "w1"),
+        skill_reply("bash", {"command": "printf bad > blocked.txt"}, "b1"),
+        skill_reply("write", {"path": "/plans/other.md", "content": "bad"}, "p1"),
         chat_completion(),
     ]
     with protocol_server(replies) as (url, requests):
@@ -119,8 +117,8 @@ async def test_feedback_revises_same_plan_and_requires_new_review(tmp_path, monk
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
     write = write_plan_reply()
     edit = skill_reply(
-        "edit_file",
-        {"file_path": "/plans/PLAN_ID.md", "old_string": "old step", "new_string": "new step"},
+        "edit",
+        {"path": "/plans/PLAN_ID.md", "edits": [{"oldText": "old step", "newText": "new step"}]},
         "revise",
     )
     replies = [

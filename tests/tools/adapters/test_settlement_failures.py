@@ -81,7 +81,7 @@ async def test_real_failing_pretool_hook_blocks_tool_and_reports_to_next_model(
         encoding="utf-8",
     )
     with protocol_server(
-        [skill_reply("read_file", {"file_path": "/workspace/code.py"}, "read"), chat_completion()]
+        [skill_reply("read", {"path": "/workspace/code.py"}, "read"), chat_completion()]
     ) as (url, requests):
         session = await compose_application(config, (provider(url),)).open_session(
             "s", create=True, refresh_models=False

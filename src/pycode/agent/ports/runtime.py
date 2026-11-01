@@ -49,8 +49,6 @@ class TitleAssignment(Protocol):
 class WorkspaceReadback(Protocol):
     receipts: dict[str, str]
 
-    async def offload_read(self, context, arguments, outputs) -> ToolResult: ...
-
 
 RuntimeContextT = TypeVar("RuntimeContextT", contravariant=True)
 

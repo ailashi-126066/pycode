@@ -74,7 +74,7 @@ async def test_pre_tool_rejection_is_a_paired_error_without_approval_or_effect(
             {
                 "id": "protect",
                 "event": "pre_tool_use",
-                "if": 'tool == "Bash"',
+                "if": 'tool == "bash"',
                 "reject": True,
                 "action": {"type": "prompt", "message": "Blocked command"},
             }
@@ -350,9 +350,7 @@ async def test_all_fifteen_events_fire_through_real_lifecycle_tools_error_and_co
         ],
     )
     replies = [
-        skill_reply(
-            "write_file", {"file_path": "/workspace/created.txt", "content": "created"}, "write"
-        ),
+        skill_reply("write", {"path": "/workspace/created.txt", "content": "created"}, "write"),
         command_reply("printf okay"),
         skill_reply("unknown", {}, "unknown"),
         chat_completion(),

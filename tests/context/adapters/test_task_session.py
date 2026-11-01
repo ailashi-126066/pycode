@@ -99,7 +99,7 @@ async def test_next_run_reopen_switch_and_completion_use_saved_state(tmp_path, m
             assert len(state["tasks"]) == 2
             assert len(requests) == 5
             tools = {tool["function"]["name"] for tool in requests[0]["body"]["tools"]}
-            assert {"ToolSearch", "Bash", "read_file", "edit_file"} <= tools
+            assert {"ToolSearch", "bash", "read", "edit"} <= tools
             assert "write_todos" not in tools
         finally:
             await session.aclose()

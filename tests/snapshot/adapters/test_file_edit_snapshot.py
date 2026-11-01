@@ -34,13 +34,12 @@ async def test_read_receipt_survives_approval_restart_and_exact_edit_gets_snapsh
     git(root, "commit", "-qm", "initial")
     config = AppConfig(root, tmp_path / "data", memory_mode="off")
     responses = [
-        reply("read_file", {"file_path": "/workspace/file.txt"}),
+        reply("read", {"path": "/workspace/file.txt"}),
         reply(
-            "edit_file",
+            "edit",
             {
-                "file_path": "/workspace/file.txt",
-                "old_string": "target",
-                "new_string": "changed",
+                "path": "/workspace/file.txt",
+                "edits": [{"oldText": "target", "newText": "changed"}],
             },
         ),
         chat_completion(),
@@ -51,9 +50,7 @@ async def test_read_receipt_survives_approval_restart_and_exact_edit_gets_snapsh
             "s1", create=True, refresh_models=False
         )
         pending = await session.run(Message("u1", "user", "edit the file"))
-        assert (
-            pending.outcome == "needs_input" and pending.pending[0]["call"]["name"] == "edit_file"
-        )
+        assert pending.outcome == "needs_input" and pending.pending[0]["call"]["name"] == "edit"
         restored = session
         assert (
             await restored.resume(

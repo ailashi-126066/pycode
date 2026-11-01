@@ -151,24 +151,39 @@ async def test_readonly_catalog_filters_write_tools_before_search():
     assert result.structured_content == {"tools": []}
 
 
-async def test_common_tools_are_preloaded_but_permissions_still_filter_them():
+async def test_direct_tools_are_declared_with_pi_prompt_but_permissions_still_filter_them():
     from pycode.agent.adapters.boundaries import filter_model_tools
     from tests.support.probe import Probe
 
     discovery, request, context, _ = setup_request()
-    bash = Probe("Bash")
-    bash.spec = replace(bash.spec, category="external", description="Execute a shell command")
-    read = Probe("read_file")
+    bash = Probe("bash")
+    bash.spec = replace(
+        bash.spec,
+        category="command",
+        exposure="direct",
+        prompt_snippet="Execute bash commands",
+    )
+    read = Probe("read")
+    read.spec = replace(
+        read.spec,
+        exposure="direct",
+        prompt_snippet="Read file contents",
+        prompt_guidelines=("Use read to examine files instead of cat or sed.",),
+    )
     for tool in (bash, read):
         context.registry.register(tool)
     request = request.override(
         tools=[*request.tools, *(make_framework_tool(t.spec, context) for t in (bash, read))]
     )
     disclosed = await discovery.disclose(request)
-    assert {tool.name for tool in disclosed.tools} == {"ToolSearch", "Bash", "read_file"}
-    assert "echo" in disclosed.system_message.content
-    assert "echo" not in {tool.name for tool in disclosed.tools}
+    assert {tool.name for tool in disclosed.tools} == {"ToolSearch", "bash", "read"}
+    prompt = disclosed.system_message.content
+    assert "Available tools:\n- ToolSearch: " in prompt
+    assert "- bash: Execute bash commands\n- read: Read file contents" in prompt
+    assert "Guidelines:\n- Use read to examine files instead of cat or sed." in prompt
+    # Deferred tools stay in the catalog until ToolSearch loads them.
+    assert "echo" in prompt and "echo" not in {tool.name for tool in disclosed.tools}
     context.read_only = True
     disclosed = await discovery.disclose(await filter_model_tools(request))
-    assert {tool.name for tool in disclosed.tools} == {"ToolSearch", "read_file"}
-    assert "Bash" not in disclosed.system_message.content
+    assert {tool.name for tool in disclosed.tools} == {"ToolSearch", "read"}
+    assert "bash" not in disclosed.system_message.content

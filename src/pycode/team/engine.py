@@ -591,7 +591,7 @@ class AgentTeam:
                 "deadline_at": now + limit if limit is not None else None,
             }
             phase = "tool"
-            if data["name"] == "Bash" and record["worktree_id"]:
+            if data["name"] == "bash" and record["worktree_id"]:
                 execution.source_versions[operation] = await self.worktrees.version(
                     record["worktree_id"]
                 )

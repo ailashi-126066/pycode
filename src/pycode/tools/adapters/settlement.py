@@ -50,20 +50,8 @@ class SettlementMailbox(Protocol):
     async def settle_tool(self, result: ToolResult | str, *, accepted: bool) -> None: ...
 
 
-class WorkspaceInvocation(Protocol):
-    result: ToolResult | None
-
-
 class WorkspaceTools(Protocol):
     receipts: dict[str, str]
-
-    def begin_invocation(
-        self, context: ToolContext, outputs: ToolOutputStore | None
-    ) -> tuple[object, WorkspaceInvocation]: ...
-    def end_invocation(self, token: object) -> None: ...
-    async def offload_read(
-        self, context: ToolContext, arguments: dict, outputs: ToolOutputStore
-    ) -> ToolResult: ...
 
 
 class SettlementContext(Protocol):
@@ -86,6 +74,7 @@ class SettlementContext(Protocol):
     tool_tasks: set[asyncio.Task]
     interrupted_calls: set[str]
     dispatched_calls: set[str]
+    prepared_calls: set[str]
     settled_calls: set[str]
     duplicate_calls: asyncio.Condition
     settlement: asyncio.Condition
@@ -183,37 +172,43 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             # Completed parallel results may still be waiting for an earlier call.
             await self.settle_ready(context, stopping=True)
 
+    # Pi: executeToolCalls. One sequential tool makes the whole batch sequential.
     async def ordered_call(self, request, handler):
         context = cast(SettlementContext, request.runtime.context)
-        specifications = []
-        for call in context.assistant.tool_calls if context.assistant is not None else ():
-            try:
-                spec = context.registry.get_spec(call.name)
-            except ToolError:
-                read_only = call.name in {
-                    "read_file",
-                    "ls",
-                    "glob",
-                    "grep",
-                    "write_todos",
-                    "task",
-                }
-                spec = ToolSpec(
-                    call.name,
-                    "Framework tool",
-                    {},
-                    execution_mode="parallel" if read_only else "sequential",
-                )
-            specifications.append(spec)
-        serial = batch_execution_mode(tuple(specifications)) == "sequential"
-        if serial and request.tool_call["id"] in context.call_order:
+        names = {spec.name for spec in context.registry.list_specs()}
+        specifications = tuple(
+            context.registry.get_spec(call.name)
+            for call in (context.assistant.tool_calls if context.assistant is not None else ())
+            if call.name in names
+        )
+        serial = batch_execution_mode(specifications) == "sequential"
+        if request.tool_call["id"] in context.call_order:
             position = context.call_order.index(request.tool_call["id"])
             preceding = set(context.call_order[:position])
             async with context.duplicate_calls:
-                await context.duplicate_calls.wait_for(
-                    lambda: preceding <= context.dispatched_calls
-                )
+                if serial:
+                    await context.duplicate_calls.wait_for(
+                        lambda: preceding <= context.dispatched_calls
+                    )
+                else:
+                    # Pi: executeToolCallsParallel prepares calls one by one (one approval
+                    # at a time) and only then lets them execute concurrently.
+                    await context.duplicate_calls.wait_for(
+                        lambda: preceding <= context.prepared_calls | context.dispatched_calls
+                    )
+                    if preceding & context.interrupted_calls:
+                        # An earlier call awaits an answer: stop without a result or event;
+                        # the resumed tools node runs this call again.
+                        context.interrupted_calls.add(request.tool_call["id"])
+                        context.dispatched_calls.add(request.tool_call["id"])
+                        context.duplicate_calls.notify_all()
+                        raise GraphInterrupt(())
         return await self.settle_call(request, handler)
+
+    async def mark_prepared(self, context, call):
+        async with context.duplicate_calls:
+            context.prepared_calls.add(call.id)
+            context.duplicate_calls.notify_all()
 
     async def settle_call(self, request, handler):
         context = cast(SettlementContext, request.runtime.context)
@@ -228,6 +223,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 request, handler, context, call, tool_context, state, framework_updates
             )
             result = await self.finalize_result(context, call, tool_context, result)
+        await self.mark_prepared(context, call)
         async with context.settlement:
             context.ready_results[call.id] = (call, result, framework_updates)
             while call.id not in context.settled_calls:
@@ -273,6 +269,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         async def invoke(current_context, current_call, current_spec):
             if resumed:
                 await self.record_approval(context, current_context, current_spec, "approve")
+            await self.mark_prepared(context, call)
             return await self.invoke_framework(
                 request,
                 handler,
@@ -318,6 +315,19 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             raise
         if resumed and result.error_code == "permission_denied":
             await self.record_approval(context, tool_context, spec, "deny")
+        if state.status == "running":
+            result = self.after_tool_call(call, result)
+        return result
+
+    # Pi: finalizeExecutedToolCall. Extensions override fields of an executed call's result
+    # before it is persisted; a replaced text drops the structured content it described.
+    def after_tool_call(self, call, result):
+        for extension in self.tool_extensions:
+            override = extension.after_tool_call(call, result)
+            if override is not None:
+                if "text" in override:
+                    result = replace(result, structured_content=None)
+                result = replace(result, **override)
         return result
 
     async def record_approval(self, context, tool_context, spec, decision):
@@ -360,8 +370,6 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                     "read_receipts": dict(context.workspace_files.receipts),
                 },
             )
-        for extension in self.tool_extensions:
-            result = extension.prepare_result(call, result)
         return result
 
     async def repeated_failure(self, context, request, call):
@@ -394,44 +402,19 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         return None
 
     def resolve_tool(self, request, context, call, tool_context):
-        result = None
         try:
             spec = context.registry.get_spec(call.name)
-            request = request.override(tool=self.framework_tool(spec, context, tool_context))
         except ToolError:
-            if request.tool is None:
-                result = ToolResult(
-                    call.id,
-                    call.name,
-                    "Unknown tool: " + call.name,
-                    is_error=True,
-                    error_code="unknown_tool",
-                    details={"executed": False},
-                )
-            category = (
-                "read"
-                if call.name
-                in {
-                    "read_file",
-                    "ls",
-                    "glob",
-                    "grep",
-                    "write_todos",
-                    "task",
-                }
-                else "write"
-            )
-            schema = request.tool.args_schema if request.tool is not None else {}
-            if not isinstance(schema, dict):
-                schema = schema.model_json_schema()
-            spec = ToolSpec(
+            unknown = ToolResult(
+                call.id,
                 call.name,
-                "Deep Agents tool",
-                schema,
-                category=category,
-                execution_mode="parallel" if category == "read" else "sequential",
+                "Unknown tool: " + call.name,
+                is_error=True,
+                error_code="unknown_tool",
+                details={"executed": False},
             )
-        return request, spec, result
+            return request, None, unknown
+        return request.override(tool=self.framework_tool(spec, context, tool_context)), spec, None
 
     async def declaration_error(self, context, call, spec, tool_context):
         result = None
@@ -461,7 +444,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             )
         if context.disclosed_tool_names is not None:
             for declared in context.model_tools:
-                if declared.name != call.name or declared.source == "deepagents":
+                if declared.name != call.name:
                     continue
                 if (
                     data_hash(declared.input_schema) != data_hash(spec.input_schema)
@@ -507,28 +490,11 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         return current_request
 
     async def call_framework_handler(
-        self,
-        current_request,
-        handler,
-        context,
-        current_context,
-        current_call,
-        current_spec,
-        native_binding,
+        self, current_request, handler, current_call, current_spec, native_binding
     ):
         if native_binding is not None:
             async with native_binding.call_scope(current_call.name):
                 response = await handler(current_request)
-        elif current_call.name in {"grep", "glob"} and context.workspace_files is not None:
-            token, invocation = context.workspace_files.begin_invocation(
-                current_context, context.outputs
-            )
-            try:
-                response = await handler(current_request)
-            finally:
-                context.workspace_files.end_invocation(token)
-            if invocation.result is not None:
-                return None, invocation.result
         elif current_spec.category == "read":
             retry = ToolRetryMiddleware(
                 max_retries=3,
@@ -540,8 +506,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             response = await retry.awrap_tool_call(current_request, handler)
         else:
             response = await handler(current_request)
-
-        return response, None
+        return response
 
     def unwrap_tool_message(self, response, framework_updates):
         if isinstance(response, Command):
@@ -558,24 +523,10 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             raise TypeError("Expected a ToolMessage from framework tool execution")
         return response
 
-    async def framework_result(
-        self, response, context, call, current_context, current_call, native_binding
-    ):
+    def framework_result(self, response, call, current_call, native_binding):
         if native_binding is not None:
             return native_binding.normalize(
                 current_call.name, response.content, response.status, response.artifact, call.id
-            )
-        if (
-            current_call.name == "read_file"
-            and response.status == "success"
-            and isinstance(response.content, str)
-            and "Long line clipped;" in response.content
-            and current_call.arguments.get("file_path", "").startswith("/workspace/")
-            and context.workspace_files is not None
-            and context.outputs is not None
-        ):
-            return await context.workspace_files.offload_read(
-                current_context, current_call.arguments, context.outputs
             )
         content = (
             response.content
@@ -623,23 +574,13 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             request, context, current_context, current_call, current_spec
         )
         native_binding = self.native_binding(current_call.name)
-        response, direct = await self.call_framework_handler(
-            current_request,
-            handler,
-            context,
-            current_context,
-            current_call,
-            current_spec,
-            native_binding,
+        response = await self.call_framework_handler(
+            current_request, handler, current_call, current_spec, native_binding
         )
-        if direct is not None:
-            return direct
         response = self.unwrap_tool_message(response, framework_updates)
         if isinstance(response.artifact, ToolResult):
             return response.artifact
-        return await self.framework_result(
-            response, context, call, current_context, current_call, native_binding
-        )
+        return self.framework_result(response, call, current_call, native_binding)
 
     async def settle_ready(self, context: SettlementContext, *, stopping=False):
         """Settle ready results in call order; stopping skips calls that never finished."""
@@ -664,11 +605,11 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         entry_id = await self.publisher.publish(
             Message("result:" + result.operation_id, "tool_result", tool_result=result)
         )
-        path = call.arguments.get("file_path", "")
         if (
-            context.plans is not None
+            call.name in {"write", "edit"}
+            and context.plans is not None
             and context.plans.state is not None
-            and path == context.plans.state.virtual_path
+            and call.arguments["path"] == context.plans.state.virtual_path
             and not result.is_error
         ):
             await context.plans.update_exists()

@@ -36,7 +36,7 @@ class InterruptToolGate:
         if spec.category == "read":
             return
         status = None
-        if spec.name == "Bash" and spec.source == "builtin":
+        if spec.name == "bash" and spec.source == "builtin":
             reason = denied_command(call.arguments.get("command", ""))
             if reason is not None:
                 raise ToolError("command_denied", reason)
@@ -45,7 +45,7 @@ class InterruptToolGate:
         elif spec.source.startswith("skill:") and self._sandbox is not None:
             status = await self._sandbox.status(self._settings)
         if (
-            spec.name == "Bash"
+            spec.name == "bash"
             and spec.source == "builtin"
             and self._settings.mode == "on-auto"
             and self._sandbox is not None

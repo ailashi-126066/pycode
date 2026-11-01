@@ -50,7 +50,12 @@ class ToolExecutor:
         return state
 
     async def execute(self, context, call, stop_reason, *, spec=None, invoke=None):
+        # Pi: acceptingUpdates. Updates that arrive after the tool returned are dropped.
+        accepting_updates = True
+
         async def progress(text):
+            if not accepting_updates:
+                return
             await self.events.emit(
                 "tool_execution_update",
                 {"call_id": call.id, "name": call.name, "text": text},
@@ -108,8 +113,9 @@ class ToolExecutor:
         if result is None:
 
             async def action():
+                nonlocal accepting_updates
                 assert spec is not None
-                timeout = arguments.get("timeout", 120) if spec.name == "Bash" else None
+                timeout = arguments.get("timeout", 120) if spec.name == "bash" else None
                 await self.events.emit(
                     "tool_action_start",
                     {
@@ -124,6 +130,7 @@ class ToolExecutor:
                         return await tool.execute(context, arguments)
                     return await invoke(context, call, spec)
                 finally:
+                    accepting_updates = False
                     await self.events.emit(
                         "tool_action_end", {"name": call.name}, operation_id=context.operation_id
                     )
@@ -189,11 +196,7 @@ class ToolExecutor:
         if self.hooks is None:
             return
         await self.hooks.fire("post_tool_use", context, call, result=result)
-        changed_file = (
-            not result.is_error
-            and call.name in {"write_file", "edit_file"}
-            and call.arguments.get("file_path", "").startswith(("/workspace/", "/plans/"))
-        )
+        changed_file = not result.is_error and call.name in {"write", "edit"}
         if changed_file or result.details.get("file_snapshot", {}).get("paths"):
             await self.hooks.fire("file_change", context, call, result=result)
         if result.is_error:

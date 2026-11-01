@@ -10,8 +10,6 @@ import os
 import shutil
 import subprocess
 import threading
-from contextvars import ContextVar
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal, overload
 
@@ -28,17 +26,9 @@ from deepagents.backends.protocol import (
 )
 from deepagents.backends.utils import InvalidGlobPatternError, compile_grep_include_glob
 
-from pycode.kernel import MAX_BYTES, MAX_LINES, ToolError, ToolResult, is_internal_component
+from pycode.kernel import MAX_BYTES, ToolError, is_internal_component
 from pycode.kernel.adapters.path_io import atomic_write, file_sha256, owned_io
-from pycode.tools.adapters.read_range import read_range
-from pycode.tools.adapters.rg_stream import RipgrepMatches, SearchOutput
-
-
-@dataclass
-class BackendInvocation:
-    context: object
-    outputs: object
-    result: object = None
+from pycode.tools.adapters.rg_stream import RipgrepMatches
 
 
 class PycodeBackend(BackendProtocol):
@@ -74,17 +64,6 @@ class PycodeBackend(BackendProtocol):
         self.locks: dict[str, threading.RLock] = {}
         self.lock_guard = threading.Lock()
         self.search_timeout = search_timeout
-        self.invocation: ContextVar[BackendInvocation | None] = ContextVar(
-            "pycode_backend_invocation", default=None
-        )
-
-    def begin_invocation(self, context, outputs):
-        invocation = BackendInvocation(context, outputs)
-        token = self.invocation.set(invocation)
-        return token, invocation
-
-    def end_invocation(self, token):
-        self.invocation.reset(token)
 
     def resolve(self, value: str) -> Path:
         if self.path_guard is not None:
@@ -146,6 +125,7 @@ class PycodeBackend(BackendProtocol):
         return f"{code}: {error}"
 
     def read(self, file_path: str, offset=0, limit=2000) -> ReadResult:
+        """Lines split on "\\n" like Pi's read; the read tool applies truncation."""
         if limit <= 0:
             return ReadResult(
                 file_data={"content": "", "encoding": "utf-8"}, no_lines_requested=True
@@ -153,85 +133,28 @@ class PycodeBackend(BackendProtocol):
         try:
             path = self.resolve(file_path)
             with self.lock(path):
-                before = file_sha256(path)
-                with path.open("rb") as source:
-                    result = read_range(
-                        source, "", max(0, offset) + 1, min(limit, MAX_LINES), MAX_BYTES - 512, 0
-                    )
-                if file_sha256(path) != before:
-                    raise ToolError("file_changed", "File changed while reading")
-                self.receipts[str(path)] = before
-                content = result.text
-                if result.has_more and result.next_byte_offset:
-                    content += f"\n[Long line clipped; next byte offset: {result.next_byte_offset}]"
-                if not content:
-                    return ReadResult(file_data={"content": "", "encoding": "utf-8"})
-                next_offset = (
-                    result.end_line if result.has_more and not result.next_byte_offset else None
+                data = path.read_bytes()
+            self.receipts[str(path)] = hashlib.sha256(data).hexdigest()
+            lines = data.decode("utf-8", "replace").split("\n")
+            if offset >= len(lines):
+                raise ToolError(
+                    "invalid_offset",
+                    f"Offset {offset + 1} is beyond end of file ({len(lines)} lines total)",
                 )
-                return ReadResult(
-                    file_data={"content": content, "encoding": "utf-8"},
-                    start_line=result.start_line,
-                    end_line=result.end_line,
-                    next_offset=next_offset,
-                )
-        except (OSError, ToolError, UnicodeError) as error:
+            selected = lines[offset : offset + limit]
+            end = offset + len(selected)
+            return ReadResult(
+                file_data={"content": "\n".join(selected), "encoding": "utf-8"},
+                start_line=offset + 1,
+                end_line=end,
+                total_lines=len(lines),
+                next_offset=end if end < len(lines) else None,
+            )
+        except (OSError, ToolError) as error:
             return ReadResult(error=self.error(error))
 
     async def aread(self, file_path: str, offset=0, limit=2000):
         return await owned_io(self.read, file_path, offset, limit)
-
-    async def offload_read(self, context, arguments, outputs):
-        path = self.resolve(arguments["file_path"].removeprefix("/workspace"))
-        expected = self.receipts.get(str(path))
-        if expected is None:
-            raise ToolError("file_not_read", "Native read did not establish a version receipt")
-        if await owned_io(file_sha256, path) != expected:
-            raise ToolError("file_changed", "File changed before complete range preservation")
-        writer = await outputs.begin(context, "head")
-        source = None
-        try:
-            source = await owned_io(path.open, "rb")
-            offset = max(0, arguments.get("offset", 0))
-            limit = min(MAX_LINES, arguments.get("limit", MAX_LINES))
-            skipped = 0
-            while skipped < offset:
-                chunk = await owned_io(source.readline, 64 * 1024)
-                if not chunk:
-                    break
-                if chunk.endswith(b"\n"):
-                    skipped += 1
-            lines = 0
-            while lines < limit:
-                chunk = await owned_io(source.readline, 64 * 1024)
-                if not chunk:
-                    break
-                await writer.append(chunk)
-                if chunk.endswith(b"\n"):
-                    lines += 1
-            if await owned_io(file_sha256, path) != expected:
-                raise ToolError("file_changed", "File changed while preserving complete range")
-            return await writer.finish(
-                ToolResult(
-                    context.call_id,
-                    "read_file",
-                    "",
-                    details={
-                        "file_read": {
-                            "path": arguments["file_path"],
-                            "sha256": expected,
-                            "offset": offset,
-                            "limit": limit,
-                        },
-                    },
-                )
-            )
-        except BaseException:
-            await writer.abort()
-            raise
-        finally:
-            if source is not None:
-                await owned_io(source.close)
 
     def check_write_scope(self, path):
         if self.write_roots is not None and not any(
@@ -415,8 +338,7 @@ class PycodeBackend(BackendProtocol):
                 data = stdout.read(8192)
                 if not data:
                     break
-                for _ in parser.feed(data):
-                    pass
+                parser.feed(data)
             parser.finish()
         except (ToolError, UnicodeError, OSError) as error:
             failure = "search_incomplete: " + str(error)
@@ -463,7 +385,6 @@ class PycodeBackend(BackendProtocol):
         parser = RipgrepMatches(
             base, self.workspace, self.resolve, files=files, max_count=max_count
         )
-        capture = SearchOutput(self.invocation.get())
         stdout, stderr = process.stdout, process.stderr
         assert stdout is not None and stderr is not None  # Both were explicitly requested as PIPE.
         diagnostics = bytearray()
@@ -483,8 +404,7 @@ class PycodeBackend(BackendProtocol):
                     data = await stdout.read(8192)
                     if not data:
                         break
-                    for piece in parser.feed(data):
-                        await capture.append(piece)
+                    parser.feed(data)
                 parser.finish()
                 await process.wait()
                 await asyncio.shield(reader)
@@ -494,9 +414,6 @@ class PycodeBackend(BackendProtocol):
             failure = "search_incomplete: rg timed out"
         except (ToolError, OSError, UnicodeError) as error:
             failure = "search_incomplete: " + str(error)
-        except BaseException:
-            await capture.abort()
-            raise
         finally:
             if process.returncode is None:
                 process.kill()
@@ -504,7 +421,6 @@ class PycodeBackend(BackendProtocol):
                 pass
             await process.wait()
             await reader
-        await capture.finish(parser, failure)
         return parser.result(failure)
 
     def grep(self, pattern, path=None, glob=None, *, max_count=None):

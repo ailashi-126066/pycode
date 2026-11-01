@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-from dataclasses import replace
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -47,7 +46,7 @@ class SkillBackend(BackendProtocol):
 
     def ls(self, path):
         result = self.backend.ls(path)
-        if self.selection is None or not self.selection.dispatch or result.error:
+        if self.selection is None or result.error:
             return result
         filtered = []
         for entry in result.entries or ():
@@ -179,12 +178,14 @@ class PycodeSkillsMiddleware(SkillsMiddleware):
         return await super().awrap_model_call(request, disclosed_request)
 
 
+# Claude-style allowed-tools names mapped to Pi's builtin tools.
 ALIASES = {
-    "Read": "read_file",
-    "Write": "write_file",
-    "Edit": "edit_file",
+    "Read": "read",
+    "Write": "write",
+    "Edit": "edit",
     "Grep": "grep",
-    "Glob": "glob",
+    "Glob": "find",
+    "Bash": "bash",
 }
 
 
@@ -206,9 +207,7 @@ class SkillsScopeConstraint:
 
     async def check_call(self, call):
         allowed = await self.allowed()
-        instruction_read = call.name == "read_file" and call.arguments.get(
-            "file_path", ""
-        ).startswith("/skills/")
+        instruction_read = call.name == "read" and call.arguments["path"].startswith("/skills/")
         if allowed is not None and call.name not in allowed and not instruction_read:
             raise ToolError("skill_tool_not_allowed", "Active Skill scope excludes this tool")
 
@@ -221,7 +220,7 @@ class SkillsScopeConstraint:
             name = (
                 tool.name if not isinstance(tool, dict) else tool.get("function", tool).get("name")
             )
-            if name in allowed or name == "read_file":
+            if name in allowed or name == "read":
                 # Loading/reloading instructions remains possible even when the
                 # active Skill excludes ordinary workspace reads. authorize()
                 # still permits only the exact Skill-path exception.
@@ -288,14 +287,11 @@ class SkillsToolExtension:
     async def before_call(self, context, call):
         await self.validate_call(context, call)
 
-    def prepare_result(self, call, result):
-        if (
-            call.name == "read_file"
-            and call.arguments.get("file_path", "").startswith("/skills/")
-            and not result.is_error
-        ):
-            return replace(result, details={**result.details, "protected_content": True})
-        return result
+    def after_tool_call(self, call, result):
+        if call.name == "read" and call.arguments["path"].startswith("/skills/"):
+            if not result.is_error:
+                return {"details": {**result.details, "protected_content": True}}
+        return None
 
     async def after_persist(self, context, call, result, entry_id):
         if result.is_error:
@@ -307,6 +303,5 @@ class SkillsToolExtension:
             if not isinstance(selected, list):
                 raise TypeError("SkillSearch must return a list of skill records")
             self.selection.select([item["path"] for item in selected])
-        path = call.arguments.get("file_path", "")
-        if call.name == "read_file" and path.startswith("/skills/"):
-            await self.recorder.record(path, result, entry_id)
+        if call.name == "read" and call.arguments["path"].startswith("/skills/"):
+            await self.recorder.record(call.arguments["path"], result, entry_id)

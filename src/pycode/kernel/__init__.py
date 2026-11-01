@@ -63,7 +63,14 @@ from pycode.kernel.domain.redaction import SECRET_PATTERNS
 from pycode.kernel.domain.state_machine import StateMachine
 from pycode.kernel.domain.token_estimate import estimate_text
 from pycode.kernel.domain.tools import ExecutionMode, ToolContext, ToolSpec
-from pycode.kernel.domain.truncation import MAX_BYTES, MAX_LINES, PreviewMode, line_count, truncate
+from pycode.kernel.domain.truncation import (
+    MAX_BYTES,
+    MAX_LINES,
+    PreviewMode,
+    format_size,
+    line_count,
+    truncate,
+)
 from pycode.kernel.domain.values import clone_value, freeze_value, json_dumps, plain_data
 from pycode.kernel.domain.work_graph import Board, BoardStatus, Step, StepStatus
 from pycode.kernel.ports.events import EventConsumer, EventJournal, EventSink
@@ -153,5 +160,6 @@ __all__ = [
     "line_count",
     "plain_data",
     "truncate",
+    "format_size",
     "work_graph",
 ]

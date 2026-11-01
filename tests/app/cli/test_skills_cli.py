@@ -18,7 +18,7 @@ def test_cli_load_search_reload_use_public_session_and_make_no_model_requests(
     with protocol_server(
         [
             chat_completion(),
-            skill_reply("read_file", {"file_path": "/skills/user/example/SKILL.md"}, "load"),
+            skill_reply("read", {"path": "/skills/user/example/SKILL.md"}, "load"),
             chat_completion(),
         ]
     ) as (url, requests):

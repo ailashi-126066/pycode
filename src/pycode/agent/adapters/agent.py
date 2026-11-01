@@ -11,7 +11,7 @@ from deepagents import (
     create_deep_agent,
     register_harness_profile,
 )
-from deepagents.middleware.filesystem import FilesystemMiddleware, FsToolName
+from deepagents.middleware.filesystem import FilesystemMiddleware
 from deepagents.middleware.memory import MemoryMiddleware
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import BaseChatModel
@@ -46,7 +46,6 @@ class AgentRuntime:
         checkpointer=None,
         backend=None,
         subagents=(),
-        read_only=False,
         instructions=(),
         instruction_backend=None,
     ):
@@ -55,7 +54,6 @@ class AgentRuntime:
         self.title_assignment = title_assignment
         self.backend = backend
         self.subagents = subagents
-        self.read_only = read_only
         # AGENTS.md paths loaded by MemoryMiddleware through a read-only allowlisted backend.
         self.instructions = tuple(instructions)
         self.instruction_backend = instruction_backend
@@ -79,20 +77,14 @@ class AgentRuntime:
         tools = []
         for spec in context.registry.model_specs():
             tools.append(self.bindings.make_framework_tool(spec, context))
-        file_tools: list[FsToolName] = ["ls", "read_file", "glob", "grep"]
-        if not self.read_only:
-            file_tools.extend(["write_file", "edit_file"])
+        # Deep Agents always installs FilesystemMiddleware and requires its read_file tool.
+        # This replacement keeps only that tool and disables eviction; filter_model_tools
+        # hides it, so the model sees Pi's builtin file tools from the registry instead.
         filesystem = FilesystemMiddleware(
             backend=self.backend,
-            tools=file_tools,
+            tools=["read_file"],
             tool_token_limit_before_evict=None,
             human_message_token_limit_before_evict=None,
-            custom_tool_descriptions={
-                "grep": (
-                    "Search workspace text using ripgrep regular expressions. Honors ignore files; "
-                    "returns bounded matches with explicit incomplete/error status."
-                )
-            },
         )
         middleware: list[AgentMiddleware[Any, Any, Any]] = [filesystem]
         if self.instructions and self.instruction_backend is not None:

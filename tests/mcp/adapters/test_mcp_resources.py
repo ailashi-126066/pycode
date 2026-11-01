@@ -19,7 +19,7 @@ async def test_mcp_exposes_tools_without_resource_or_prompt_tools(tmp_path, monk
         try:
             assert (await session.run(Message("u1", "user", "inspect"))).outcome == "completed"
             names = {item["function"]["name"] for item in requests[0]["body"]["tools"]}
-            assert {"ToolSearch", "Bash", "read_file"} <= names
+            assert {"ToolSearch", "bash", "read"} <= names
             assert not any(name.startswith("mcp__") for name in names)
             assert not names & {"MCPResources", "MCPReadResource", "MCPPrompts", "MCPGetPrompt"}
             assert "Resource content stays on demand" not in str(requests[0]["body"]["messages"])
