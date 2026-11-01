@@ -186,6 +186,7 @@ async def build_runtime(
             loop_repeat_threshold=config.loop_repeat_threshold,
             loop_asks_user=config.loop_asks_user,
             plans=session.plans,
+            subagent_view=session.subagents.active_view if session.subagents is not None else None,
             workspace_files=workspace_files,
             model_tools=options.effective_tools,
             read_only=config.read_only,

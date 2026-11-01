@@ -7,6 +7,8 @@
 - 名字（11.1 第 39 节第 5 条）：`name` 由主 agent 指定，同一会话内唯一，格式是 slug（小写字母、数字、连字符，
   最长 64）；对应任务板步骤时建议用步骤 id（如 `n3`）。不给就由系统生成 `a1`、`a2`……`SendMessage` /
   `StopAgent` 的 `agent_id` 参数接受名字或 8 位 id。完成通知、`/agents` 和 `subagent` 事件都显示名字。
+- 活跃列表（第 39 节第 6 条）：只要还有没结束的子 agent，每次模型请求都在任务板视图之后追加一段列表，
+  每个子 agent 一行（name、模式、状态、description，`SubagentManager.active_view`）；都结束了就不加。
 - 每个子 agent 是一个完整的 `AgentSession`，由 `app/composition/subagents.py` 打开，有自己的历史和
   checkpoint，内部照常用 `create_deep_agent` 运行。主 agent 只看到最终结果。
 - 管理层 `SubagentManager` 是自己写的：Deep Agents 0.7.32 的 `task` 子代理是同步一次性调用，

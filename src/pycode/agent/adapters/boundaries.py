@@ -32,6 +32,12 @@ def task_board_messages(context, projection) -> tuple[Message, ...]:
     return (Message(uuid4().hex, "system", text),)
 
 
+def subagent_messages(context) -> tuple[Message, ...]:
+    """The unfinished subagents, after the board view; nothing when every one has ended."""
+    text = context.subagent_view() if context.subagent_view is not None else ""
+    return (Message(uuid4().hex, "system", text),) if text else ()
+
+
 async def filter_model_tools(request):
     context = request.runtime.context
     planning = (

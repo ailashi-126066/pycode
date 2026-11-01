@@ -1,6 +1,7 @@
 """Framework-free per-run execution state bound to consumer-owned capabilities."""
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from pycode.agent.domain.run_state import RunState
@@ -56,6 +57,8 @@ class RunContext:
     model_source_leaf_id: str | None = None
     model_projection: ProjectedContext | None = None
     plans: PlanService | None = None
+    # The unfinished subagents, one line each; "" when there is none.
+    subagent_view: Callable[[], str] | None = None
     workspace_files: WorkspaceReadback | None = None
     model_tools: tuple[ToolSpec, ...] = ()
     system_hash: str = ""

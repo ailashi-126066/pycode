@@ -6,7 +6,7 @@
 ① 系统提示：基础说明 + Available tools（direct 工具的 prompt_snippet）+ Guidelines
             + AGENTS.md + 记忆索引 + Skill 目录 + 延迟工具目录
 ② 消息投影：[压缩摘要] → 保留的最近消息（工具调用和结果成对）→ steering / follow-up
-③ 动态附加（有才加）：任务板视图、Plan 提醒、结束前检查、防打转提醒
+③ 动态附加（有才加）：任务板视图、未结束的子 agent 列表、Plan 提醒、结束前检查、防打转提醒
 Tools 字段：direct 工具 + ToolSearch 已加载的 deferred 工具的完整定义
 ```
 

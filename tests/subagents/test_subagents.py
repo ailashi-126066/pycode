@@ -276,3 +276,22 @@ async def test_names_are_given_or_generated_unique_and_accepted_by_send_and_stop
     assert stopped.details["subagent"]["status"] == "cancelled"
     assert notified[0].startswith("[subagent a1: bg]")
     assert {data["name"] for (*_, kind, data) in events} == {"n3", "a1"}
+
+
+async def test_active_view_lists_only_unfinished_subagents():
+    # 11.1 section 39 #6.
+    manager, sessions, _, _, (agent, _, _) = setup(completed("done"))
+    assert manager.active_view() == ""
+    await agent.execute(
+        context(),
+        {
+            "name": "n1",
+            "description": "tests",
+            "prompt": "p",
+            "mode": "readonly",
+            "background": True,
+        },
+    )
+    assert manager.active_view().splitlines()[1:] == ["- n1 [readonly] running: tests"]
+    await manager.wait_background()
+    assert manager.active_view() == ""

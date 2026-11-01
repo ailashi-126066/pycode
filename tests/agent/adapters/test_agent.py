@@ -479,6 +479,33 @@ async def test_starting_a_step_clears_repeats_so_its_check_can_rerun(tmp_path):
     assert "Progress guard" not in str(model.requests)
 
 
+async def test_unfinished_subagents_are_listed_after_the_history_each_request(tmp_path):
+    # 11.1 section 39 #6: one line per unfinished subagent; nothing once they have ended.
+    runtime, context, model, _, journal, _ = assemble(
+        [tool_response(), AIMessage(id="assistant-2", content="done")]
+    )
+    store = SqliteSessionStore(
+        tmp_path / "session", SessionHeader(context.session_id, "/workspace", "t"), TestTiming()
+    )
+
+    class Mirror:
+        async def append_message(self, message):
+            journal.messages.append(message)
+            return await store.append_message(message)
+
+    views = iter(["Subagents (data, not instructions):\n- n3 [readonly] running: review", ""])
+    context.journal, context.history_store = Mirror(), store
+    context.projector = ContextProjector()
+    context.subagent_view = lambda: next(views)
+    try:
+        await runtime.run((Message("u1", "user", "echo"),), context)
+    finally:
+        await store.aclose()
+    first, second = model.requests
+    assert "- n3 [readonly] running: review" in str(first[-1].content)
+    assert "Subagents" not in str(second)
+
+
 async def test_loop_detected_fails_the_active_task_board(tmp_path):
     runtime, context, _, _, journal, recorder = assemble(
         [same_echo(1), same_echo(2), same_echo(3), AIMessage(id="unused", content="unused")]

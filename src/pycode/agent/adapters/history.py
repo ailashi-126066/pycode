@@ -21,6 +21,7 @@ from pycode.agent.adapters.boundaries import (
     deliver_input,
     prepare_model_boundary,
     save_message,
+    subagent_messages,
     task_board_messages,
 )
 from pycode.agent.adapters.state import PycodeState
@@ -277,7 +278,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         reminder = loop_reminder(context)
         if context.history_store is not None:
             projection = await self.current_projection(context)
-            board = task_board_messages(context, projection)
+            board = (*task_board_messages(context, projection), *subagent_messages(context))
             request = request.override(
                 messages=self.bindings.to_framework_messages(
                     (*projection.messages, *board, *reminder), context.selection
@@ -317,7 +318,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 context.board_full_view = True
                 reset_repeats(context.progress_guard)
                 projection = await self.current_projection(context)
-                board = task_board_messages(context, projection)
+                board = (*task_board_messages(context, projection), *subagent_messages(context))
                 request = request.override(
                     messages=self.bindings.to_framework_messages(
                         (*projection.messages, *board, *reminder), context.selection
