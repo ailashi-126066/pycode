@@ -355,6 +355,9 @@ class UnchangedWorkspace:
     async def capture(self):
         return SimpleNamespace(tree_id="tree-a")
 
+    async def diff(self, before, after):
+        return ()
+
 
 def same_echo(index):
     return AIMessage(
@@ -365,10 +368,8 @@ def same_echo(index):
     )
 
 
-async def test_repeated_action_on_unchanged_workspace_is_reminded_then_loop_detected(tmp_path):
-    runtime, context, model, tool, journal, recorder = assemble(
-        [same_echo(1), same_echo(2), same_echo(3), AIMessage(id="unused", content="unused")]
-    )
+async def run_until_loop_question(tmp_path, responses, answer):
+    runtime, context, model, tool, journal, recorder = assemble(responses)
     store = SqliteSessionStore(
         tmp_path / "session", SessionHeader(context.session_id, "/workspace", "t"), TestTiming()
     )
@@ -381,20 +382,101 @@ async def test_repeated_action_on_unchanged_workspace_is_reminded_then_loop_dete
 
     context.journal, context.history_store = Mirror(), store
     context.projector = ContextProjector()
-    context.executor.snapshots = UnchangedWorkspace()
     try:
-        result = await runtime.run((Message("u1", "user", "echo"),), context)
+        asked = await runtime.run((Message("u1", "user", "echo"),), context)
+        (question,) = asked.pending
+        reply = {"operation_id": question["operation_id"], "answers": {"loop": answer}}
+        result = await runtime.resume(context, reply)
     finally:
         await store.aclose()
-    assert result.outcome == "loop_detected"
-    assert model.call_index == 3 and tool.executed == ["same"] * 3
+    return asked, question, result, model, tool, recorder
+
+
+async def test_a_repeat_is_reminded_then_the_user_is_asked_and_can_stop(tmp_path):
+    asked, question, result, model, tool, recorder = await run_until_loop_question(
+        tmp_path,
+        [same_echo(1), same_echo(2), same_echo(3), AIMessage(id="unused", content="unused")],
+        "stop",
+    )
     reminders = [
         [m.content for m in request if "Progress guard" in str(m.content)]
         for request in model.requests
     ]
     assert [len(found) for found in reminders] == [0, 0, 1]
-    assert "`echo` ran 2 times" in reminders[2][0] and "tree-a" in reminders[2][0]
+    assert "`echo` returned the same result 2 times in a row" in reminders[2][0]
+    assert "loop, sleep and a timeout" in reminders[2][0]
+    # 11.1 section 40: the second detection pauses the run with a question.
+    assert asked.outcome == "needs_input" and question["questions"][0]["name"] == "loop"
+    assert result.outcome == "loop_detected"
+    assert model.call_index == 3 and tool.executed == ["same"] * 3
     assert payloads(recorder, "agent_end") == [{"reason": "loop_detected"}]
+
+
+async def test_continue_clears_the_counts_and_the_run_goes_on(tmp_path):
+    _, _, result, model, tool, _ = await run_until_loop_question(
+        tmp_path,
+        [same_echo(1), same_echo(2), same_echo(3), same_echo(4), AIMessage(id="a5", content="ok")],
+        "continue",
+    )
+    # After the counts were cleared, one more identical call is not a repeat yet.
+    assert result.outcome == "completed" and result.pending == ()
+    assert model.call_index == 5 and tool.executed == ["same"] * 4
+
+
+class NamedTool:
+    def __init__(self, name, category):
+        schema = {"type": "object", "properties": {"status": {"type": "string"}}}
+        self.spec = ToolSpec(name=name, description=name, category=category, input_schema=schema)
+
+    async def execute(self, context, arguments):
+        return ToolResult(call_id="", name="", text="ok")
+
+
+class AllowAll:
+    async def authorize(self, context, spec, call):
+        return None
+
+
+def one_call(index, name, args):
+    return AIMessage(
+        id=f"assistant-{index}",
+        content="Working",
+        tool_calls=[{"id": f"tool-{index}", "name": name, "args": args}],
+        response_metadata={"finish_reason": "tool_calls"},
+    )
+
+
+async def test_starting_a_step_clears_repeats_so_its_check_can_rerun(tmp_path):
+    # 11.1 section 39 #3: the next step reruns the same check on an unchanged workspace.
+    runtime, context, model, _, journal, _ = assemble(
+        [
+            one_call(1, "check", {}),
+            one_call(2, "TaskUpdate", {"status": "in_progress"}),
+            one_call(3, "check", {}),
+            AIMessage(id="assistant-4", content="done"),
+        ]
+    )
+    context.registry.register(NamedTool("check", "command"))
+    context.registry.register(NamedTool("TaskUpdate", "read"))
+    store = SqliteSessionStore(
+        tmp_path / "session", SessionHeader(context.session_id, "/workspace", "t"), TestTiming()
+    )
+
+    class Mirror:
+        async def append_message(self, message):
+            journal.messages.append(message)
+            return await store.append_message(message)
+
+    context.journal, context.history_store = Mirror(), store
+    context.projector = ContextProjector()
+    context.executor.snapshots = UnchangedWorkspace()
+    context.executor.gate = AllowAll()
+    try:
+        result = await runtime.run((Message("u1", "user", "check"),), context)
+    finally:
+        await store.aclose()
+    assert result.outcome == "completed" and model.call_index == 4
+    assert "Progress guard" not in str(model.requests)
 
 
 async def test_loop_detected_fails_the_active_task_board(tmp_path):
@@ -416,7 +498,8 @@ async def test_loop_detected_fails_the_active_task_board(tmp_path):
 
     context.journal, context.history_store = Mirror(), store
     context.projector = ContextProjector()
-    context.executor.snapshots = UnchangedWorkspace()
+    # A subagent of a non-interactive run cannot ask: the second detection ends the run.
+    context.loop_asks_user = False
     try:
         result = await runtime.run((Message("u1", "user", "echo"),), context)
         snapshot = await store.snapshot()
@@ -425,7 +508,7 @@ async def test_loop_detected_fails_the_active_task_board(tmp_path):
         await store.aclose()
     assert result.outcome == "loop_detected"
     assert current is not None and current.status == "failed"
-    assert current.outcome.startswith("loop_detected: ") and "`echo` ran" in current.outcome
+    assert current.outcome.startswith("loop_detected: ") and "`echo` returned" in current.outcome
     # 11.1 section 3.1: the failed snapshot also reaches stream-json as a task event.
     assert [event["board"]["status"] for event in payloads(recorder, "task")] == ["failed"]
 

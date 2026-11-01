@@ -22,6 +22,8 @@ def child_config(config, agent: Subagent, *, interactive: bool):
         sandbox=replace(config.sandbox, mode="on") if agent.mode == "worktree" else config.sandbox,
         # 11.1 section 36 Q2: with nobody to answer, approval-needing calls fail instead.
         tool_gate=config.tool_gate if interactive else ReadOnlyToolGate(),
+        # 11.1 section 40: in the TUI the loop question goes to the main session.
+        loop_asks_user=interactive,
         credential_workspace=config.credential_workspace or config.workspace,
     )
 

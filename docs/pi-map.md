@@ -52,7 +52,7 @@ Pi 源码：https://github.com/earendil-works/pi/tree/2c8d1fe 。路径相对 `s
 - 任务板：TaskWrite / TaskUpdate，DAG 校验、证据检查和三种出口。
 - Plan 模式：只读规划，审批后计划变成执行任务板。
 - Subagent：照 Claude Code 的 Agent / SendMessage / StopAgent，支持 worktree 和后台。
-- 防打转：同一动作在工作区没变时重复、文件改回旧内容，先提醒再结束。
+- 防打转：同一调用得到同样结果、文件改回旧内容，先提醒，再问用户继续还是停止。
 - 长期记忆：一条一个 Markdown 文件，系统提示放索引，按需 read。
 - 快照与回退：独立 Git 裸仓库记录文件版本，`/revert` 回退对话或代码。
 - 审批与沙箱：Seatbelt、命令白名单、凭据过滤。

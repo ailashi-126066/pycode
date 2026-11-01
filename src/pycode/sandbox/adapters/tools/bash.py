@@ -42,7 +42,11 @@ class Bash:
             "Execute a bash command in the current working directory. Returns stdout and stderr. "
             "Output is truncated to last 2000 lines or 50KB (whichever is hit first). If "
             "truncated, full output is saved to a temp file. Optionally provide a timeout in "
-            "seconds."
+            "seconds. "
+            # pycode (11.1 section 40), not in Pi: repeated polling trips the progress guard.
+            "To wait for a service, build or CI, wait inside one command with a loop, sleep and "
+            "a timeout (for example `timeout 300 sh -c 'until curl -sf URL; do sleep 5; done'`) "
+            "instead of running the same command again and again."
         ),
         category="command",
         input_schema={

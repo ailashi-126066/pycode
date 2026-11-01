@@ -88,8 +88,19 @@ allowed-tools 范围包在链外层，先判断再交给默认链。
 
 ## 防打转与预算
 
-`tools/domain/progress_guard.py` 检测"同一动作在工作区没变时重复"和"文件改回旧内容"，第一次提醒，再出现就以
-`loop_detected` 结束运行，active 任务板同时设为 failed。最大轮次 `--max-turns`（默认 100），到达时
+`tools/domain/progress_guard.py` 按指纹计数：动作（工具名 + 参数哈希）加结果（是否出错、error_code、
+exit_code、把连续数字换成 `#` 后的输出哈希）。阈值默认 3：
+- 会改东西或执行命令的工具：同一指纹出现 3 次；
+- 只读工具（read、grep、find、ls、ToolSearch 等）：同一指纹连续出现 3 次，中间没有其他工具调用；
+- 文件改回旧内容：工作区回到某个出现过 3 次的快照。
+
+失败的调用不计数，交给 `repeated_tool_failure`。开始新步骤（TaskUpdate 设为 in_progress）和压缩被采用后，
+重复计数清零。第一次检测到时注入提醒，建议用一条带超时的循环命令等待外部状态。再出现时，`abefore_model` 用
+LangGraph `interrupt()` 暂停运行（`needs_input`，问题形状同 AskUserQuestion），问用户"是在正常等待吗？"：
+选继续，计数清零接着跑；选停止，以 `loop_detected` 结束，active 任务板同时设为 failed。非交互模式下以退出码 2
+结束，可以 `pycode resume --answers` 回答。子 agent 在 TUI 下把问题转到主会话，在非交互模式下直接以
+`loop_detected` 结束。阈值只能在嵌入时通过 `AppConfig.loop_repeat_threshold` 配置（必须 ≥ 1），没有 CLI 参数。
+最大轮次 `--max-turns`（默认 100），到达时
 `turn_limit`。
 
 ## 记忆

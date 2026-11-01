@@ -41,6 +41,8 @@ class RunContext:
     requests: RequestTracking
     max_turns: int
     loop_repeat_threshold: int
+    # False for a subagent of a non-interactive run: nobody can answer the loop question.
+    loop_asks_user: bool = True
     initial_inputs: tuple[Message, ...] = ()
     one_at_a_time: bool = False
     completed: list[Message] = field(default_factory=list)

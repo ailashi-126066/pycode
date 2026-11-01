@@ -14,8 +14,11 @@ class AppConfig:
     summary_keep_recent_tokens: int = 20000
     # The only run budget: a run ends with turn_limit after this many turns.
     max_turns: int = 100
-    # A repeated action, or a tree seen this often, is a loop. Only set here; no CLI flag.
+    # 11.1 section 40: the same call with the same result (back to back for read-only
+    # tools), or a tree seen this often, is a loop. Only set here; there is no CLI flag.
     loop_repeat_threshold: int = 3
+    # A second detection asks the user; a subagent of a non-interactive run ends instead.
+    loop_asks_user: bool = True
     sandbox: SandboxSettings = field(default_factory=SandboxSettings)
     project_trusted: bool = False
     skill_index_budget: int = 2000

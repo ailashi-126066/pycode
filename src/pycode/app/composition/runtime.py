@@ -184,6 +184,7 @@ async def build_runtime(
             hooks=hooks,
             max_turns=config.max_turns,
             loop_repeat_threshold=config.loop_repeat_threshold,
+            loop_asks_user=config.loop_asks_user,
             plans=session.plans,
             workspace_files=workspace_files,
             model_tools=options.effective_tools,

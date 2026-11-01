@@ -34,7 +34,7 @@ from pycode.tools import ToolExecutor, ToolRegistry
 from pycode.tools.adapters.framework_tool import make_framework_tool
 from pycode.tools.adapters.state import ToolSettlementState
 from pycode.tools.domain.execution import batch_execution_mode
-from pycode.tools.domain.progress_guard import ProgressGuard, observe_call
+from pycode.tools.domain.progress_guard import ProgressGuard, observe_call, reset_repeats
 from pycode.tools.domain.tool_call_state import abandoned_result, interrupted_result
 from pycode.tools.domain.tool_failures import (
     FailureGuard,
@@ -547,9 +547,18 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             context.loop_repeat_threshold,
             call.name,
             digest,
-            failed=result.is_error,
-            file_snapshot=result.details.get("file_snapshot"),
+            result,
+            # A successful call always has a registered spec; failures may name unknown tools.
+            read_only=not result.is_error
+            and context.registry.get_spec(call.name).category == "read",
         )
+        # 11.1 section 39 #3: a new step may rerun the previous step's check.
+        if (
+            not result.is_error
+            and call.name == "TaskUpdate"
+            and call.arguments["status"] == "in_progress"
+        ):
+            reset_repeats(context.progress_guard)
         if result.operation_id is None:
             raise StorageError("unbound_tool_result", "Tool result has no operation id")
         # Pi: createToolResultMessage + emitToolResultMessage.

@@ -15,6 +15,7 @@ from langchain.agents.middleware import (
 )
 from langchain_core.messages import AIMessage, BaseMessage, RemoveMessage
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langgraph.types import interrupt
 
 from pycode.agent.adapters.boundaries import (
     deliver_input,
@@ -36,7 +37,7 @@ from pycode.kernel import (
     plain_data,
     work_graph,
 )
-from pycode.tools import ProgressGuard, enter_tree
+from pycode.tools import ProgressGuard, enter_tree, reset_repeats
 
 BOARD_EXIT_REMINDER = (
     "The task board is still active. Before finishing, close it with "
@@ -113,9 +114,34 @@ def loop_reminder(context) -> tuple[Message, ...]:
     evidence, guard.evidence, guard.reminded = guard.evidence, None, True
     text = (
         f"Progress guard: {evidence}. This is not progress; change your approach. "
-        "Another repeat ends the run with loop_detected."
+        "To wait for an outside state (a service, build or CI), wait in one bash command "
+        "with a loop, sleep and a timeout instead of polling with the same call. "
+        "Another repeat pauses the run and asks the user whether to stop."
     )
     return (Message(uuid4().hex, "system", text),)
+
+
+def loop_question(context, evidence) -> dict:
+    """11.1 section 40: an AskUserQuestion-shaped wait, so every front end can answer it."""
+    return {
+        "kind": "ask_user",
+        "operation_id": f"{context.run_id}:loop-{context.run_state.turn}",
+        "session_id": context.session_id,
+        "run_id": context.run_id,
+        "loop_evidence": evidence,
+        "questions": [
+            {
+                "type": "radio",
+                "name": "loop",
+                "title": "Progress guard",
+                "message": f"{evidence}. Is the agent waiting on purpose?",
+                "options": [
+                    {"value": "continue", "label": "Continue", "description": ""},
+                    {"value": "stop", "label": "Stop (loop_detected)", "description": ""},
+                ],
+            }
+        ],
+    }
 
 
 def take_queued(context):
@@ -177,11 +203,19 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
             # The last turn has finished; end with turn_limit instead of starting another.
             run.reason = "turn_limit"
             return {"jump_to": "end"}
-        if context.progress_guard.evidence is not None and context.progress_guard.reminded:
-            # Detected again after the reminder: end the run instead of another request.
-            run.reason = "loop_detected"
-            await self.fail_board(context, context.progress_guard.evidence)
-            return {"jump_to": "end"}
+        guard = context.progress_guard
+        if guard.evidence is not None and guard.reminded:
+            # Detected again after the reminder: ask the user before another request. The
+            # node reruns on resume and interrupt() then returns the answer (LangGraph HITL).
+            stop = True
+            if context.loop_asks_user:
+                answer = interrupt(loop_question(context, guard.evidence))
+                stop = answer.get("decision") == "cancel" or answer["answers"]["loop"] == "stop"
+            if stop:
+                run.reason = "loop_detected"
+                await self.fail_board(context, guard.evidence)
+                return {"jump_to": "end"}
+            reset_repeats(guard)
         ended = run.apply("model")
         if ended:
             await end_turn(context, self.bindings)
@@ -197,6 +231,8 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 summary = await current.summary.prepare()
                 if summary.applied_job_id is not None:
                     current.board_full_view = True
+                    # The summary tells the model to reread files and Skills it had loaded.
+                    reset_repeats(current.progress_guard)
                     await self.bindings.run_hook(current, "compact")
             if current.eviction is not None:
                 await current.eviction.apply(
@@ -279,6 +315,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 if report.applied_job_id is None:
                     raise
                 context.board_full_view = True
+                reset_repeats(context.progress_guard)
                 projection = await self.current_projection(context)
                 board = task_board_messages(context, projection)
                 request = request.override(

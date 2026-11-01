@@ -2,7 +2,7 @@
 
 from pycode.kernel import ArgumentValidator
 from pycode.tools.domain.approvals import validate_operation_answer
-from pycode.tools.domain.progress_guard import ProgressGuard, enter_tree
+from pycode.tools.domain.progress_guard import ProgressGuard, enter_tree, reset_repeats
 from pycode.tools.domain.questions import validate_question_answer
 from pycode.tools.domain.tool_call_state import (
     ToolCallState,
@@ -25,6 +25,7 @@ __all__ = [
     "ToolCallState",
     "ProgressGuard",
     "enter_tree",
+    "reset_repeats",
     "abandoned_result",
     "interrupted_result",
     "ToolExtension",

@@ -254,6 +254,11 @@ class AgentRuntime:
             else "starting"
         )
         context.run_state = RunState(status, turn=state["turn"])
+        # A pending loop question is asked again on resume, so the rerun node gets the answer.
+        for item in checkpoint.interrupts:
+            if "loop_evidence" in item.value:
+                context.progress_guard.evidence = item.value["loop_evidence"]
+                context.progress_guard.reminded = True
         if assistant is not None:
             for message in context.completed:
                 result = message.tool_result
