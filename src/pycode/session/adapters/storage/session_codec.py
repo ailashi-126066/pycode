@@ -131,7 +131,7 @@ def decode_entries(records) -> tuple[tuple[SessionEntry, ...], dict[str, str | N
         if removed:
             skipped[record["id"]] = parent
             continue
-        entries.append(decode_entry(encode_entry({**record, "parent_id": parent})))
+        entries.append(decode_entry(encode({**record, "parent_id": parent})))
     return tuple(entries), skipped
 
 

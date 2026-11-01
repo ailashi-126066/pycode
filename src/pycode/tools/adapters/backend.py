@@ -386,7 +386,8 @@ class PycodeBackend(BackendProtocol):
             base, self.workspace, self.resolve, files=files, max_count=max_count
         )
         # Both were requested as PIPE.
-        stdout, stderr = cast(IO[bytes], process.stdout), cast(IO[bytes], process.stderr)
+        stdout = cast(asyncio.StreamReader, process.stdout)
+        stderr = cast(asyncio.StreamReader, process.stderr)
         diagnostics = bytearray()
 
         async def errors():

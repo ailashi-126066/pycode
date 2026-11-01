@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from pycode.kernel import DomainError, Event, EventSink, Message, RunResult, ToolError, plain_data
 from pycode.subagents.contracts import SubagentSession, SubagentSessions, Worktrees
-from pycode.subagents.types import FINISHED, OUTCOME_TRIGGERS, Subagent, SubagentMode
+from pycode.subagents.types import FINISHED, OUTCOME_TRIGGERS, Subagent, SubagentMode, Worktree
 
 
 class SubagentManager:
@@ -182,7 +182,7 @@ class SubagentManager:
         await self.emit(agent)
 
     async def emit(self, agent: Subagent, event: Event | None = None) -> None:
-        data = {"status": agent.status, "description": agent.description}
+        data: dict[str, object] = {"status": agent.status, "description": agent.description}
         if event is not None:
             data["event"] = {"kind": event.kind, "data": event.data}
         await self._streams[agent.agent_id].emit("subagent", data)
@@ -190,10 +190,10 @@ class SubagentManager:
     async def forward(self, agent: Subagent, event: Event) -> None:
         """Relay one child event to the main session, wrapped as a subagent event."""
         if agent.worktree is not None:
-            await self._commit_step(agent, event)
+            await self._commit_step(agent, agent.worktree, event)
         await self.emit(agent, event)
 
-    async def _commit_step(self, agent: Subagent, event: Event) -> None:
+    async def _commit_step(self, agent: Subagent, worktree: Worktree, event: Event) -> None:
         # 11.1 section 9.8: each step completed with TaskUpdate is committed in the worktree.
         data = event.data
         if event.kind == "tool_execution_start" and data["tool_name"] == "TaskUpdate":
@@ -203,7 +203,7 @@ class SubagentManager:
             step = self._commit_steps.pop(data["tool_call_id"])
             if not data["is_error"]:
                 await self._worktrees.commit(
-                    agent.worktree, f"subagent {agent.agent_id}: complete step {step}"
+                    worktree, f"subagent {agent.agent_id}: complete step {step}"
                 )
 
     def view(self) -> dict:

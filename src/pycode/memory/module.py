@@ -1,11 +1,12 @@
 """LangMem consolidation and Markdown memory files assembled without application globals."""
 
 from functools import partial
+from pathlib import Path
 
 from pycode.memory.adapters.background import ConfiguredMemoryUpdater
 from pycode.memory.adapters.memory_tools import memory_tools
 from pycode.memory.adapters.storage.markdown_memory import MarkdownMemoryStore
-from pycode.memory.domain.memory import NAMESPACES
+from pycode.memory.domain.memory import NAMESPACES, Scope
 from pycode.memory.services.memory import MemoryService
 from pycode.models import RetryPolicy
 
@@ -17,7 +18,7 @@ class MemoryModule:
     def __init__(self, workspace, user_data, *, trusted=False, mode: str | None = "auto"):
         self.mode = mode
         # User memory always; project memory only in a trusted project.
-        self.roots = {"user": user_data / "memory"}
+        self.roots: dict[Scope, Path] = {"user": user_data / "memory"}
         if trusted:
             self.roots["project"] = workspace / ".pycode/memory"
 

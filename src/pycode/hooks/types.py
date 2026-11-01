@@ -6,7 +6,8 @@
 # Adaptation: immutable native records; conditions compile and evaluate in process.
 import fnmatch
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 
 from pycode.kernel import DomainError
 
@@ -43,7 +44,8 @@ class HookCondition:
     operator: str
     value: str
     # Compiled once when the configuration loads; =~ conditions only.
-    pattern: re.Pattern[str] | None = field(
+    # `field` is also a HookCondition attribute name.
+    pattern: re.Pattern[str] | None = dataclass_field(
         default=None, compare=False, metadata={"serialize": False}
     )
 
@@ -133,7 +135,7 @@ class HookContext:
     workspace: str
     event_name: str
     tool_name: str = ""
-    tool_args: dict = field(default_factory=dict)
+    tool_args: dict = dataclass_field(default_factory=dict)
     file_path: str = ""
     message: str = ""
     error: str = ""
