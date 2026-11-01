@@ -3,10 +3,6 @@
 # Source: MewCode local config.py and mcp/manager.py; fixed inventory in docs/source-map.md.
 # SHA-256 manager: c43972ec32c050d47ab665e17274795d20fd382af4f439ac8db352e0aa61cd0b
 # Adaptation: explicit transports, no embedded credentials, bounded validated configuration.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 
 import json
 import re

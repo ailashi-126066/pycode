@@ -3,10 +3,6 @@
 # Source: MewCode local skills/parser.py; SHA-256:
 # eba23547c0b392cd13211b38d1f45bc71a86c7de21a05b9998a3cd227ca3a11d
 # Adaptation: native immutable data, line-delimited frontmatter and strict metadata types.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 # Source: MewCode local skills/loader.py; SHA-256:
 # 5888d912116f3a08cca7d75e54234299d6d2e8aa2789ca42c017d804390cc9b3
 # Adaptation: ordered trusted roots, recursive discovery, hashes and no resource imports.

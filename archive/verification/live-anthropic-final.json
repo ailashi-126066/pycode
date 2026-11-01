@@ -1,7 +1,0 @@
-{
-  "provider": "anthropic",
-  "model": "claude-sonnet-4-5",
-  "acceptance": "remote_service",
-  "status": "unverified",
-  "reason": "credential_not_configured"
-}

@@ -3,10 +3,6 @@
 # Source: MewCode local hooks/loader.py; SHA-256:
 # f70cd9c61d908f98f7666171aae1789f806cdd5bc04ea518f2e6219c01d38914
 # Adaptation: strict external types, ordered trusted files and explicit stable IDs.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 
 import json
 import re

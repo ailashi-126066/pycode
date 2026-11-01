@@ -1,9 +1,5 @@
 # Source: MewCode local app.py and tests/test_tui_framework.py; hashes in docs/source-map.md.
 # Adaptation: only public application commands and native projections; owned UI tasks and Events.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """Interactive terminal presentation shares AgentSession with non-interactive CLI."""
 
 import asyncio

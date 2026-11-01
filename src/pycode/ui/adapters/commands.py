@@ -1,9 +1,5 @@
 # Source: code-python/mewcode/commands/registry.py and parser.py.
 # Adaptation: pycode's existing commands and application entry points only.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """One registry for existing terminal command dispatch, help and completion."""
 
 from dataclasses import dataclass

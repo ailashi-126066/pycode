@@ -1,8 +1,0 @@
-............                                                             [100%]
-============================== warnings summary ===============================
-src\pycode\adapters\mcp\connection.py:7
-  C:\Users\21125\Desktop\go\pycode\src\pycode\adapters\mcp\connection.py:7: LangChainBetaWarning: `langchain.mcp` is in beta. It is actively being worked on, so the API may change.
-    from langchain.mcp import MCPAdapter
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-12 passed, 1 warning in 19.39s

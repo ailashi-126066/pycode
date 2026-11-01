@@ -44,9 +44,7 @@ def test_project_dependency_direction():
         ("pycode.core.state", "from dataclasses import dataclass"),
         ("pycode.agent.adapters.agent", "from pycode.workflows.state import PycodeState"),
         ("pycode.app.composition.runtime", "from evals.coding import runner"),
-        ("pycode.__main__", "import archive"),
         ("pycode", "import scripts.check_architecture"),
-        ("evals.coding.runner", "import archive.scripts"),
     ],
 )
 def test_prohibited_dependencies_are_detected(module, source):
@@ -158,12 +156,16 @@ def test_project_scan_covers_evals_and_skips_generated_data(tmp_path):
     package_file(tmp_path, "pycode/__main__.py", "import evals\n")
     evals = tmp_path / "evals"
     (evals / "coding").mkdir(parents=True)
-    (evals / "coding/runner.py").write_text("import archive.scripts\n", encoding="utf-8")
+    (evals / "coding/runner.py").write_text(
+        "from pycode.app.composition import runtime\n", encoding="utf-8"
+    )
     (evals / "cache").mkdir()
-    (evals / "cache/solution.py").write_text("import archive\n", encoding="utf-8")
+    (evals / "cache/solution.py").write_text(
+        "from pycode.app.composition import runtime\n", encoding="utf-8"
+    )
     assert check_dependencies(tmp_path) == [
         "pycode.__main__:1: pycode cannot import evals",
-        "evals.coding.runner:1: evals cannot import archive.scripts",
+        "evals.coding.runner:1: application assembly requires app.bootstrap or configuration",
     ]
 
 

@@ -1,10 +1,6 @@
 # Source: MewCode local askuser_dialog.py.
 # SHA-256: aa6315c63c290b3e5afccb9d3319016c3830d9e56e7fc010543dd300bd8d96cc
 # Adaptation: named typed answers, Textual tabs/controls and review; no memory Future.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """Question forms submit decisions for persisted LangGraph interrupts."""
 
 from textual.app import ComposeResult

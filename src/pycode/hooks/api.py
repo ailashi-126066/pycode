@@ -3,10 +3,6 @@
 # Source: MewCode local hooks/engine.py; fixed local inventory in docs/source-map.md.
 # SHA-256: 91e9d3162556ea54e9c1d211feb3ecf4126a302f50f7eb3e5f584194be9e9b29
 # Adaptation: Hooks await their action directly, like Pi extension handlers; no ledger.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 
 from uuid import uuid4
 

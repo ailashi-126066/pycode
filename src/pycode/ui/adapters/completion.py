@@ -1,9 +1,5 @@
 # Source: code-python/mewcode/commands/completion.py candidate selection design.
 # Adaptation: native OptionList for scrolling and selecting the clicked row.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """Command candidates beside the prompt; selecting only edits the input."""
 
 from textual.widgets import OptionList

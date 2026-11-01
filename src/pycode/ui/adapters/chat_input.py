@@ -1,10 +1,6 @@
 # Source: MewCode local app.py; SHA-256:
 # 2680a87b05640a668323ae5712bed84eec2bc424cb47ec70e3d876450ec81696
 # Adaptation: submit/newline only; commands go through the injected application.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """Multiline prompt entry emits explicit submissions without touching history."""
 
 from typing import Callable

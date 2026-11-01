@@ -36,7 +36,6 @@ def verify_distribution(directory):
         "/evals/cache/",
         "/evals/work/",
         "/evals/results/",
-        "/archive/",
         "/.worktrees/",
         "/.env",
         "/.git/",

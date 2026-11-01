@@ -1,10 +1,6 @@
 # Source: MewCode local mewcode/tools/ask_user.py; SHA-256:
 # cd6219bb50d96486774156bae2167284abe4c6e512a990d83e4c94b7cd7deaf3
 # Adaptation: injected durable prompt; explicit cancellation and structured option descriptions.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """AskUserQuestion uses the ordinary tool executor and an injected wait boundary."""
 
 from pycode.kernel import ToolContext, ToolError, ToolResult, ToolSpec, plain_data

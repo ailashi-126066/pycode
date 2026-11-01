@@ -1,9 +1,5 @@
 # Source: author-owned tools/bash.py and processes.py; fixed hashes in docs/source-map.md.
 # Adaptation: shared argv/stdin runner for Bash and cancellable Python search workers.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """Own native process groups and stream output through one publication lifecycle."""
 
 import asyncio

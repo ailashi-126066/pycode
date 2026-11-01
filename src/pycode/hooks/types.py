@@ -4,10 +4,6 @@
 # SHA-256 conditions: d11485198df8f4ebf76a009c4b13eaf51883ae0a1bbc14f734779d684817f870
 # SHA-256 models: 0a07d8f977875f523398ca5972eb11c1be0a074df7045711e758f92bfb416e19
 # Adaptation: immutable native records; conditions compile and evaluate in process.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 import fnmatch
 import re
 from dataclasses import dataclass, field

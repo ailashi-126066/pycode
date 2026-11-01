@@ -1,10 +1,6 @@
 # Source: MewCode local permission_dialog.py.
 # SHA-256: 87f1c767a00123f05660c08c2c73749b9530a0d5f6040f29ff8b3bab27e2de57
 # Adaptation: operation-bound response message; no Future, implicit grant or direct execution.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """Inline approval emits a user decision for the application's persisted interrupt."""
 
 from textual.app import ComposeResult

@@ -1,10 +1,6 @@
 # Source: MewCode local permissions/dangerous.py; SHA-256:
 # 6de120e749f1aaa3ea12fe657891c0b2bf944d26e5de33bdefecbd0bf6443d95
 # Adaptation: pure source deny patterns; no claimed general shell sandbox.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """Source command deny rules remain ahead of sandbox automatic approval.
 
 The deny patterns are defence in depth only: a shell can always spell a command in

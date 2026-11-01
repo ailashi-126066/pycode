@@ -1,1 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="2.440" timestamp="2026-10-12T00:15:21.582579+08:00" hostname="华为"><testcase classname="tests.adapters.mcp.test_adapter_final" name="test_adapter_stdio_tools_resources_prompts_and_close" time="1.318" /></testsuite></testsuites>

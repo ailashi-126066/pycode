@@ -3,10 +3,6 @@
 # Source: MewCode local tools/load_skill.py; SHA-256:
 # 2eb89e486d11167ceae3a18b973accecf12658bcb60c593ea7ea47641c682f52
 # Adaptation: application port instead of mutable Agent/loader fields and private dispatch.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 
 from pycode.kernel import ToolResult, ToolSpec, json_dumps
 from pycode.skills.contracts import SkillCatalogCommands

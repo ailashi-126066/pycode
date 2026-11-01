@@ -3,10 +3,6 @@
 # Source: MewCode local skills/install.py; SHA-256:
 # 0393811fad87caf067df6c006cc652298ebb151c86ee9883087d557bc85178b0
 # Adaptation: repository roots, explicit ref/path overrides and portable path validation.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 # Adaptation: immutable commit downloads, owned I/O, provenance, lease and rollback.
 import base64
 import binascii

@@ -4,10 +4,6 @@
 # SHA-256 manager: c43972ec32c050d47ab665e17274795d20fd382af4f439ac8db352e0aa61cd0b
 # SHA-256 wrapper: aeb2cfda21b0b9c03a490762ac64ec3208ed1cea4fafb637220e820aec55840a
 # Adaptation: concurrent owned connections, native catalogs, schema hashes and no blind call retry.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 
 import asyncio
 import contextvars

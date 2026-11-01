@@ -3,10 +3,6 @@
 # Source: MewCode local hooks/executors.py; SHA-256:
 # 2b16275a172f0c998ee24da7b693c3aa0bb248e374bff66e7b027c15672806f3
 # Adaptation: sandboxed commands with bounded output; prompts never expand secrets.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 
 import os
 import re

@@ -1,3 +1,0 @@
-{"name": "pycode", "version": "0.1.0", "workspace": {"path": "C:\\Users\\21125\\Desktop\\go\\pycode\\tests\\.t\\gh-1013", "exists": true, "is_git": true, "state_path": "C:\\Users\\21125\\Desktop\\go\\pycode\\tests\\.t\\gh-1013\\.pycode", "snapshot_available": true}, "sandbox": {"available": false, "enabled": false, "auto_approve": false, "reason": "OS 沙箱不可用；使用权限审批"}}
-C:\Users\21125\Desktop\go\pycode\tests\.t\gh-1013\src\pycode\adapters\mcp\connection.py:7: LangChainBetaWarning: `langchain.mcp` is in beta. It is actively being worked on, so the API may change.
-  from langchain.mcp import MCPAdapter

@@ -65,11 +65,9 @@ FRAMEWORKS = {
     "fastmcp",
 }
 FORBIDDEN_IMPORTS = {
-    "pycode": frozenset({"evals", "scripts", "archive"}),
-    "evals": frozenset({"archive"}),
+    "pycode": frozenset({"evals", "scripts"}),
 }
 EVAL_GENERATED = {"cache", "work", "results"}
-EVAL_ARCHIVED = {"memory_rules"}
 RANK = {"domain": 0, "ports": 1, "services": 2, "adapters": 3, "io": 3, "module": 4}
 FLAT_FEATURES = frozenset({"skills", "mcp", "hooks", "subagents"})
 FLAT_IO_MODULES = frozenset(
@@ -612,10 +610,7 @@ def check_dependencies(root: Path = ROOT) -> list[str]:
             errors.append("Feature dependency manifest differs from enforced architecture")
     for path in sorted([*(root / "evals").rglob("*.py"), *(root / "scripts").rglob("*.py")]):
         relative = path.relative_to(root)
-        if any(
-            part in EVAL_GENERATED | EVAL_ARCHIVED or part.startswith(".")
-            for part in relative.parts[1:]
-        ):
+        if any(part in EVAL_GENERATED or part.startswith(".") for part in relative.parts[1:]):
             continue
         module, package = module_name(relative)
         errors.extend(
@@ -699,8 +694,6 @@ def check_port_implementations(root: Path = ROOT) -> list[str]:
 
 def branding_excluded(relative: Path) -> bool:
     parts = relative.parts
-    if parts[:1] == ("archive",):
-        return True
     if parts[:1] == ("evals",) and any(part in EVAL_GENERATED for part in parts[1:]):
         return True
     if parts[:2] == ("tests", "evals") and any(part in EVAL_GENERATED for part in parts[2:]):
@@ -731,7 +724,7 @@ def check_branding(root: Path = ROOT) -> list[str]:
     paths = []
     for directory, names, files in os.walk(root):
         current = Path(directory)
-        # Prune excluded trees instead of walking caches, worktrees and archived evidence.
+        # Prune excluded trees instead of walking caches and worktrees.
         names[:] = [
             name
             for name in names

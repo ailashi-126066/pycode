@@ -1,7 +1,0 @@
-{
-  "provider": "openai",
-  "model": "configured-model",
-  "acceptance": "remote_service",
-  "status": "unverified",
-  "reason": "credential_not_configured"
-}

@@ -3,10 +3,6 @@
 # Source: MewCode local mewcode/processes.py; SHA-256:
 # a8049900efb1977eb4866bd871d3bcd101abaffe35d70452c75da69da45096b4
 # Adaptation: explicit shell/output dependencies, streamed output and owned native process groups.
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """Shell tool with bounded streaming output; execution goes through ToolExecutor."""
 
 import os

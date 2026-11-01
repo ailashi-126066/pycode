@@ -41,11 +41,11 @@ packages = ["src/pycode"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src", "tests", "scripts", "evals", "docs", "pyproject.toml", "README.md", ".env.example", "requirements-dev.lock"]
-exclude = ["archive", ".worktrees", "tests/.runtime-tests", "tests/.fix-20261013", "tests/audit-20261013", "tests/dependency-artifacts", "evals/cache", "evals/work", "evals/results"]
+exclude = [".worktrees", "tests/.runtime-tests", "tests/.fix-20261013", "tests/audit-20261013", "tests/dependency-artifacts", "evals/cache", "evals/work", "evals/results"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "evals/tests"]
-norecursedirs = [".git", ".venv", ".runtime-tests", ".t", ".fix-20261013", "audit-20261013", "cache", "work", "results", "dependency-artifacts", "memory_rules"]
+norecursedirs = [".git", ".venv", ".runtime-tests", ".t", ".fix-20261013", "audit-20261013", "cache", "work", "results", "dependency-artifacts"]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
@@ -55,7 +55,7 @@ addopts = "-ra --import-mode=importlib"
 target-version = "py311"
 line-length = 100
 src = ["src"]
-exclude = [".source-cache", ".venv", ".worktrees", "archive", "tests/.runtime-tests", "tests/.t", "tests/.fix-20261013", "tests/audit-20261013", "tests/dependency-artifacts", "evals/cache", "evals/work", "evals/results", "evals/memory_rules"]
+exclude = [".source-cache", ".venv", ".worktrees", "tests/.runtime-tests", "tests/.t", "tests/.fix-20261013", "tests/audit-20261013", "tests/dependency-artifacts", "evals/cache", "evals/work", "evals/results"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "ASYNC"]
