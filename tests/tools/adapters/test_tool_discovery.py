@@ -59,13 +59,11 @@ async def test_large_search_result_still_loads_tools_on_next_request():
     assert [t.name for t in (await discovery.disclose(request)).tools] == ["ToolSearch", "echo"]
 
 
-async def test_stale_definition_and_permission_removed_tool_are_not_disclosed():
+async def test_permission_removed_tool_is_not_disclosed():
     discovery, request, context, _ = setup_request()
     await discovery.disclose(request)
     result = await discovery.execute(ToolContext("s", "r", "op", "/workspace"), {"query": "echo"})
     context.completed.append(Message("result", "tool_result", tool_result=result))
-    changed = request.tools[0].model_copy(update={"description": "changed definition"})
-    assert len((await discovery.disclose(request.override(tools=[changed]))).tools) == 1
     assert len((await discovery.disclose(request.override(tools=[]))).tools) == 1
     assert discovery.catalog == {}
 

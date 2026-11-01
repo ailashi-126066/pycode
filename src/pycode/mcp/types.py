@@ -38,8 +38,6 @@ def mcp_spec(tool, *, visible=True):
         category="read" if readonly else "external",
         execution_mode="parallel" if readonly else "sequential",
         source="mcp:" + tool["server"],
-        implementation_hash=tool["schema_hash"],
-        policy_hash=tool["config_hash"],
         model_visible=visible,
     )
 

@@ -152,9 +152,10 @@ async def test_native_tool_retry_retries_only_declared_temporary_read_errors():
 
 
 @pytest.mark.parametrize("category", ["read", "write", "external"])
-@pytest.mark.parametrize("value,code", [("same", "tool_not_declared"), (3, "invalid_arguments")])
+# 11.1 section 33.1 #2: an undeclared name is rejected before validation, even invalid arguments.
+@pytest.mark.parametrize("value", ["same", 3])
 async def test_known_tool_hidden_from_final_request_never_prepares_approves_or_executes(
-    category, value, code
+    category, value
 ):
     from dataclasses import replace
 
@@ -205,13 +206,12 @@ async def test_known_tool_hidden_from_final_request_never_prepares_approves_or_e
     result = await runtime.run((Message("u1", "user", "work"),), context)
     assert result.outcome == "completed" and tool.executed == []
     outputs = [message.require_tool_result() for message in journal.messages if message.tool_result]
-    assert len(outputs) == 1 and outputs[0].error_code == code
+    assert len(outputs) == 1 and outputs[0].error_code == "tool_not_declared"
     assert outputs[0].details["executed"] is False
-    assert extension.prepared == 0
-    assert extension.validated == (1 if code == "tool_not_declared" else 0)
+    assert extension.prepared == extension.validated == 0
 
 
-async def test_hidden_tool_schema_error_is_redacted_in_result_history_and_complete_output(tmp_path):
+async def test_schema_error_is_redacted_in_result_history_and_complete_output(tmp_path):
     from dataclasses import replace
 
     from pycode.kernel import SessionHeader, json_dumps
@@ -241,11 +241,6 @@ async def test_hidden_tool_schema_error_is_redacted_in_result_history_and_comple
         TestTiming(),
     )
     context.journal = journal
-
-    async def hide(request):
-        return request.override(tools=[item for item in request.tools if item.name != "echo"])
-
-    runtime.bindings = replace(runtime.bindings, model_filters=(hide,))
     try:
         result = await runtime.run((Message("u1", "user", "work"),), context)
         assert result.outcome == "completed" and tool.executed == []

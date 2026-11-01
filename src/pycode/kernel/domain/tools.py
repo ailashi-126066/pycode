@@ -24,9 +24,7 @@ class ToolSpec:
     category: ToolCategory = "external"
     execution_mode: ExecutionMode = "parallel"
     source: str = "builtin"
-    implementation_hash: str | None = None
     waits_for_user: bool = False
-    policy_hash: str | None = None
     model_visible: bool = True
     approval_details: dict[str, Any] = field(default_factory=dict)
     # None resolves to "safe" for read tools and "never" for everything else.

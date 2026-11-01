@@ -3,9 +3,8 @@
 from langgraph.func import task
 from langgraph.types import interrupt
 
-from pycode.kernel import ToolError, plain_data
+from pycode.kernel import ToolError, data_hash, plain_data
 from pycode.sandbox import SandboxBackend, SandboxSettings, auto_approvable, denied_command
-from pycode.tools.domain.operations import operation_spec_hash
 
 
 @task(name="pycode_permission")
@@ -62,7 +61,7 @@ class InterruptToolGate:
             "run_id": context.run_id,
             "workspace": context.workspace,
             "call": plain_data(call),
-            "spec_hash": operation_spec_hash(spec),
+            "spec_hash": data_hash(plain_data(spec)),
             "sandbox": plain_data(status) if status is not None else None,
             "approval_details": spec.approval_details,
         }

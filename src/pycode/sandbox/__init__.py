@@ -10,7 +10,6 @@ from pycode.sandbox.ports.sandbox import SandboxBackend
 __all__ = [
     "passthrough_name",
     "validate_passthrough",
-    "subprocess_policy_hash",
     "OutputSink",
     "ProcessRunner",
     "SandboxBackend",
@@ -23,6 +22,5 @@ __all__ = [
 
 from pycode.sandbox.domain.subprocess_env import (
     passthrough_name,
-    subprocess_policy_hash,
     validate_passthrough,
 )

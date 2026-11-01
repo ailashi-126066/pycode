@@ -11,9 +11,7 @@ import pytest
 
 from pycode.kernel.domain.errors import ToolError
 from pycode.sandbox.adapters.seatbelt import SeatbeltSandbox, UnavailableSandbox, build_profile
-from pycode.sandbox.adapters.tools.bash import Bash
 from pycode.sandbox.domain.sandbox import SandboxSettings
-from pycode.tools.domain.operations import operation_spec_hash
 
 
 def test_profile_preserves_source_read_network_and_quoted_path_rules(tmp_path):
@@ -85,17 +83,6 @@ async def test_missing_seatbelt_does_not_execute_unsandboxed_when_explicitly_ena
     with pytest.raises(ToolError) as error:
         await backend.launch(("bash", "-c", "touch file"), str(tmp_path), SandboxSettings("on"))
     assert error.value.code == "sandbox_unavailable"
-
-
-def test_sandbox_configuration_is_part_of_operation_identity():
-    plain = Bash("bash", None)
-    enclosed = Bash("bash", None, settings=SandboxSettings("on"))
-    automatic = Bash("bash", None, settings=SandboxSettings("on-auto"))
-    forwarded = Bash("bash", None, passthrough=("SSH_AUTH_SOCK",))
-    assert (
-        len({operation_spec_hash(tool.spec) for tool in (plain, enclosed, automatic, forwarded)})
-        == 4
-    )
 
 
 def test_profile_denies_private_home_state_after_workspace_and_temp_allows(tmp_path):

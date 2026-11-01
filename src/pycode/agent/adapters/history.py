@@ -364,7 +364,6 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
         return {
             "final_text": message.text,
             "model_tools": plain_data(context.model_tools),
-            "disclosed_tool_names": plain_data(context.disclosed_tool_names),
         }
 
     # Pi: the outer loop's follow-up check once the agent would stop (verifying).

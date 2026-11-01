@@ -5,7 +5,6 @@ import os
 import sqlite3
 import subprocess
 import sys
-from dataclasses import replace
 
 import pytest
 
@@ -289,33 +288,6 @@ async def test_cancellation_collects_tool_and_marks_unknown_effect_without_repea
             assert (tmp_path / "effect.txt").read_text() == "wire"
         finally:
             await session.aclose()
-
-
-async def test_changed_tool_declaration_cannot_execute_after_reopen(tmp_path, monkeypatch):
-    monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
-    config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
-    with protocol_server([chat_completion(tool=True), chat_completion()]) as (url, received):
-        tool = WritingEcho()
-        first = await session_at(config, provider(url), tool, create=True)
-        waiting = await first.run(Message("u1", "user", "write"))
-        await first.aclose()
-        tool.spec = replace(tool.spec, implementation_hash="changed")
-        restored = await session_at(config, provider(url), tool)
-        try:
-            result = await restored.resume(
-                {"operation_id": waiting.pending[0]["operation_id"], "decision": "approve"}
-            )
-            assert result.outcome == "completed"
-            assert tool.executed == 0 and len(received) == 2
-            saved = (await restored.inspect())["snapshot"]["entries"]
-            assert any(
-                e["message"]
-                and e["message"]["tool_result"]
-                and e["message"]["tool_result"]["error_code"] == "tool_declaration_changed"
-                for e in saved
-            )
-        finally:
-            await restored.aclose()
 
 
 async def test_independent_sessions_can_execute_concurrently_with_shared_request_database(

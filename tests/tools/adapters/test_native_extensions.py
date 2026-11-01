@@ -25,31 +25,3 @@ async def test_native_result_keeps_concrete_tool_identity():
     )
     assert seen == [("mcp__server__tool", "call")]
     assert result.details["remote"] == "mcp__server__tool"
-
-
-async def test_reject_only_extension_error_uses_shared_code_normalization_and_redaction():
-    from pycode.kernel import ToolContext, ToolError, ToolSpec
-    from pycode.tools.adapters.schema import JsonSchemaValidator
-
-    class Constraint:
-        async def validate_call(self, context, call):
-            raise ToolError("Invalid.Code", "api_key=private-secret-key " + "x" * 3000)
-
-    middleware = ToolSettlementMiddleware(
-        publisher=None, converter=None, tool_extensions=(Constraint(),)
-    )
-    context = SimpleNamespace(
-        disclosed_tool_names=(),
-        executor=SimpleNamespace(validator=JsonSchemaValidator()),
-        plans=None,
-    )
-    result = await middleware.declaration_error(
-        context,
-        ToolCall("c", "hidden", {}),
-        ToolSpec("hidden", "hidden", {}),
-        ToolContext("s", "r", "o", "/workspace"),
-    )
-    assert result.error_code == "tool_execution_error"
-    assert result.details["executed"] is False
-    assert "private-secret-key" not in result.text and "[redacted]" in result.text
-    assert len(result.text) == 1600

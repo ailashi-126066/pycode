@@ -5,7 +5,7 @@ import re
 
 from langchain_core.messages import SystemMessage
 
-from pycode.kernel import ToolError, ToolResult, ToolSpec, data_hash, json_dumps
+from pycode.kernel import ToolError, ToolResult, ToolSpec, json_dumps
 
 
 def definition(tool):
@@ -70,7 +70,7 @@ class ToolDiscovery:
             self.spec.name,
             json_dumps(found, ensure_ascii=False),
             structured_content={"tools": found},
-            details={"loaded_tools": {item["name"]: data_hash(item) for item in found}},
+            details={"loaded_tools": [item["name"] for item in found]},
         )
 
     async def disclose(self, request):
@@ -100,18 +100,17 @@ class ToolDiscovery:
             candidates[tool.name] = tool
             catalog[tool.name] = {**definition(tool), "category": category}
         self.catalog = catalog
-        # Only a durably published successful search unlocks definitions. Failed, cancelled,
-        # stale or same-batch calls cannot grant execution authority.
-        loaded = {}
+        # 11.1 section 33.1 #2: tool names loaded by successful searches on this branch.
+        loaded = set()
         for message in context.completed:
             result = message.tool_result
             if result is not None and result.name == self.spec.name and not result.is_error:
-                loaded.update(result.details.get("loaded_tools", {}))
+                loaded.update(result.details["loaded_tools"])
         visible = [*provider_tools, *direct]
         visible.extend(
             candidates[name]
             for name in sorted(candidates)
-            if loaded.get(name) == data_hash(catalog[name])
+            if name in loaded
         )
         groups = {}
         for name, item in sorted(catalog.items()):

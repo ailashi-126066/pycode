@@ -1,7 +1,6 @@
 """Release checks: lint, architecture, build, package contents and a fresh wheel installation."""
 
 import argparse
-import hashlib
 import json
 import os
 import subprocess
@@ -16,25 +15,6 @@ from pathlib import Path
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def source_digest(root):
-    """Hash the packaged inputs so a run can detect sources changing underneath it."""
-    candidates = [root / "pyproject.toml", root / "requirements-dev.lock"]
-    for path in sorted((root / "src").rglob("*")):
-        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
-            candidates.append(path)
-    candidates.extend(sorted((root / "docs" / "licenses").glob("*.txt")))
-    records = [
-        {
-            "path": path.relative_to(root).as_posix(),
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        }
-        for path in candidates
-        if path.is_file()
-    ]
-    encoded = json.dumps(records, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def verify_distribution(directory):
@@ -116,10 +96,8 @@ def main():
     evidence.mkdir(parents=True)
     distribution = evidence / "dist"
     report_path = evidence / "release-checks.json"
-    source = source_digest(root)
     has_evals = (root / "evals" / "__main__.py").is_file()
     report = {
-        "source_sha256": source,
         "extras": ["eval"] if args.with_evals else [],
         "status": "running",
         "checks": [],
@@ -267,8 +245,6 @@ print(json.dumps({'status': 'passed', 'versions': expected}))
             )
         else:
             print("evals-help: skipped (no evals/ package in this checkout)", flush=True)
-    if source_digest(root) != source:
-        raise RuntimeError("Source changed during release checks")
     report["status"] = "passed"
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return 0

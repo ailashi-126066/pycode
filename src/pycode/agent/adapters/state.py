@@ -10,4 +10,3 @@ class PycodeState(DeepAgentState):
     turn: int
     final_text: str
     model_tools: list[dict]
-    disclosed_tool_names: list[str] | None

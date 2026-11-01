@@ -230,8 +230,6 @@ class AgentRuntime:
             if entry.message is not None and entry.message.id != input_id
         )
         context.model_tools = tuple(ToolSpec(**item) for item in state.get("model_tools", ()))
-        names = state.get("disclosed_tool_names")
-        context.disclosed_tool_names = tuple(names) if names is not None else None
         # Rebuild the transient settlement buffer from durable results, including results
         # saved after the last checkpoint. Completed effects must not run again.
         calls = {}

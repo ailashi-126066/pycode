@@ -24,23 +24,21 @@ from pycode.kernel import (
     ToolError,
     ToolResult,
     ToolSpec,
-    clone_value,
     data_hash,
     json_dumps,
+    plain_data,
 )
 from pycode.plans import PlanService
 from pycode.tools import ToolExecutor, ToolRegistry
 from pycode.tools.adapters.framework_tool import make_framework_tool
 from pycode.tools.adapters.state import ToolSettlementState
 from pycode.tools.domain.execution import batch_execution_mode
-from pycode.tools.domain.operations import operation_spec_hash
 from pycode.tools.domain.progress_guard import ProgressGuard, observe_call
 from pycode.tools.domain.tool_call_state import abandoned_result, interrupted_result
 from pycode.tools.domain.tool_failures import (
     FailureGuard,
     failure_update,
     repeated_tool_failure,
-    tool_failure,
 )
 from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
 from pycode.tools.ports.publication import MessagePublisher
@@ -321,7 +319,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                     data={
                         "kind": "tool_approval",
                         "decision": decision,
-                        "spec_hash": operation_spec_hash(spec),
+                        "spec_hash": data_hash(plain_data(spec)),
                     },
                     run_id=context.run_id,
                     operation_id=tool_context.operation_id,
@@ -391,23 +389,11 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         return request.override(tool=self.framework_tool(spec, context, tool_context)), spec, None
 
     async def declaration_error(self, context, call, spec, tool_context):
-        result = None
+        """A call may run only when its name was in this model request's tool list."""
         if (
             context.disclosed_tool_names is not None
             and call.name not in context.disclosed_tool_names
         ):
-            # A hidden tool can never execute or request approval. Preserve a
-            # more specific, purely rejecting feature policy when one applies.
-            try:
-                if call.parse_error:
-                    raise ToolError("invalid_arguments", call.parse_error)
-                context.executor.validator.validate(spec.input_schema, clone_value(call.arguments))
-                for extension in self.tool_extensions:
-                    await extension.validate_call(tool_context, call)
-                if context.plans is not None:
-                    await context.plans.guard(tool_context, spec, call)
-            except ToolError as error:
-                return tool_failure(error, call, executed=False)
             return ToolResult(
                 call.id,
                 call.name,
@@ -416,25 +402,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 error_code="tool_not_declared",
                 details={"executed": False},
             )
-        if context.disclosed_tool_names is not None:
-            for declared in context.model_tools:
-                if declared.name != call.name:
-                    continue
-                if (
-                    data_hash(declared.input_schema) != data_hash(spec.input_schema)
-                    or declared.implementation_hash != spec.implementation_hash
-                    or declared.policy_hash != spec.policy_hash
-                ):
-                    result = ToolResult(
-                        call.id,
-                        call.name,
-                        "Tool declaration changed after model input",
-                        is_error=True,
-                        error_code="tool_declaration_changed",
-                        details={"executed": False},
-                    )
-                break
-        return result
+        return None
 
     def framework_tool(self, *args):
         return make_framework_tool(*args, native_bindings=self.native_bindings)

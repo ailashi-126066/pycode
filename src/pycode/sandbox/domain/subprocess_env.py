@@ -3,8 +3,6 @@
 import re
 from collections.abc import Mapping
 
-from pycode.kernel import data_hash, plain_data
-
 # Names a shell, git, Python or a virtual environment needs to behave normally.
 ALLOWED_NAMES = frozenset(
     {
@@ -70,14 +68,6 @@ def validate_passthrough(names: tuple[str, ...]) -> tuple[str, ...]:
     if not isinstance(names, tuple):
         raise ValueError("Environment passthrough must be a tuple of exact names")
     return tuple(passthrough_name(name) for name in names)
-
-
-def subprocess_policy_hash(settings, passthrough: tuple[str, ...] = ()) -> str:
-    names = validate_passthrough(passthrough)
-    policy = plain_data(settings)
-    if names:
-        policy = {"sandbox": policy, "passthrough": list(names)}
-    return data_hash(policy)
 
 
 def subprocess_environment(
