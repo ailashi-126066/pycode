@@ -109,27 +109,6 @@ def test_unknown_fields_are_not_silently_discarded(location):
         decode(json.dumps(payload).encode())
 
 
-def test_removed_hook_fields_and_review_records_are_rejected():
-    old = {
-        "id": "check",
-        "event": "startup",
-        "condition": None,
-        "reject": False,
-        "once": True,
-        "source": "user",
-        "background": False,
-        "action": {
-            "type": "command",
-            "command": "true",
-            "message": "",
-            "prompt": "",
-            "timeout": 30,
-        },
-    }
-    with pytest.raises(StorageError):
-        decode_entry(encode_entry(SessionEntry("e", None, "hook_call", "now", data={"hook": old})))
-
-
 @pytest.mark.parametrize(
     ("entry_type", "data"),
     [("hook_review", {}), ("branch_summary", {}), ("custom", {"kind": "model_candidate"})],

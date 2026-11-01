@@ -74,7 +74,7 @@ async def test_upstream_retry_request_counts_and_outcomes(case):
         assert records[-1].status == "completed"
         assert [message.role for message in journal.messages] == ["user", "assistant"]
     else:
-        assert result.outcome == "error"
+        assert result.outcome == "model_error"
         assert all(record.status == "failed" for record in records)
         assert [message.role for message in journal.messages] == ["user", "assistant"]
         failed = journal.messages[-1]
@@ -115,7 +115,7 @@ async def test_failed_reply_is_saved_with_message_end_and_retry_start_carries_at
 async def test_authentication_failure_never_retries_and_unknown_usage_remains_null():
     runtime, context, model, _, _, recorder, store, timing = assemble_attempts([status_error(401)])
     result = await runtime.run((Message("u1", "user", "Test"),), context)
-    assert result.outcome == "error"
+    assert result.outcome == "model_error"
     assert model.call_index == 1
     assert timing.sleeps == []
     usage = (await store.list_requests())[0].usage

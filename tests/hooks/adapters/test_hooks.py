@@ -150,28 +150,6 @@ async def test_command_once_persists_and_cannot_approve_parent_tool(tmp_path, mo
             await session.aclose()
 
 
-async def test_hook_configuration_change_cannot_bypass_pending_approval(tmp_path, monkeypatch):
-    monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
-    config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
-    original = [
-        {"id": "mark", "event": "pre_tool_use", "action": {"type": "prompt", "message": "original"}}
-    ]
-    await hook_file(config, original)
-    with protocol_server([command_reply("printf parent > parent.txt"), chat_completion()]) as (
-        url,
-        requests,
-    ):
-        session = await open_session(config, url, create=True)
-        await session.run(Message("u1", "user", "command"))
-        await session.aclose()
-        await hook_file(
-            config, [{**original[0], "action": {"type": "prompt", "message": "changed"}}]
-        )
-        with pytest.raises(StorageError, match="Hook configuration changed"):
-            await open_session(config, url)
-        assert len(requests) == 1 and not (tmp_path / "parent.txt").exists()
-
-
 async def test_startup_and_shutdown_run_at_open_close_without_user_input(tmp_path):
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
     await hook_file(

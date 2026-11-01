@@ -219,7 +219,7 @@ def test_failed_model_request_has_error_result_and_resume_retains_unknown_usage(
             == 1
         )
         first = rows(capsys)
-        assert first[-1]["type"] == "result" and first[-1]["data"]["outcome"] == "error"
+        assert first[-1]["type"] == "result" and first[-1]["data"]["outcome"] == "model_error"
         assert first[-1]["data"]["usage"]["main_turn"]["tokens"]["input_tokens"] is None
         assert (
             main([*common, "run", "Continue in a new task", *execution, "--output-format", "json"])
