@@ -54,15 +54,22 @@ async def test_model_loads_instructions_at_next_boundary_and_all_tools_keep_comm
             )
             state = await session.inspect()
             entries = state["snapshot"]["entries"]
-            load_entries = [entry for entry in entries if entry["type"] == "skill_load"]
-            assert len(load_entries) == 1
+            loaded = [
+                entry["message"]["tool_result"]["details"]["skill"]["name"]
+                for entry in entries
+                if entry["message"]
+                and entry["message"]["role"] == "tool_result"
+                and "skill" in entry["message"]["tool_result"]["details"]
+            ]
+            assert loaded == ["example"]
             results = [
                 entry["message"]["tool_result"]
                 for entry in entries
                 if entry["message"] and entry["message"]["role"] == "tool_result"
             ]
             assert len(results) == 2
-            assert results[1]["error_code"] == "skill_tool_not_allowed"
+            # The skill scope removed bash from the request, so the name check rejects it.
+            assert results[1]["error_code"] == "tool_not_declared"
             assert all(item["operation_id"] and item["run_id"] for item in results)
         finally:
             await session.aclose()
@@ -95,7 +102,6 @@ async def test_actual_compaction_and_restart_keep_exact_skill_once(tmp_path, mon
             compacted = next(
                 entry for entry in state["snapshot"]["entries"] if entry["type"] == "compaction"
             )
-            assert compacted["data"]["checkpoint"]["skills"][0]["message_entry_id"]
             assert "Pinned Skill" not in compacted["data"]["checkpoint"]["system_prompt"]
         finally:
             await session.aclose()

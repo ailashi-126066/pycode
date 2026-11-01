@@ -15,7 +15,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 
-from pycode.context.domain.file_ops import format_file_operations
+from pycode.context.domain.file_ops import format_file_operations, format_loaded_skills
 from pycode.context.domain.summaries import SummaryCompletion, SummarySource
 from pycode.kernel import Message, ModelError, convert_to_llm, json_dumps
 from pycode.models import RequestRecord, model_tool_text
@@ -248,6 +248,7 @@ class SummaryWorkflow:
         else:
             summary = await self.summarize(history_prompt(source), requests, "summary")
         summary += format_file_operations(source.read_files, source.modified_files)
+        summary += format_loaded_skills(source.read_files)
         usage = tuple(
             record.usage for record in await requests.list_attempts() if record.usage is not None
         )

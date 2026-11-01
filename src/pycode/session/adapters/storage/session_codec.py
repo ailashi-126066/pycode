@@ -107,6 +107,7 @@ REMOVED_ENTRY_TYPES = frozenset(
         "plan_review",
         "plan_decision",
         "skill_install",
+        "skill_load",
         "session_deleted",
         "session_restored",
     }

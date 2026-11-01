@@ -18,9 +18,9 @@ from deepagents.backends.protocol import (
 )
 from deepagents.middleware.skills import SkillsMiddleware, SkillsState
 
-from pycode.kernel import EntryDraft, SessionTree, ToolError, data_hash, plain_data
+from pycode.kernel import SessionTree, ToolError
 from pycode.kernel.adapters.path_io import file_sha256, owned_io
-from pycode.skills.types import active_skills, skill_scope
+from pycode.skills.types import skill_scope
 
 
 class BackendOperations(Protocol):
@@ -228,30 +228,6 @@ class SkillsScopeConstraint:
         return request.override(tools=tools)
 
 
-class SkillLoadRecorder:
-    def __init__(self, history, catalog):
-        self.history = history
-        self.catalog = catalog
-
-    async def selected_entry(self, path):
-        return await self.catalog.entry_at_virtual_path(path)
-
-    async def record(self, path, result, entry_id):
-        entry = await self.selected_entry(path)
-        if entry is None:
-            return
-        data = {
-            **plain_data(entry),
-            "message_entry_id": entry_id,
-            "loaded_hash": data_hash({"content_hash": entry.content_hash}),
-        }
-        snapshot = await self.history.snapshot()
-        for previous in active_skills(SessionTree(snapshot.index).path(snapshot.leaf_id)):
-            if previous["name"] == entry.name and previous["loaded_hash"] == data["loaded_hash"]:
-                return
-        await self.history.append_entry(EntryDraft("skill_load", data=data, run_id=result.run_id))
-
-
 class SkillsFrameworkExtension:
     prepares_model_boundary = True
 
@@ -276,9 +252,11 @@ class SkillsFrameworkExtension:
 
 
 class SkillsToolExtension:
-    def __init__(self, recorder, selection, constraint=None):
-        self.recorder, self.selection = recorder, selection
+    def __init__(self, catalog, selection, constraint=None):
+        self.catalog, self.selection = catalog, selection
         self.constraint = constraint
+        # SKILL.md entries of read calls, from before_call to after_tool_call.
+        self.reading: dict[str, dict] = {}
 
     async def validate_call(self, context, call):
         if self.constraint is not None:
@@ -286,11 +264,24 @@ class SkillsToolExtension:
 
     async def before_call(self, context, call):
         await self.validate_call(context, call)
+        if call.name == "read" and call.arguments["path"].startswith("/skills/"):
+            entry = await self.catalog.entry_at_virtual_path(call.arguments["path"])
+            if entry is not None:
+                self.reading[call.id] = {
+                    "name": entry.name,
+                    "path": call.arguments["path"],
+                    "content_hash": entry.content_hash,
+                    "allowed_tools": list(entry.allowed_tools),
+                }
 
     def after_tool_call(self, call, result):
         if call.name == "read" and call.arguments["path"].startswith("/skills/"):
+            skill = self.reading.pop(call.id, None)
             if not result.is_error:
-                return {"details": {**result.details, "protected_content": True}}
+                details = {**result.details, "protected_content": True}
+                if skill is not None:
+                    details["skill"] = skill
+                return {"details": details}
         return None
 
     async def after_persist(self, context, call, result, entry_id):
@@ -303,5 +294,3 @@ class SkillsToolExtension:
             if not isinstance(selected, list):
                 raise TypeError("SkillSearch must return a list of skill records")
             self.selection.select([item["path"] for item in selected])
-        if call.name == "read" and call.arguments["path"].startswith("/skills/"):
-            await self.recorder.record(call.arguments["path"], result, entry_id)

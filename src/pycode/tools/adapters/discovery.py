@@ -107,11 +107,7 @@ class ToolDiscovery:
             if result is not None and result.name == self.spec.name and not result.is_error:
                 loaded.update(result.details["loaded_tools"])
         visible = [*provider_tools, *direct]
-        visible.extend(
-            candidates[name]
-            for name in sorted(candidates)
-            if name in loaded
-        )
+        visible.extend(candidates[name] for name in sorted(candidates) if name in loaded)
         groups = {}
         for name, item in sorted(catalog.items()):
             groups.setdefault(item["category"], []).append(

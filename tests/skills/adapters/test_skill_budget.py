@@ -42,9 +42,13 @@ async def test_skill_search_bounds_native_catalogue_and_leaves_unselected_bodies
             assert "SELECTED PRIVATE BODY" in str(requests[2]["body"]["messages"])
             state = await session.inspect()
             loads = [
-                entry for entry in state["snapshot"]["entries"] if entry["type"] == "skill_load"
+                entry["message"]["tool_result"]["details"]["skill"]["name"]
+                for entry in state["snapshot"]["entries"]
+                if entry["message"]
+                and entry["message"]["tool_result"]
+                and "skill" in entry["message"]["tool_result"]["details"]
             ]
-            assert len(loads) == 1 and loads[0]["data"]["name"] == "selected"
+            assert loads == ["selected"]
         finally:
             await session.aclose()
 

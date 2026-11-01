@@ -111,7 +111,11 @@ async def test_save_skill_tool_requires_approval_and_does_not_start_a_second_run
             ).outcome == "completed"
             assert target.read_text() == content and len(requests) == 2
             entries = (await session.inspect())["snapshot"]["entries"]
-            assert not any(item["type"] == "skill_load" for item in entries)
+            assert not any(
+                "skill" in item["message"]["tool_result"]["details"]
+                for item in entries
+                if item["message"] and item["message"]["tool_result"]
+            )
             assert json.dumps(entries)
         finally:
             await session.aclose()

@@ -22,7 +22,6 @@ from pycode.models.module import ModelsModule
 from pycode.plans.module import PlansModule
 from pycode.sandbox.module import SandboxModule
 from pycode.session.module import SessionsModule
-from pycode.skills import SkillsProjection
 from pycode.skills.module import SkillsModule
 from pycode.snapshot.module import SnapshotModule
 from pycode.subagents.module import SubagentsModule
@@ -139,6 +138,5 @@ def default_modules(config: AppConfig) -> ApplicationModules:
             plans.projection(),
             context.prompt_projection(),
             MCPProjection(),
-            SkillsProjection(),
         ),
     )

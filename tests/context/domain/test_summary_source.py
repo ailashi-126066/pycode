@@ -187,3 +187,11 @@ def test_serialization_omits_thinking_and_attachments_and_truncates_tool_results
     assert parts[3] == "[Tool result full_output=/tmp/pycode/s/c1.log]: " + "y" * 2000
     assert parts[4] == "[... 500 more characters truncated]"
     assert parts[5].startswith("[User]: The conversation history before this point")
+
+
+def test_loaded_skills_line_lists_read_skill_files():
+    from pycode.context.domain.file_ops import format_loaded_skills
+
+    line = format_loaded_skills(["/workspace/a.py", "/skills/user/review/SKILL.md"])
+    assert line == "\n\nLoaded skills: review (/skills/user/review/SKILL.md)"
+    assert format_loaded_skills(["/workspace/a.py"]) == ""

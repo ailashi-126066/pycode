@@ -7,9 +7,10 @@ fixtures exercise the same native file read and durable recorder boundaries.
 from pathlib import Path
 from uuid import uuid4
 
+from pycode.kernel import SessionTree
 from pycode.kernel.domain.messages import Message, ToolCall, ToolResult
 from pycode.kernel.domain.values import plain_data
-from pycode.skills.framework import SkillBackend, SkillLoadRecorder
+from pycode.skills.framework import SkillBackend
 from pycode.skills.types import active_skills
 from pycode.tools.adapters.backend import PycodeBackend
 
@@ -37,8 +38,14 @@ async def read_skill(store, catalog, name):
         )
     )
     text = read.file_data["content"]
-    result = ToolResult(call_id, "read", text, details={"protected_content": True})
-    entry_id = await store.append_message(Message(uuid4().hex, "tool_result", tool_result=result))
-    await SkillLoadRecorder(store, catalog).record(path, result, entry_id)
-    loaded = active_skills((await store.snapshot()).entries)[-1]
+    skill = {
+        "name": selected.name,
+        "path": path,
+        "content_hash": selected.content_hash,
+        "allowed_tools": list(selected.allowed_tools),
+    }
+    result = ToolResult(call_id, "read", text, details={"protected_content": True, "skill": skill})
+    await store.append_message(Message(uuid4().hex, "tool_result", tool_result=result))
+    snapshot = await store.snapshot()
+    loaded = active_skills(SessionTree(snapshot.index).path(snapshot.leaf_id))[-1]
     return {**plain_data(loaded), "text": text}

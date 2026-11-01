@@ -53,16 +53,16 @@ def skill_entry(data):
     )
 
 
+# 11.1 section 33.1 #8: a skill is loaded by a successful read of its SKILL.md; the result
+# details carry the entry (Pi treats it as an ordinary read result).
 def active_skills(path):
     active = {}
     for entry in path:
-        if entry.type == "compaction":
-            for item in entry.data.get("checkpoint", {}).get("skills", ()):
-                active[item["name"]] = item
-        elif entry.type == "skill_load":
-            active[entry.data["name"]] = entry.data
-        elif entry.type == "fork_context":
+        if entry.type == "fork_context":
             active = {}
+        result = entry.message.tool_result if entry.message is not None else None
+        if result is not None and not result.is_error and "skill" in result.details:
+            active[result.details["skill"]["name"]] = result.details["skill"]
     return tuple(active[name] for name in sorted(active))
 
 

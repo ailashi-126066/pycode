@@ -8,12 +8,10 @@ from pycode.skills.api import Skills
 from pycode.skills.catalog import FileSkillCatalog
 from pycode.skills.framework import (
     SkillBackend,
-    SkillLoadRecorder,
     SkillsFrameworkExtension,
     SkillsScopeConstraint,
     SkillsToolExtension,
 )
-from pycode.skills.history import SkillsProjection as SkillsProjection
 from pycode.skills.install import GitHubSkillInstaller
 from pycode.skills.tools import InstallSkill, SaveSkill, SkillSearch
 from pycode.skills.types import SkillSelection
@@ -70,13 +68,12 @@ class SkillsSession:
                     selection.select((selected_path,))
         routes = self.module.routes(self.settings, selection=selection)
         constraint = SkillsScopeConstraint(self.history)
-        recorder = SkillLoadRecorder(self.history, self.catalog)
         tools = self.module.session_tools(self, read_only=read_only)
         return SkillsRun(
             tools,
             routes,
             SkillsFrameworkExtension(selection, tuple(routes), constraint),
-            SkillsToolExtension(recorder, selection, constraint),
+            SkillsToolExtension(self.catalog, selection, constraint),
             constraint,
             tuple(Path(entry.path).parent for entry in index.entries),
         )

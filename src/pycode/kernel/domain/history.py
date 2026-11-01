@@ -29,7 +29,6 @@ EntryType = Literal[
     "session_deleted",
     "session_restored",
     "skill_catalog",
-    "skill_load",
     "system_prompt",
 ]
 

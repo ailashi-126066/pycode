@@ -44,3 +44,13 @@ def format_file_operations(read_files: Sequence[str], modified_files: Sequence[s
     if not sections:
         return ""
     return "\n\n" + "\n\n".join(sections)
+
+
+def format_loaded_skills(read_files: Sequence[str]) -> str:
+    """11.1 section 33.1 #8: one line naming the skills read so far (/skills/<source>/<name>/)."""
+    skills = [
+        f"{path.split('/')[-2]} ({path})"
+        for path in read_files
+        if path.startswith("/skills/") and path.endswith("/SKILL.md")
+    ]
+    return "\n\nLoaded skills: " + ", ".join(skills) if skills else ""

@@ -35,23 +35,22 @@ def test_skill_extension_never_registers_python_functions():
 
 
 @pytest.mark.asyncio
-async def test_skill_receipts_follow_successful_result_persistence():
-    recorded = []
+async def test_successful_skill_read_carries_the_skill_in_its_details():
+    from pycode.skills.types import SkillEntry
 
-    class Recorder:
-        async def record(self, path, result, entry_id):
-            recorded.append((path, entry_id))
+    entry = SkillEntry("review", "Review code", "user", "/x/review/SKILL.md", "hash")
 
-    extension = SkillsToolExtension(Recorder(), SimpleNamespace(dispatch=False))
+    class Catalog:
+        async def entry_at_virtual_path(self, path):
+            return entry
+
+    extension = SkillsToolExtension(Catalog(), SimpleNamespace(dispatch=False))
     call = ToolCall("c", "read", {"path": "/skills/user/review/SKILL.md"})
-    context = ToolContext("s", "r", "o", "/workspace", agent_id="lead")
-    await extension.before_call(context, call)
+    await extension.before_call(ToolContext("s", "r", "o", "/workspace"), call)
     override = extension.after_tool_call(call, ToolResult("c", "read", "body"))
-    assert override == {"details": {"protected_content": True}}
-    result = ToolResult("c", "read", "body", details=override["details"])
-    assert recorded == []
-    await extension.after_persist(context, call, result, "entry")
-    assert recorded == [(call.arguments["path"], "entry")]
+    assert override is not None
+    assert override["details"]["skill"]["name"] == "review"
+    assert override["details"]["protected_content"] is True
 
 
 @pytest.mark.asyncio
