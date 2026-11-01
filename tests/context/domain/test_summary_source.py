@@ -53,7 +53,6 @@ def capture(entries, keep_recent_tokens=1):
         job_id="a" * 32,
         selection=ModelSelection("test", "model", "openai"),
         config_hash="config",
-        checkpoint={},
         keep_recent_tokens=keep_recent_tokens,
         tokens_before=123,
     )

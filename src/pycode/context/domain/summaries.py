@@ -24,7 +24,6 @@ class SummarySource:
     previous_compaction_id: str | None
     prefix_hash: str
     config_hash: str
-    checkpoint: dict[str, Any]
     # Pi: CompactionPreparation — previousSummary, messagesToSummarize, turnPrefixMessages,
     # fileOps and tokensBefore.
     previous_summary: str | None

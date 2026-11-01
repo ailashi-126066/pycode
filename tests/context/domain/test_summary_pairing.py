@@ -29,7 +29,6 @@ async def test_cut_moves_before_a_call_whose_result_follows_an_intervening_remin
             job_id="a" * 32,
             selection=ModelSelection("test", "model", "openai"),
             config_hash="config",
-            checkpoint={},
             keep_recent_tokens=2005,
             tokens_before=0,
         )

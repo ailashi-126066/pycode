@@ -1,7 +1,7 @@
 # Source: https://github.com/earendil-works/pi/blob/2c8d1fe/packages/coding-agent/src/core/compaction/compaction.ts
 # Source: MewCode local mewcode/context/summary_cache.py; SHA-256:
 # e291f27c5264240e6a535b4ec997e0958cec665f5be1e36f0f9f5f7b08621db0
-# Adaptation: canonical projected entry IDs, config/checkpoint hashes and paired native cuts.
+# Adaptation: canonical projected entry IDs, prefix/config hashes and paired native cuts.
 """Capture and validate a fixed summary prefix independently of appended tail messages."""
 
 from pycode.context.domain.compaction import find_cut_point
@@ -31,7 +31,6 @@ def capture_source(
     job_id: str,
     selection: ModelSelection,
     config_hash: str,
-    checkpoint: dict,
     keep_recent_tokens: int,
     tokens_before: int,
 ) -> SummarySource | None:
@@ -94,7 +93,6 @@ def capture_source(
         entries[previous_index].id if previous_index >= 0 else None,
         data_hash([plain_data(item) for item in visible]),
         config_hash,
-        clone_value(checkpoint),
         previous_summary,
         clone_value(messages),
         clone_value(turn_prefix),

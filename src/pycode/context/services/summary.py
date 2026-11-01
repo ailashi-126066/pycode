@@ -72,14 +72,36 @@ class SummaryService:
         self._events = events
 
     def checkpoint(self, projection):
-        return self._meter.checkpoint(projection)
+        checkpoint = clone_value(projection.checkpoint)
+        system = [
+            message.text
+            for message in projection.messages
+            if message.role == "system"
+            and message.provider_metadata.get("context_config_system_prompt", True)
+        ]
+        checkpoint.update(
+            system_prompt="\n\n".join(system) if system else None,
+            tools=[
+                plain_data(spec)
+                for spec in sorted(self._settings.tools, key=lambda spec: spec.name)
+            ],
+            selection=plain_data(self._settings.selection),
+        )
+        return checkpoint
 
     def set_tools(self, tools):
         self._settings = replace(self._settings, tools=tools)
         self._meter = ContextMeter(self._settings)
 
-    def config_hash(self, projection):
-        return self._meter.config_hash(projection)
+    def config_hash(self):
+        # Only what shapes the summary text or its cut. Checkpoint state (task_state, plan,
+        # memories, mcp, skills, prompt, tools) is taken again at adoption, so it is not hashed.
+        return data_hash(
+            {
+                "selection": plain_data(self._settings.selection),
+                "keep_recent_tokens": self._settings.keep_recent_tokens,
+            }
+        )
 
     def estimate(self, snapshot, projection):
         return self._meter.estimate(snapshot, projection)
@@ -174,7 +196,7 @@ class SummaryService:
             raise RuntimeError("Summary service is closed")
         snapshot = await self._history.snapshot()
         projection = self._projector.transform_context(snapshot)
-        fingerprint = self.config_hash(projection)
+        fingerprint = self.config_hash()
         tokens = self.estimate(snapshot, projection)
         full = tokens >= self._settings.budget.input_limit or force
         if self._source is not None and not valid_source(
@@ -210,7 +232,6 @@ class SummaryService:
             job_id=uuid4().hex,
             selection=self._settings.selection,
             config_hash=fingerprint,
-            checkpoint=self.checkpoint(projection),
             keep_recent_tokens=self._settings.keep_recent_tokens,
             tokens_before=check.tokens,
         )
@@ -279,13 +300,14 @@ class SummaryService:
         source, result = self._source, self._result
         if source is None or result is None:
             raise ModelError("summary_not_ready", "No completed summary is available to adopt")
-        if not valid_source(source, snapshot, projection, self.config_hash(projection)):
+        if not valid_source(source, snapshot, projection, self.config_hash()):
             raise ModelError("summary_source_changed", "Summary source changed; history preserved")
         identifier = "compaction_" + source.job_id
         data = {
             "summary": result.text,
             "first_kept_entry_id": source.first_kept_entry_id,
-            "checkpoint": source.checkpoint,
+            # Taken at adoption: changes made while the summary ran are already in this state.
+            "checkpoint": self.checkpoint(projection),
             "summary_job_id": source.job_id,
             "prefix_hash": source.prefix_hash,
             "config_hash": source.config_hash,

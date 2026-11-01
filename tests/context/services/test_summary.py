@@ -442,3 +442,34 @@ async def test_automatic_compaction_notifies_memory_after_adoption(tmp_path):
     finally:
         await service.aclose()
         await history.aclose()
+
+
+async def test_task_update_during_generation_keeps_the_summary_and_lands_in_the_checkpoint(
+    tmp_path,
+):
+    generator = Generator(blocked=True)
+    history, _, _, _, service = await setup(tmp_path, generator)
+    try:
+        await service.prepare()
+        await generator.started.wait()
+        task = {"task_id": "t1", "goal": "ship it", "status": "in_progress"}
+        await history.append_message(
+            Message(
+                "task-update",
+                "assistant",
+                "working",
+                provider_metadata={"pycode_task_change": {"task_id": "t1", "task": task}},
+            )
+        )
+        generator.release.set()
+        report = await service.prepare(manual=True)
+        assert report.applied_job_id == generator.sources[0].job_id
+        assert len(generator.sources) == 1
+        snapshot = await history.snapshot()
+        compaction = SessionTree(snapshot.index).get(snapshot.leaf_id)
+        assert compaction.data["checkpoint"]["task_state"]["tasks"]["t1"] == task
+        projection = ContextProjector().transform_context(snapshot)
+        assert projection.checkpoint["task_state"]["active_task_id"] == "t1"
+    finally:
+        await service.aclose()
+        await history.aclose()

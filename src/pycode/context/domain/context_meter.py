@@ -7,35 +7,12 @@
 
 from pycode.context.domain.tasks import task_context_text
 from pycode.context.domain.token_estimate import estimate_messages
-from pycode.kernel import SessionTree, clone_value, data_hash, estimate_text, json_dumps, plain_data
+from pycode.kernel import SessionTree, estimate_text, json_dumps, plain_data
 
 
 class ContextMeter:
     def __init__(self, settings):
         self._settings = settings
-
-    def checkpoint(self, projection):
-        checkpoint = clone_value(projection.checkpoint)
-        system = [
-            message.text
-            for message in projection.messages
-            if message.role == "system"
-            and message.provider_metadata.get("context_config_system_prompt", True)
-        ]
-        checkpoint.update(
-            system_prompt="\n\n".join(system) if system else None,
-            tools=[
-                plain_data(spec)
-                for spec in sorted(self._settings.tools, key=lambda spec: spec.name)
-            ],
-            selection=plain_data(self._settings.selection),
-        )
-        return checkpoint
-
-    def config_hash(self, projection):
-        return data_hash(
-            {"settings": plain_data(self._settings), "checkpoint": self.checkpoint(projection)}
-        )
 
     # Pi: estimateProjectedContextTokens — last valid usage plus an estimated tail.
     def report(self, snapshot, projection):
