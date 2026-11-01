@@ -9,7 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
-from pycode.agent.adapters.history import HistoryMiddleware
+from pycode.agent.adapters.history import HistoryMiddleware, poll_steering
 from pycode.agent.module import AgentModule
 from pycode.app.composition.bindings import build_runtime_bindings
 from pycode.context.domain.summaries import SummaryReport
@@ -95,6 +95,9 @@ def preparation():
 
 async def test_preparation_keeps_refresh_summary_protection_steering_and_turn_order():
     context, trace, refresh = preparation()
+    # Pi polls steering at loop start (abefore_agent); the first turn delivers it after
+    # maintenance.
+    context.steering = await poll_steering(context)
     updates = await HistoryMiddleware(
         build_runtime_bindings(
             agent=AgentModule(),
@@ -112,7 +115,7 @@ async def test_preparation_keeps_refresh_summary_protection_steering_and_turn_or
         "steering",
         "turn_start",
     ]
-    assert updates["turn"] == 2
+    assert updates["turn"] == 1
     assert len(updates["messages"]) == 1
     assert updates["messages"][0].content == "new instruction"
     assert len(context.journal.messages) == 1
