@@ -35,7 +35,7 @@ def disclosed_tools(monkeypatch):
     Discovery integration tests do not use this fixture. Permission filters and
     calibration still run, so a disclosed definition is never execution approval.
     """
-    from pycode.tools.adapters.discovery import ToolDiscovery
+    from pycode.tools.discovery import ToolDiscovery
 
     async def disclose(self, request):
         return request

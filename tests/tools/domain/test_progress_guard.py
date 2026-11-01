@@ -1,5 +1,5 @@
 from pycode.kernel import ToolResult
-from pycode.tools.domain.progress_guard import (
+from pycode.tools.progress_guard import (
     ProgressGuard,
     enter_tree,
     observe_call,

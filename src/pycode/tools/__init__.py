@@ -1,51 +1,57 @@
-"""Public native contracts, policies and services for tools."""
+# Pi 没有，pycode 新增
+"""Tool execution core: registry, executor, settlement, approval and the builtin file tools."""
 
-from pycode.tools.adapters.backend import ScopedBackend
-from pycode.tools.adapters.schema import JsonSchemaValidator
-from pycode.tools.domain.approvals import validate_operation_answer
-from pycode.tools.domain.progress_guard import ProgressGuard, enter_tree, reset_repeats
-from pycode.tools.domain.questions import validate_question_answer
-from pycode.tools.domain.tool_call_state import (
-    ToolCallState,
-    abandoned_result,
-    interrupted_result,
+from pycode.tools.ask_user import AskUserQuestion, InterruptQuestionPrompt, validate_question_answer
+from pycode.tools.backend import PycodeBackend, ScopedBackend
+from pycode.tools.builtin.edit import Edit
+from pycode.tools.builtin.find import Find
+from pycode.tools.builtin.grep import Grep
+from pycode.tools.builtin.ls import Ls
+from pycode.tools.builtin.read import Read
+from pycode.tools.builtin.write import Write
+from pycode.tools.call_state import ToolCallState, abandoned_result, interrupted_result
+from pycode.tools.discovery import ToolDiscovery
+from pycode.tools.executor import (
+    ToolExecutor,
+    ToolRegistry,
+    failure_update,
+    repeated_tool_failure,
 )
-from pycode.tools.domain.tool_failures import failure_update, repeated_tool_failure
-from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
-from pycode.tools.ports.hooks import ToolHooks
-from pycode.tools.ports.outputs import OutputWriter, ToolOutputStore
-from pycode.tools.ports.publication import MessagePublisher
-from pycode.tools.ports.questions import QuestionPrompt
-from pycode.tools.ports.tools import ToolGate
-from pycode.tools.services.permissions import MemoryToolGate, ReadOnlyToolGate
-from pycode.tools.services.plan_gate import PlanToolGate
-from pycode.tools.services.tool_executor import ToolExecutor
-from pycode.tools.services.tool_registry import ToolRegistry
+from pycode.tools.framework_tool import make_framework_tool
+from pycode.tools.output import TempOutputStore
+from pycode.tools.permissions import InterruptToolGate, ReadOnlyToolGate, validate_operation_answer
+from pycode.tools.progress_guard import ProgressGuard, enter_tree, reset_repeats
+from pycode.tools.schema import JsonSchemaValidator
+from pycode.tools.settlement import ToolSettlementMiddleware
 
 __all__ = [
-    "ToolCallState",
-    "ProgressGuard",
-    "enter_tree",
-    "reset_repeats",
-    "abandoned_result",
-    "interrupted_result",
-    "ToolExtension",
-    "NativeToolBinding",
-    "repeated_tool_failure",
-    "failure_update",
+    "AskUserQuestion",
+    "Edit",
+    "Find",
+    "Grep",
+    "InterruptQuestionPrompt",
+    "InterruptToolGate",
     "JsonSchemaValidator",
-    "MemoryToolGate",
-    "MessagePublisher",
-    "OutputWriter",
-    "PlanToolGate",
-    "QuestionPrompt",
+    "Ls",
+    "ProgressGuard",
+    "PycodeBackend",
+    "Read",
     "ReadOnlyToolGate",
     "ScopedBackend",
+    "TempOutputStore",
+    "ToolCallState",
+    "ToolDiscovery",
     "ToolExecutor",
-    "ToolGate",
-    "ToolHooks",
-    "ToolOutputStore",
     "ToolRegistry",
+    "ToolSettlementMiddleware",
+    "Write",
+    "abandoned_result",
+    "enter_tree",
+    "failure_update",
+    "interrupted_result",
+    "make_framework_tool",
+    "repeated_tool_failure",
+    "reset_repeats",
     "validate_operation_answer",
     "validate_question_answer",
 ]
