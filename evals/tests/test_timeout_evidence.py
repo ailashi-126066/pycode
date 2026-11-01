@@ -71,7 +71,7 @@ async def test_timeout_preserves_settled_request_usage_trace_and_independent_tes
         exported = tmp_path / "exported-session.sqlite"
         with gzip.open(trace, "rb") as stream:
             exported.write_bytes(stream.read())
-        metadata, entries = read_records(exported)
+        metadata, entries, _ = read_records(exported)
         assert metadata["header"]["session_id"] == "evaluation"
         assert any(entry.type == "message" for entry in entries)
         summary = json.loads((tmp_path / "results/summary.json").read_bytes())
