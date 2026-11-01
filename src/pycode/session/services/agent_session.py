@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 from uuid import uuid4
 
-from pycode.context import ContextProjector, task_board
+from pycode.context import ContextProjector
 from pycode.kernel import (
     EntryDraft,
     Message,
@@ -17,7 +17,6 @@ from pycode.kernel import (
     SessionTree,
     StorageError,
     plain_data,
-    work_graph,
 )
 from pycode.models import ModelControl, ProviderConfig
 from pycode.session.domain.execution_recovery import pending_run_entry
@@ -441,26 +440,6 @@ class AgentSession:
         )
         state["subagents"] = self._subagents.view() if self._subagents is not None else None
         return state
-
-    async def task_board(self):
-        """/tasks: the current branch's board, or None."""
-        snapshot = await self._store.snapshot()
-        return task_board(SessionTree(snapshot.index).path(snapshot.leaf_id))
-
-    async def clear_task_board(self):
-        """/tasks clear: abandon the open board; the branch keeps the snapshot as a record."""
-        async with self.execution():
-            snapshot = await self._store.snapshot()
-            self.require_settled(snapshot)
-            board = task_board(SessionTree(snapshot.index).path(snapshot.leaf_id))
-            if board is None:
-                raise StorageError("no_task_board", "This branch has no task board")
-            abandoned = work_graph.apply(board, "board", "abandon")
-            await self._store.append_entry(
-                EntryDraft(
-                    "custom", data={"kind": "task_board", "task_board": plain_data(abandoned)}
-                )
-            )
 
     def require_subagents(self) -> SubagentManager:
         if self._subagents is None:

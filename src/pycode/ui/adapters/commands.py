@@ -45,7 +45,6 @@ COMMANDS = (
         True,
     ),
     Command("/plan", "Enter plan mode", "command_plan", "[TASK]", True),
-    Command("/tasks", "Show or clear the task board", "command_tasks", "[graph|clear]"),
     Command("/agents", "Inspect or cancel local agents", "command_agents", "[cancel ID]"),
     Command("/usage", "Show token usage", "command_usage"),
     Command("/compact", "Compact conversation context", "command_compact"),
