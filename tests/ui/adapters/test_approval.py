@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from textual.app import App, ComposeResult
 
-from pycode.ui.adapters.approval import ApprovalPanel
-from pycode.ui.adapters.theme import themes
+from pycode.ui.approval import ApprovalPanel
+from pycode.ui.theme import themes
 
 VECTORS = json.loads(
     (Path(__file__).parents[2] / "fixtures/tui-baselines.json").read_text(encoding="utf-8")

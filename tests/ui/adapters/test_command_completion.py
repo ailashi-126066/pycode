@@ -4,9 +4,9 @@ import pytest
 from textual.app import App
 from textual.containers import Vertical
 
-from pycode.ui.adapters.chat_input import ChatInput
-from pycode.ui.adapters.commands import COMMANDS, CommandRegistry
-from pycode.ui.adapters.completion import CompletionPopup
+from pycode.ui.chat_input import ChatInput
+from pycode.ui.commands import COMMANDS, CommandRegistry
+from pycode.ui.completion import CompletionPopup
 
 
 class InputApp(App):

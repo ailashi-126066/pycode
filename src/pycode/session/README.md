@@ -1,26 +1,21 @@
 # Session
 
-负责 SQLite Store 历史、会话列表/分支、恢复、回退编排和存储清理。
-`domain/` 定义会话规则；`ports/` 接收执行、快照、模型等能力；`services/` 提供应用命令；
-`adapters/storage/` 实现官方 SqliteStore、AsyncSqliteSaver 与文件对象布局。不会创建模型 SDK、Skill catalog 或 MCP 连接。
+会话历史和执行入口平铺为 store、inputs、restart、sessions、storage_gc、view、agent_session、history_backend。
+store 合并 SQLite 历史、codec、repository 和布局；旧格式只由 upgrade_entry 处理。
 
-装配入口 `module.py:SessionsModule` 输入 workspace、user_data、Timing，输出 repository、
-session service、header reader、history backend、storage GC 和本地 application status。
+app 明确创建 StorageLayout、SqliteSessionRepository、SessionService、FileStorageObjects/StorageGC。
+AgentSession 接收真实 store/projector/models/launcher/default/durable_inputs/view/storage；
+资源关闭栈 closing 由 app 注册后转移，session 不再重建资源列表或吞关闭异常。
 
-```python
-from pathlib import Path
-from pycode.kernel import SystemTiming
-from pycode.session.module import SessionsModule
+AgentSession 公开 history、launcher、models、view、storage、skills、plans、memory、subagents、tasks、snapshots。
+业务命令直接调用服务，不存在 Feature 查询或 memory/skills/revert 转发层。
+改变会话状态的 UI/CLI 操作使用 session.execution() 并检查 require_settled(snapshot)。
+只有正在运行的 task 拥有执行权；输入排队不等待整个 run 完成。
 
-sessions = SessionsModule(Path("/project"), Path("/state"), SystemTiming())
-repository = sessions.repository()
-store = await repository.open("example", create=True)
-try:
-    snapshot = await store.snapshot()
-finally:
-    await store.aclose()
-```
+输入身份和分支去重只在 Store。PendingInputs 只是 FIFO；DurableInputs 将输入提交给 Store，
+完成边界与新输入使用同一 Store 锁保证不丢失输入。run 重试查询历史结果，但身份检查仍交给 Store。
+Store snapshot 的 index 是当时的只读副本，后续写入不能改变已交给压缩/记忆的快照。
 
-AgentSession 的功能产物由统一应用根连接。会话拥有 launcher、subagents、view、store；关闭会
-清除所有权并等待各资源完成，前序失败/取消不跳过后续资源。重启不自动恢复执行或旧审批。
-`scoped()` 保留所选实现及时钟，重新绑定工作区；子 Agent 不偷偷切回默认仓库。
+ConversationHistoryBackend 保留：它是会话树虚拟 JSON 的真实异步 backend，不能替换成对同步
+文件 backend 的 ScopedBackend 包装；read-only、aread/als/agrep 等行为保持。
+新版 revert 由 snapshot 服务实现，session 不再保存 pending_revert 或提供旧事务恢复入口。

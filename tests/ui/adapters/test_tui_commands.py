@@ -5,10 +5,10 @@ import pytest
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel import StorageError
-from pycode.ui.adapters.tui import content_text
+from pycode.ui.tui import content_text
 from tests.context.adapters.test_summary_http import seed
 from tests.session.adapters.test_revert_http import command_reply
-from tests.snapshot.adapters.test_git_tree import git, repository
+from tests.snapshot.test_git_tree import git, repository
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 from tests.ui.adapters.test_tui_http import settled
@@ -44,7 +44,7 @@ async def test_tui_revert_modes_display_preview_then_require_explicit_apply_and_
             assert (
                 app.query("#revert-inline") and (root / "file").read_text(encoding="utf-8") == "new"
             )
-            await pilot.click("#revert-apply")
+            await pilot.click("#revert-confirm")
             await settled(app)
             if app.last_error:
                 raise app.last_error

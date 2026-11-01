@@ -1,17 +1,7 @@
 # Snapshot
 
-`module.SnapshotModule` receives a workspace, snapshot directory and excluded roots. It owns selection
-of the Git-backed file snapshot implementation. It does not select session branches, restore model
-context or orchestrate session reverts.
+`GitSnapshotStore(workspace, directory, excluded_roots=...)` owns an isolated Git object store and index. It captures, reads and compares trees and writes a selected path without changing the project index, refs or stash.
 
-```python
-from pathlib import Path
-from pycode.snapshot.module import SnapshotModule
+`SnapshotService(history, store)` records tool before/after boundaries in result details. The application explicitly connects its async tool callbacks. `changed_paths(target, mode)` is the confirmation input; `revert(target, mode)` rechecks current state and executes once.
 
-snapshots = SnapshotModule(Path.cwd(), Path.cwd() / ".pycode" / "snapshots")
-store = snapshots.store()
-```
-
-`factory(workspace, directory, excluded_roots=...)` is also the capture/read-blob factory consumed by
-worktree management. The application passes that factory explicitly. File leases and subprocesses
-are acquired and released by each snapshot operation; the module has no persistent close operation.
+Ordinary targets exclude themselves. A latest custom revert target undoes that record using its own snapshot and previous dialogue leaf. Non-leaf undo is rejected. Partial writes are recorded when storage remains available; if recording fails, the error makes no recovery promise. There are no preview/apply/recover transactions.
