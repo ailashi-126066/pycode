@@ -420,6 +420,7 @@ class HistoryMiddleware(AgentMiddleware[PycodeState, RunContext]):
                 run_id=context.run_id,
             )
         )
+        await context.events.emit("task", {"board": plain_data(failed)})
 
     async def board_exit_reminder(self, context):
         """The end-of-run check: an active board must choose an exit, reminded once per run."""

@@ -181,6 +181,12 @@ class ToolExecutor:
             },
             operation_id=context.operation_id,
         )
+        # 11.1 section 3.1: stream-json sees each saved board snapshot (TaskWrite, TaskUpdate,
+        # ExitPlanMode).
+        if "task_board" in result.details:
+            await self.events.emit(
+                "task", {"board": result.details["task_board"]}, operation_id=context.operation_id
+            )
         if self.hooks is None:
             return
         await self.hooks.fire("post_tool_use", context, call, result=result)

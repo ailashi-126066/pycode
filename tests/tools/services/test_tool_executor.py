@@ -86,6 +86,18 @@ async def test_upstream_echo_result_and_event_contract():
     assert isinstance(end["duration_ms"], int)
 
 
+async def test_a_saved_task_board_snapshot_is_also_a_task_event():
+    executor, context, _, recorder = make_executor()
+    call = ToolCall("tool-1", "echo", {"value": "hello"})
+    result = await executor.execute(context, call, "tool_use")
+    board = {"id": "b1", "status": "active"}
+    await executor.emit_tool_execution_end(
+        context, call, replace(result, details={"task_board": board})
+    )
+    assert [event.kind for event in recorder.events][-2:] == ["tool_execution_end", "task"]
+    assert recorder.events[-1].data == {"board": board}
+
+
 async def test_prepare_arguments_then_string_conversion_precede_schema_validation():
     class CountTool:
         spec = ToolSpec(

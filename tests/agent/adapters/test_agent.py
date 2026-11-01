@@ -398,7 +398,7 @@ async def test_repeated_action_on_unchanged_workspace_is_reminded_then_loop_dete
 
 
 async def test_loop_detected_fails_the_active_task_board(tmp_path):
-    runtime, context, _, _, journal, _ = assemble(
+    runtime, context, _, _, journal, recorder = assemble(
         [same_echo(1), same_echo(2), same_echo(3), AIMessage(id="unused", content="unused")]
     )
     store = SqliteSessionStore(
@@ -426,6 +426,8 @@ async def test_loop_detected_fails_the_active_task_board(tmp_path):
     assert result.outcome == "loop_detected"
     assert current is not None and current.status == "failed"
     assert current.outcome.startswith("loop_detected: ") and "`echo` ran" in current.outcome
+    # 11.1 section 3.1: the failed snapshot also reaches stream-json as a task event.
+    assert [event["board"]["status"] for event in payloads(recorder, "task")] == ["failed"]
 
 
 async def test_each_run_writes_one_run_end_before_agent_end(tmp_path):
