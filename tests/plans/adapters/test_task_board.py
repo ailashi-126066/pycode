@@ -9,6 +9,7 @@ from pycode.agent.adapters.history import BOARD_EXIT_REMINDER
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel import Board, Message, SessionTree, Step, plain_data
+from pycode.plans.domain.plans import written_steps
 from tests.skills.adapters.test_skills_http import skill_reply
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
@@ -140,3 +141,8 @@ def test_full_view_is_injected_once_after_compaction():
     assert isinstance(first, SystemMessage)
     assert "Critical path: s1" in first.content and "Done when:" in first.content
     assert "Critical path" not in second.content and HEADER in second.content
+
+
+def test_generated_step_ids_skip_ids_already_used():
+    steps = written_steps([{"id": "s2", "title": "A"}, {"title": "B"}], ())
+    assert [(step.id, step.title) for step in steps] == [("s2", "A"), ("s3", "B")]

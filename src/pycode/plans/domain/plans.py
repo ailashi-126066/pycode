@@ -3,6 +3,7 @@
 import json
 import re
 from dataclasses import dataclass, replace
+from itertools import count
 from typing import Literal
 from uuid import uuid4
 
@@ -86,7 +87,11 @@ def written_steps(items, previous):
     """Steps keep their status, evidence and note; listed ones are revised, new ones appended."""
     steps = {step.id: step for step in previous}
     for item in items:
-        identifier = item.get("id", f"s{len(steps) + 1}")
+        if "id" in item:
+            identifier = item["id"]
+        else:
+            # A generated id skips ids already on the board, so it never revises another step.
+            identifier = next(f"s{n}" for n in count(len(steps) + 1) if f"s{n}" not in steps)
         fields = {
             "title": item["title"],
             # 11.1 section 38: no depends_on means no dependencies.
