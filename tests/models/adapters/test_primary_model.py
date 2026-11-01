@@ -41,7 +41,7 @@ async def test_retry_exhaustion_does_not_switch_but_manual_selection_still_works
             AppConfig(tmp_path, tmp_path / "data", memory_mode="off"), roster(url)
         ).open_session("s1", create=True, refresh_models=False)
         try:
-            assert (await session.run(Message("first", "user", "inspect"))).outcome == "error"
+            assert (await session.run(Message("first", "user", "inspect"))).outcome == "model_error"
             assert len(requests) == 4
             assert all(item["body"]["model"] == "wire-model" for item in requests)
             records = await session.request_records()
@@ -80,7 +80,7 @@ async def test_nonretryable_error_never_uses_another_configured_model(
             AppConfig(tmp_path, tmp_path / "data", memory_mode="off"), roster(url)
         ).open_session("s1", create=True, refresh_models=False)
         try:
-            assert (await session.run(Message("u", "user", "inspect"))).outcome == "error"
+            assert (await session.run(Message("u", "user", "inspect"))).outcome == "model_error"
             assert len(requests) == 1 and requests[0]["body"]["model"] == "wire-model"
         finally:
             await session.aclose()
@@ -118,7 +118,7 @@ async def test_model_failure_does_not_reexecute_completed_tool(tmp_path, monkeyp
             AppConfig(tmp_path, tmp_path / "data", memory_mode="off"), roster(url)
         ).open_session("s1", create=True, tools=(probe,), refresh_models=False)
         try:
-            assert (await session.run(Message("u", "user", "inspect"))).outcome == "error"
+            assert (await session.run(Message("u", "user", "inspect"))).outcome == "model_error"
             assert probe.calls == 1 and len(requests) == 5
             assert all(r["body"]["model"] == "wire-model" for r in requests)
         finally:

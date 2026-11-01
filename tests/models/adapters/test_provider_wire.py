@@ -180,7 +180,7 @@ async def test_actual_sdk_http_error_retry_counts_are_owned_by_runtime(
             assert len(records) == len(received)
             assert records[0].status == "failed"
             assert records[0].usage.input_tokens is None
-            assert result.outcome == ("error" if status == 401 else "completed")
+            assert result.outcome == ("model_error" if status == 401 else "completed")
             assert "fake-wire-key" not in repr(recorder.events)
         finally:
             await container.aclose()

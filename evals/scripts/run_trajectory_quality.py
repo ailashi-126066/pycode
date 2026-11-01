@@ -160,7 +160,7 @@ async def collect(case, directory):
             ]
             checks = {
                 "finished": result.outcome
-                == ("error" if scenario == "model-error" else "completed"),
+                == ("model_error" if scenario == "model-error" else "completed"),
                 "settled_requests": all(record["status"] != "started" for record in records),
             }
             if scenario == "read-error-recovery":
