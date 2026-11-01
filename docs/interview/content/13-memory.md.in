@@ -1,163 +1,40 @@
 # 记忆：下一次修代码，怎样还记得用户偏好
-
 上一章已经让“修复 parser.py，并跑测试”成为可重新打开的会话记录。但下周打开另一条会话时，模型不一定会看到今天的聊天。用户想记住的是“解释先给最小例子，Python 测试用 pytest”，不希望每次把整段旧对话重新贴一遍。本章从这个缺口讲起。
-
 ```text
-本轮用户说明偏好 → 修复完成并保存 run_end
-→ 后台读取有限的最近对话 → LangMem提出笔记增删改
-→ 检查内容并保存JSON与变更记录
-下次任务 → 选择有关笔记 → 把本轮选中的内容写入历史
-记错了 → 用户编辑；或撤销最近一次自动整理
+模型主动记：manage_user_memory / manage_project_memory → 一条一个 <id>.md
+压缩被采用后：后台 LangMem 整理一次（另有手动 /memory extract）
+下次任务：系统提示里放索引（每条一行）→ 模型需要时用 read 读 /memory/<scope>/<id>.md
 ```
-
-“保存过聊天”和“保存长期笔记”不是同一件事。记忆模块不会把每句回答永久当规则，也不会把工具日志无限交给后台模型。
-
-## 第一步：新任务开始，先找已有笔记，不凭模型猜偏好
-
-用户再次提交修 parser.py 的请求时，会话先保存这条输入，在模型前调用 `MemoryService.prepare_task`，需要新批次时再调用 `MemoryService.select`。它从应用预先配置的用户、项目两个位置读取笔记，给每条记录附上所属范围与 ID。范围决定它应跟着用户走，还是仅属于这个项目；两个位置刚好有相同 ID，也不能视为同一条。
-
-无论笔记多少，都通过相关性选择。`ConfiguredMemoryUpdater.select` 把候选分批交给结构化选择链，最后最多取十条。这里是“从已有条目中挑相关内容”，不是要求模型重新写一遍用户画像。选择结果必须是目录里真实存在的 ID；选择调用失败时记录错误并加载空批次，不拿最近笔记补满；没有相关内容也允许空结果。
-
-选中的内容会保存为带 task_id、input_id 的 `memory_load`，同任务沿用，切换任务替换，完成或取消后撤下当前注入，后续构造模型上下文时据此加入笔记。这表示这次到底读了哪些长期内容有迹可查。另一路 `AGENTS.md` 是指令文件：Deep Agents 的 `MemoryMiddleware` 每轮读入允许的文件，再把内容加到每次模型请求的系统提示。项目文件只有在受信任且路径仍在工作区内时才参与；它不经过上述 JSON 笔记选择流程。
-
+做法和 Skill 一样：只给索引，正文按需读取。没有自动召回，也没有后台打分。
+## 第一步：新任务开始，系统提示里只有一份索引
+每个 run 开始刷新系统提示时，`MemoryService.prompt_index` 读出用户和项目两个作用域的记忆（项目作用域只在 `--trust-project` 时存在），交给 `memory_index` 拼成一段：开头说明这是数据而不是指令，后面每条一行 `[user|project] <id> — <description>`，按更新时间取最近 50 条。没有记忆时这一段不出现。
+模型觉得某条相关时，用普通的 `read` 读 `/memory/user/<id>.md`。这两个目录是只读虚拟挂载，和 `/skills/` 用同一套机制，读取在进程内完成，沙箱不需要放开 `~/.pycode`。读到的内容是普通工具结果，由旧工具结果驱逐和压缩照常清理。另一路 `AGENTS.md` 是指令文件：Deep Agents 的 `MemoryMiddleware` 每次把它放进系统提示，不经过这份索引。
 {{chain:13-memory:recall}}
-
-## 第二步：这轮明确要求记住，模型通过普通工具修改笔记
-
-用户说“以后都先给最小例子”时，模型也可以主动使用记忆工具。模块提供的不是任意文件写入，而是每个允许范围下的 manage/search 工具：查找用 `create_search_memory_tool`，新增、更新、删除用 `create_manage_memory_tool`。这些是 LangMem 官方工厂，`ScopedMemoryTool` 读取它们真实的参数结构，接进本项目同一套工具声明、权限检查和结果保存流程。
-
-执行器批准一个已声明工具后，`ScopedMemoryTool.execute` 才进入 `MemoryService.tool_operation`。服务再次检查当前会话是否允许记忆操作、是否为主助手、目标范围是否在白名单里；然后拿到本会话修改锁，把记录变化的 store 交给 LangMem。模型拿到的是固定范围的存储接口，不能把参数写成某个磁盘路径去打开别人的文件。
-
-最后写 JSON 前，`JsonMemoryStore` 取得对应文件的修改锁，重读最新版本，检查正文、完整数据大小、数量上限和疑似密钥。实际写成了什么会保留前后值，并在退出操作时记入变更日志。即使磁盘写完后紧接着取消，也不能谎称“什么都没发生”；这些变化稍后要能查清。
-
+## 第二步：用户说“记住”，模型调用 manage 工具
+用户说“以后都先给最小例子”时，模型调用 `manage_user_memory`。它是 LangMem 官方 `create_manage_memory_tool` 的产物，`ManageMemoryTool` 读取它真实的参数结构（`MemoryNote(description, content)`），接进本项目同一套工具声明、权限检查和结果保存流程；`MemoryToolGate` 让它不需要审批。
+LangMem 把 create/update/delete 变成对 `BaseStore` 的 put。底层 `MarkdownMemoryStore` 只实现 LangMem 用到的 get/put/search：put 落到 `write`，在作用域目录的锁里检查后写一个 `<id>.md`（frontmatter 是 description 和 updated）。检查由 `check_memory_write` 统一做：描述是一行非空文字，描述加正文不超过 2000 字，每个作用域不超过 50 条，疑似密钥直接拒绝。模型不能用 `write` / `edit` 直接写记忆目录。
 {{chain:13-memory:tools}}
-
-## 第三步：聊天已结束，再决定这次有什么值得长期留下
-
-普通用户不一定主动要求调用记忆工具，所以还有自动整理。会话只有在保存完成的 `run_end` 后，才调用 `MemoryService.settled` 预约后台任务；仍在等审批时不触发。历史压缩也可能触发同一路入口，但必须先成功采用摘要，不能把尚未生效的模型草稿当整理依据。
-
-后台任务先准备有限输入：最新摘要最多八千字符，最近用户和助手文本最多四十条、两万四千字符，并保留压缩后仍需要的对话尾部。然后 `ConfiguredMemoryUpdater` 打开独立后台模型，把输入交给 `MemoryConsolidator`，后者直接调用 LangMem 的 `create_memory_store_manager`。新增、合并、删除哪些条目由 LangMem 决定；固定目录、写入检查和实际变更记录仍由项目负责。
-
-这条调用不继承主聊天的思考设置。后台关闭 thinking 和 reasoning_effort，重试次数为零，输入与输出也有限额；主聊天仍使用用户自己的设置。`max_steps=1` 约束整理步骤，不等于保证只发一个 HTTP 请求，模型封装另有最多二十四次调用的边界。服务同时只保留一个未结束的整理任务，关闭会话时等待它退出并关闭后台客户端。
-
-如果整理失败，主任务的“parser.py 已修复、测试结果如下”不会被改成失败。已经完成的笔记变化仍要记录，未写成功的部分也不能假装成功。用户接着发新任务时，第一步的选择流程才会读取当前笔记，而不是盲目相信上轮模型声称记住了。
-
+## 第三步：压缩被采用后，后台整理一次
+用户不一定主动要求记住，所以还有后台整理。它只在压缩被采用时触发：`SummaryService.adopt` 成功后调用 `MemoryService.compacted`，后者在没有正在跑的整理时开一个后台任务；另有手动 `/memory extract`。run 结束时不触发。
+`consolidate` 从会话里取最新摘要和有限的最近对话，`ConfiguredMemoryUpdater` 打开独立后台模型（关闭 thinking，因为 LangMem/trustcall 会强制 tool_choice），交给 LangMem 的 `create_memory_store_manager`。新增、合并、删除哪些条目由 LangMem 决定；写入仍经过同一个 `check_memory_write`，被拒绝的条目跳过并记日志。后台失败只记日志，不影响主任务。
 {{chain:13-memory:background}}
-
-## 第四步：记错了，撤销的是保存过的变化
-
-假设后台把“本项目用 pytest”误写成所有项目都用 pytest。用户可以先列出笔记，再按用户或项目范围手工修改。`MemoryService.edit` 会明确定位一条记录，走与模型工具相同的存储检查；同一个 ID 在两处都有时，必须指定范围，不能猜应覆盖哪一份。
-
-如果希望直接撤销最近一次自动整理，`undo` 读取变更日志，找到尚未完整撤销的那次整理。恢复前，store 拿齐涉及文件的锁，比较每一条当前值是否仍等于整理结束时的值。若用户后来手工改过其中一条，就拒绝覆盖，说明这次整理之后还发生过修改。撤销恢复保存的原值和原时间，不再次问模型“帮我反向生成”。
-
-检查通过后，每个范围的 JSON 以原子替换方式发布。两个文件并不是一个数据库事务：第二个写失败时，第一个可能已经恢复，所以日志使用 `attempted_undo` 记录实际完成部分；只有整批恢复才记 `undoes`。弄清这条边界后，下一章的 Plan 就更容易理解：长期记住偏好，不等于用户已经批准这次修改方案。
-
-{{chain:13-memory:undo}}
-
+## 第四步：记错了，用户直接改文件
+`/memory` 列出索引，`/memory edit ID 内容`、`/memory delete ID`、`/memory clear` 直接修改或删除对应的 md 文件，走同样的写入检查。同一个 ID 在两个作用域都有时用 `--scope` 指明。没有变更日志和撤销；文件就是唯一的数据。旧格式的记忆文件不迁移。
 ## 框架在刚才的故事里做了什么
-
-这里有三条不能合并的框架路径。Deep Agents 的 `MemoryMiddleware` 只处理允许的 AGENTS 文件；LangMem 的 manage/search 工具供主模型主动读写笔记；`create_memory_store_manager` 供后台从有限对话中整理笔记。它们共享部分存储配置，但触发时间、输入和返回对象不同。
-
-笔记太多时，另有 `ChatPromptTemplate` 与 `with_structured_output(MemoryDirectoryChoices)` 组成的选择链。它仅返回候选 ID 与分数，既不写笔记，也不替代后台 Store Manager。`JsonMemoryStore` 实现框架的 `BaseStore`，使这几条路径能使用同一个受限存储接口；文件锁、原子写、过滤和撤销日志是项目补上的能力。
-
-下面保留查找用的表格。表里提到的 scope 或 namespace，具体就是“这条笔记属于哪个用户或项目”；最后一列直接写明谁等待后台任务结束、谁关闭模型连接。
-
-## 查找：哪种“记住”走哪条路
-
-| 用户要什么 | 内容在哪里 | 怎样进入本轮工作 |
-|---|---|---|
-| 按固定指令做事 | 用户`AGENTS.md`；受信任项目的根`AGENTS.md` | `MemoryMiddleware`每轮读入，随后加入各次系统提示 |
-| 参考过去保存的偏好 | 用户或项目各自的`memory.json` | `select`选条目并保存本轮`memory_load`，再加入模型上下文 |
-| 明确查询或修改笔记 | `manage_*_memory`、`search_*_memory`工具 | 先经过普通工具检查和结果保存，再调用LangMem读写 |
-| 从刚结束的聊天提炼偏好 | 聊天完成或摘要被采用后创建的后台任务 | 服务登记任务，调用LangMem Store Manager，关闭时等待任务结束 |
-| 查明改过什么、撤销整理 | `user_data/memory/changes.jsonl` | 比较保存的修改前后值，再决定能否恢复 |
-
-`--memory-mode off`关闭自动召回、自动整理和模型manage/search工具，用户仍可查看、编辑、删除、撤销或清空笔记。它不关闭AGENTS指令。项目AGENTS是否参与由信任检查决定；自动整理写哪些笔记范围另由`auto_namespaces`决定。
-
-## 查找：从哪里创建，交给谁使用，谁负责关闭
-
-| 创建入口 | 调用前要提供什么 | 得到什么，交给谁 | 谁负责关闭 |
-|---|---|---|---|
-| `MemoryModule` | 项目目录、用户数据目录、项目ID、时钟、信任与开关 | 确定用户和项目笔记各存哪里、哪些参与自动整理 | 这里只保存配置，不启动后台任务 |
-| `MemoryModule.service` | 会话历史和后台选择、整理的方法 | `MemoryService`，供会话操作和模型工具使用 | `AgentSession.aclose` |
-| `MemoryModule.updater` | 创建后台模型连接的方法、限制模型调用的方法 | `ConfiguredMemoryUpdater`，供选择条目和后台整理调用 | 每次调用最后关闭自己打开的模型连接 |
-| `MemoryModule.tools` | 记忆服务与只读设置 | 包装后的官方工具，交`ToolRegistry`声明和执行 | 借用会话服务，不重复关闭它 |
-| `MemoryModule.projection` | 无外部连接 | `MemoryProjection`，给上下文组合器从历史重建本轮选中笔记 | 没有要关闭的连接或后台任务 |
-| `composition.build_memory_service` | 当前选中的Memory和Models模块 | 把后台模型计量与笔记存储接在一起的会话服务 | 当前会话，不是整个进程共享一份服务 |
-
-## 查找：一个类具体做哪段工作
-
-| 代码位置 | 负责的动作 |
+三条路径各用各的框架：Deep Agents `MemoryMiddleware` 处理 AGENTS.md；LangMem 的 manage 工具供主模型主动写；`create_memory_store_manager` 供后台整理。它们共享同一个 `MarkdownMemoryStore`（实现 LangGraph 的 `BaseStore`）。文件格式、锁、写入检查和索引是项目补上的。
+## 查找：文件与字段
+| 文件或结构 | 保存什么 |
 |---|---|
-| `MemoryModule` | 选择笔记目录、用户项目范围、自动整理范围和后台模型方法 |
-| `MemoryService.prepare_task / select` | 同任务复用，切换重选，完成撤下；统一按相关性筛选并保存任务批次 |
-| `ConfiguredMemoryUpdater` | 单独打开后台模型，限制思考、输入输出和请求次数，最后关闭连接 |
-| `MemoryConsolidator` | 把有限文本转框架消息，再调用LangMem记忆管理器 |
-| `ScopedMemoryTool` | 把官方LangMem工具接入项目同一套工具检查与结果保存 |
-| `JsonMemoryStore` | 实现`BaseStore`读写搜索，只访问配置目录并整体替换JSON |
-| `MemoryChangeLog` | 追加变更日志，处理坏尾行，返回前刷新到磁盘 |
-| `MemoryProjection` | 从日志里已保存的选择生成模型要读的笔记，不打开外部连接 |
-
-## 查找：文件与字段保存什么
-
-| 文件或结构 | 保存什么 | 读取或修改时检查什么 |
-|---|---|---|
-| `user_data/memory/memory.json` | 跨项目使用的用户笔记；默认数据目录是`~/.pycode` | 只能经配置的用户目录访问 |
-| `workspace/.pycode/memory/memory.json` | 当前项目笔记 | 只有可信项目参与自动写入 |
-| `namespace` | 由`memories`、`scope`和`identity`组成的笔记范围标识 | 用户与项目不能因条目ID相同就被当作一份数据 |
-| `MemorySnapshot` | 格式版本、范围、修改版本号与全部记录 | 文件声明的范围必须与配置一致 |
-| `StoredMemory` | 笔记值、创建和更新时间 | 值含类型与正文，时间必须带时区 |
-| `memory.lock` | 每份笔记目录内防止同时修改的文件锁 | 多个会话不能各自覆盖掉对方更新 |
-| `settings.json` | 用户选择的`auto`或`off` | 会话未明确指定开关时使用 |
-| `changes.jsonl` | 变更ID、来源、修改前后值、会话与运行ID | 区分自动整理、模型工具和用户手工操作 |
-| `undoes`、`attempted_undo` | 分别表示完整撤销或发生过部分撤销尝试 | 不把跨文件半成功标成整次已恢复 |
-| `memory_load` | 任务/输入身份、实际选中记录及选择时间 | 同任务复用；切换替换、结束撤下，长期库保留 |
-
-{{inline:src/pycode/memory/domain/memory.py:MemorySnapshot}}
-
-
+| `~/.pycode/memory/<id>.md` | 用户记忆，frontmatter 有 description、updated |
+| `<项目>/.pycode/memory/<id>.md` | 项目记忆，只在信任项目时启用 |
+| `settings.json` | `auto` 或 `off` |
+| `memory.lock` | 作用域目录的写锁，只在写盘时持有 |
 ## 遇到异常时，程序怎么处理
-
-**off 是否把历史笔记删掉？**
-
-不会。off 取消后台任务、写空召回快照，已有 JSON 仍在；clear 才是显式清空操作。
-
-**off时还能显式extract吗？**
-
-可以。AgentSession.memory_extract是用户主动的在线整理入口，不走自动settled的mode检查；仍需配置模型并经过同一存储检查和变更记录流程。
-
-**少量笔记就全部送给主模型吗？**
-
-不会。统一按相关性选择，最多注入 10 条，可选零条。选择失败记错误并注入空批次，不补最近笔记。
-
-**后台抛异常会让用户本轮失败吗？**
-
-不会。consolidate 捕获并记录后台异常；取消仍传给负责等待该任务的对象，让关闭过程等它真正停止。
-
-**自动整理写了一半失败怎么办？**
-
-已写入的变化仍记录；不把整轮说成没有发生，用户可以查看日志并撤销可核实状态。
-
-**撤销跨两个 JSON 是一个事务吗？**
-
-不是。先拿齐各文件的锁并完成比较，但之后每个JSON分别替换；后一个磁盘写失败可能留下部分恢复。
-
-**同一 memory_id 在两个作用域都有怎么办？**
-
-手动命令用`--scope user`或`--scope project`说明要改哪一处，不能猜测覆盖哪一条。
-
-**为什么保留 migration 字段却删除迁移服务？**
-
-旧JSON仍可按当前数据格式读取，不等于仍提供旧迁移流程；无关旧字段会在后续写入时丢弃。
-
-
+**off 是否把已有记忆删掉？** 不会。off 去掉索引、manage 工具和后台整理，文件还在；clear 才删除。
+**后台抛异常会让用户本轮失败吗？** 不会。`background` 捕获并记日志；关闭会话时等待任务退出。
+**写满 50 条怎么办？** 新增返回 `memory_limit_reached`，模型需要先合并或删除旧条目。
 ## 面试常见追问
-
-- **为什么不把 AGENTS.md 也写入 JSONL？** 框架处理器每轮读入一次内部状态，再加到各次系统提示；不反复读盘，也不被压缩清掉。
-- **LangMem 和 pycode 各负责什么？** LangMem 决定条目内容和合并；pycode 控制文件、时机、过滤、日志与撤销。
-- **为什么不盲重试后台整理？** 一次流程可能已写部分状态；这里选择零重试、可审计，而不是隐式重复修改。
-- **为什么需要两层锁？** 服务锁防本会话的工具、后台和手工操作同时修改；文件锁防不同会话相互覆盖JSON更新。
-- **为什么 undo 要比较 after？** 保护之后的用户修改；当前值不匹配时宁可拒绝，也不能还原成旧值。
-- **怎么避免隐藏密钥藏进 metadata？** 检查完整序列化 value 与递归原始字符串，不能只检查界面显示正文。
-
+- **为什么不自动召回？** 索引只占几十行，模型自己判断要不要读，和 Skill 一样；省掉了打分模型和每轮的召回请求。
+- **LangMem 和 pycode 各负责什么？** LangMem 决定条目内容和合并；pycode 控制文件格式、时机和写入检查。
+- **为什么不盲重试后台整理？** 一次整理可能已经写了部分文件；零重试、只记日志，不隐式重复修改。
 记住“先给最小例子”仍不等于批准这次修改。接着读[计划](14-plans.md)，看用户怎样先审 parser.py 的具体修法，再决定何时允许改文件和运行测试。

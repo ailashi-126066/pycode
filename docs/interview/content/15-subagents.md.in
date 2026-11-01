@@ -1,0 +1,30 @@
+# Subagent：把一部分修复交给子 agent
+上一章的计划写好后，主 agent 发现 parser.py 的修复和文档更新互不相关，可以并行。它不需要另一套“团队”机制：照 Claude Code，主 agent 调用 `Agent` 工具派出一个子 agent，子 agent 在自己的会话里用同一个 Deep Agents 图完成任务，最后只把结果交回来。子 agent 之间不通信，也不共享任务板。
+```text
+主 agent 调 Agent(description, prompt, mode, background)
+→ SubagentManager.start 建子会话（worktree 模式先建 git worktree）
+→ 子 AgentSession.run 在后台任务里跑；它的每个事件包成 subagent 事件转发给主会话
+→ 前台：Agent 工具等它结束再返回；后台：立即返回，结束后作为 follow_up 输入送达
+→ 结局 completed / partial / failed / cancelled，worktree 有改动就保留分支
+```
+## 第一步：派出子 agent，先建会话再开跑
+`AgentTool.execute` 把模型给的描述、提示、模式和是否后台交给 `SubagentManager.start`。管理器先检查并发上限（`--max-agents`，1–4），worktree 模式还要求当前会话能写代码（不是只读，也不在 Plan 规划中）。然后它创建 `Subagent` 记录：8 位 agent_id、独立的 session_id、用到的工作区，以及启动它的 Agent 调用 ID。
+子会话由 `ConfiguredSubagentSessions.open` 打开：配置里关闭委派（子 agent 不能再派子 agent）、关闭记忆和 MCP 启动连接，模型沿用主会话当前的选择，worktree 模式强制系统沙箱。同时在主会话写一条 `custom{kind: subagent_start}`，用量报告据此把子 agent 的请求算进来。最后 `_launch` 把 `session.run(prompt)` 放进一个 asyncio 任务，由 `_drive` 负责它的整个生命周期。
+前台调用接着进入 `SubagentManager.wait`。如果父运行这时被取消或失败，等待被取消，管理器顺手停止这个前台子 agent，结局记为 cancelled；后台子 agent 不受父运行影响。
+{{chain:15-subagents:spawn}}
+## 第二步：子 agent 要审批时，问题交给主界面
+子 agent 有自己完整的工具流水线，需要审批的调用同样用 LangGraph `interrupt` 停下。子会话的 run 返回 `pending` 后，`_drive` 把状态改成 waiting，问题放进 `view()["approvals"]`，并发一条 subagent 状态事件让 TUI 刷新。TUI 的审批面板标出来源（agent_id 与描述），用户回答后经 `AgentSession.answer_agent` 交给 `SubagentManager.answer`，管理器把答案放进该子 agent 的队列，`_drive` 取到后调用子会话的 `resume` 继续。
+非交互模式没人能回答，子 agent 用 `ReadOnlyToolGate`：需要审批的调用直接得到 `approval_required` 错误结果，子 agent 自己决定下一步。所以非交互模式下子 agent 不能改代码。
+{{chain:15-subagents:approval}}
+## 第三步：结束、停止和继续
+子 run 结束后，`_drive` 按 `RunResult.outcome` 定结局：completed→completed，turn_limit→partial（可以用 `SendMessage` 继续），其他→failed 并记下原因；子 agent 自身抛出的异常也只算它自己的失败，不让主运行失败。`StopAgent` 调 `SubagentManager.stop` 取消这个任务；如果子 agent 正在等审批，还要调用子会话的 `cancel` 结束它挂起的 run。
+`_finish` 收尾：worktree 没有改动就删除 worktree 和分支；有改动就保留，结果文本写明分支和路径，由主 agent 用 bash `git merge <分支>`（照常审批）。worktree 模式下每次 TaskUpdate 把一个步骤标成 completed，`_commit_step` 就在 worktree 里提交一次，主 agent 合并时能看到按步骤划分的提交。后台子 agent 结束时 `notify` 把结果交给主会话：主会话正在运行就作为 durable `follow_up` 输入，空闲时存起来，由 TUI 或 CLI 调 `wake` 开一个新运行送达。
+{{chain:15-subagents:finish}}
+## 框架做了什么，管理层为什么自己写
+子 agent 内部完全是框架：同一个 `create_deep_agent` 图、同样的 middleware、checkpointer 和 interrupt。Deep Agents 0.7.32 自带的 `task` 子代理是同步一次性调用，不支持后台、继续、停止和 worktree；`AsyncSubAgentMiddleware` 支持后台，但必须连 Agent Protocol 服务器。所以只有管理层（`subagents/manager.py`）是自己写的，大约两百行。
+子 agent 的对话、搜索和工具结果都留在它自己的会话里，不并入主上下文；主 agent 只拿到最终结果。需要审查过程时，可以按 session_id 打开子会话。
+## 遇到异常时，程序怎么处理
+**进程重启后子 agent 还在吗？** 管理器只在内存里，重启后不恢复子 agent；子会话本身保存在磁盘上，可以单独打开查看。
+**worktree 合并冲突怎么办？** 主 agent 自己修，或用 `SendMessage` 让子 agent 在自己的分支上修；修不好就 `git merge --abort` 并告诉用户。没有自动合并，也没有专门的冲突处理代码。
+**同时派出几个前台子 agent 会互相等待吗？** 不会。Agent 工具默认并行，多个前台调用各自等待自己的子 agent。
+读完子 agent，下一章看用户在终端里怎样看到这些进度、回答审批，以及用 `/agents` 查看和取消子 agent。

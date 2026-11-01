@@ -334,7 +334,7 @@
   "18-operations:gc": {
     "title": "按真实引用规划存储动作",
     "input_label": "从这一步开始",
-    "request": "pycode storage gc --dry-run；只展示keep/quarantine/restore/purge等决定。",
+    "request": "pycode storage gc --dry-run；只展示 keep_protected/keep_referenced/delete 等决定。",
     "intro": "按真实引用规划存储动作",
     "why": "以当前代码的作用域、状态和调用边界核对。",
     "nodes": [

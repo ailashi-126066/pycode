@@ -14,7 +14,7 @@
     "name": "ToolSpec",
     "purpose": "让模型说明与执行检查使用同一份工具描述",
     "notes": [
-      "input_schema与implementation_hash/policy_hash：审批绑定参数形状、实现和政策身份。",
+      "exposure 决定 direct（每次带定义）还是 deferred（ToolSearch 加载后才带）；审批绑定 data_hash(plain_data(spec))。",
       "execution_mode：同一声明还给结算层提供并行/串行限制；执行仍需Gate。"
     ],
     "guide": "模型准备运行测试时，需要知道工具名称、参数形状和作用类别；执行时还要核对是不是同一份说明。这个定义保存描述、类别及实现和政策摘要，交给请求准备与执行检查共同使用。它本身没有批准操作，模型看见说明以后仍要通过当前权限和文件检查。"

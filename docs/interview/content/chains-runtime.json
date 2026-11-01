@@ -309,7 +309,7 @@
         "purpose": "先记录开始，再调用SDK，最后保存结果",
         "notes": [
           "await self._store.start(record) 位于 await handler(request) 之前：进程中断仍能看到未完成请求。",
-          "normalize_usage(assistant, ...)：使用实际Provider usage，未知值保持未知。 await self._store.settle(completed) 先于 emit(\"model_request_end\", ...)：完成事件不先于账本。"
+          "normalize_usage(assistant, ...)：使用实际Provider usage，未知值保持未知。 await self._store.settle(completed)：请求记录先于 message_end 事件落盘。"
         ],
         "helpers": [
           {
@@ -394,8 +394,8 @@
     "nodes": [
       {
         "file": "src/pycode/context/services/context_projector.py",
-        "name": "ContextProjector.project",
-        "purpose": "按当前分支整理消息，再加入各功能补充的内容",
+        "name": "ContextProjector.transform_context",
+        "purpose": "照 Pi transformContext：把会话记录投影成发给模型的消息",
         "notes": [
           "key = (snapshot.leaf_id, snapshot.revision, self.PROJECTION_VERSION)：相同快照直接返回同一整理后的发送消息。",
           "written <= contributor.checkpoint_keys：贡献器不能写删别人的checkpoint字段。 set(contribution.usage_invalidating_entry_ids) <= path_ids：不能拿分支外事实破坏usage锚点。"
@@ -513,14 +513,14 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/context/domain/context_meter.py",
-            "name": "ContextMeter.checkpoint",
-            "purpose": "汇总工具、模型和提示，供上层检查设置是否变化",
+            "file": "src/pycode/context/services/summary.py",
+            "name": "SummaryService.checkpoint",
+            "purpose": "采用摘要时才取 checkpoint",
             "notes": [
-              "sorted(self._settings.tools, key=lambda spec: spec.name)：工具顺序不制造无意义hash抖动。",
-              "clone_value(projection.checkpoint)：计算配置时不能原地改冻结整理后的发送消息。"
+              "config_hash 只含影响切点和预算的数值，不含可以重放的状态。",
+              "投影里每个贡献者各自负责自己的 checkpoint 键，这里只是收集。"
             ],
-            "guide": "为了判断旧用量或后台摘要还能不能复用，父函数需要一份稳定的当前配置内容。这里复制整理消息时保存的补充数据，汇总系统提示，并按名称排序工具说明，再加入模型选择。返回结果用于计算配置校验值，不修改发送消息；工具变了也能让旧计算及时失效。"
+            "guide": "后台摘要可能很早就生成好了。checkpoint（任务板、Plan、系统提示快照）如果在开始生成时取，之后任务板一变摘要就白做了。所以这里在采用那一刻从当前投影取 checkpoint，写进 compaction 记录。"
           }
         ],
         "edge": "调用方顺序步骤：预算对象被SummarySettings/ContextMeter消费",
@@ -691,18 +691,6 @@
               "await self.settled(\"memory-compaction-\" + uuid4().hex, \"compaction\")：压缩事实成功之后才安排后台整理。",
               "这是app绑定的on_compacted默认实现；Context不importMemory业务服务。"
             ],
-            "helpers": [
-              {
-                "file": "src/pycode/memory/services/memory.py",
-                "name": "MemoryService.settled",
-                "purpose": "同一时间最多安排一个LangMem后台整理任务",
-                "notes": [
-                  "self.mode == \"off\" or self.updater is None：禁用时不创建付费后台任务。",
-                  "any(not task.done() ...)：同一服务不叠加多个整理。 asyncio.create_task(self.consolidate(...))并存入self.tasks：collect/aclose有明确拥有者。"
-                ],
-                "guide": "会话正常完成或压缩成功后，通知会到达这里，但这不表示长期笔记已经写好。方法先检查关闭、模式和已有任务，再登记一个后台整理任务并保存引用。返回后聊天可以继续；需要等待完成或退出时，由记忆服务按保存的任务引用等待或取消并记清实际变化。"
-              }
-            ],
             "edge": "注入通知：adopt调用on_compacted回调",
             "guide": "摘要已经安全追加到历史以后，Context通过应用交给它的方法通知这里。方法只为这次压缩生成整理身份，并转入记忆服务的普通任务安排流程。它不在压缩函数内部直接跑记忆工具；是否启用、是否已有任务以及最后保存什么，接下来由记忆模块自己处理。"
           }
@@ -720,7 +708,7 @@
     "title": "还没必要概括整段对话时，先省略旧测试正文",
     "input_label": "跟着parser.py修复过程读这一段",
     "request": "await eviction.apply(protected_entry_ids=summary.protected_entry_ids)",
-    "intro": "摘要准备交出正在使用的来源ID以后，输出省略方法才选择可处理的旧结果。只有已有完整输出对象的正文可以换成简短引用，随后重新整理消息并记录本次目标和节省量。",
+    "intro": "摘要准备交出正在使用的来源ID以后，输出省略方法才选择可处理的旧结果。足够旧的正文换成简短说明，随后重新整理消息并记录本次目标和节省量。",
     "why": "缩短模型输入不能删除测试证据，也不能改变正在被后台摘要读取的来源。",
     "nodes": [
       {
@@ -729,7 +717,7 @@
         "purpose": "按容量决定省略哪些旧输出，并保存这次决定",
         "notes": [
           "protected_entry_ids=protected_entry_ids：摘要正在使用的消息不被驱逐。",
-          "if result.output_id is None: continue：没有完整输出对象的结果不能随便省略。 EntryDraft(\"context_edit\", ... kind=\"tool_eviction\")：只追加当前分支编辑，不覆盖原始ToolResult。"
+          "只挑足够旧的结果，最近的保持原样。 EntryDraft(\"context_edit\", ... kind=\"tool_eviction\")：只追加当前分支编辑，不覆盖原始ToolResult。"
         ],
         "helpers": [
           {
@@ -743,12 +731,12 @@
             "guide": "输出省略服务需要知道先处理哪些旧结果，才把快照、整理后的消息、预算和保护名单交到这个纯方法。它依据大小、时间位置和是否可保留完整输出等条件选择目标，返回消息ID。它不读文件也不写历史，真正的替换说明仍由父服务逐条保存并留下审计。"
           }
         ],
-        "guide": "摘要准备已经给出正在使用的消息ID，模型前流程才把这些保护信息交到这里处理旧测试输出。方法选择有完整输出对象的旧结果，追加简短替换说明，再重新计算节省量并记录目标。返回后的下一次整理的发送消息会变短，但原工具消息和完整日志都还可读取。"
+        "guide": "摘要准备已经给出正在使用的消息ID，模型前流程才把这些保护信息交到这里处理旧测试输出。方法选择足够旧的结果，追加简短替换说明，再重新计算节省量并记录目标。返回后的下一次整理的发送消息会变短，但原工具消息仍在会话里。"
       },
       {
         "file": "src/pycode/context/services/context_projector.py",
-        "name": "ContextProjector.project",
-        "purpose": "重新整理发送消息，算实际节约量",
+        "name": "ContextProjector.transform_context",
+        "purpose": "照 Pi transformContext：把会话记录投影成发给模型的消息",
         "notes": [
           "self.projected_entries(path)：读取刚追加的context_edit并替换发送正文。",
           "service以estimate_messages前后差计算reclaimed_tokens，再追加tool_eviction_audit；不是修改Provider实际usage。"
@@ -758,7 +746,7 @@
       }
     ],
     "result": [
-      "下一次模型可读较短消息，必要时再按output_id取完整日志。",
+      "下一次模型读到较短消息，原始结果仍在会话里，超限的完整输出在 full_output_path 指向的文件里。",
       "原工具消息和完整字节保留，估算节省量不写成真实计费用量。"
     ]
   },
@@ -860,27 +848,14 @@
         "guide": "模型前总流程首先执行这个闭包，因为旧输入还需要更新工具说明、准备摘要或省略长测试日志。它先等待应用交来的准备方法，再调用摘要，并把摘要所用消息交给输出省略保护。处理完返回同一运行上下文，下一个步骤才会交付用户新加的纠正。"
       },
       {
-        "file": "src/pycode/agent/adapters/history.py",
-        "name": "HistoryMiddleware.abefore_model.deliver_steering",
-        "purpose": "把已保存的即时补充要求交给本轮",
+        "file": "src/pycode/agent/adapters/boundaries.py",
+        "name": "deliver_input",
+        "purpose": "先保存，再发input_delivered通知",
         "notes": [
-          "await current.team.flush_inbox(current)：队友消息先进入同一持久化输入流程。",
-          "await current.durable_inputs.pending(current.run_id)：重新从事实构建队列，不信旧进程内列表。 await deliver_input(current, message, \"steer\")：落完成消息后才发布已交付通知。"
+          "entry_id = await save_message(...)：交付成功有真实entry_id。",
+          "queue_kind与input_id进入notification：UI提示不是恢复事实的替代品。"
         ],
-        "helpers": [
-          {
-            "file": "src/pycode/agent/adapters/boundaries.py",
-            "name": "deliver_input",
-            "purpose": "先保存，再发input_delivered通知",
-            "notes": [
-              "entry_id = await save_message(...)：交付成功有真实entry_id。",
-              "queue_kind与input_id进入notification：UI提示不是恢复事实的替代品。"
-            ],
-            "guide": "队列决定本轮应交付一条补充要求以后，父函数把消息和队列类型交来。这里先通过完成消息保存方法取得真实记录ID，再发布带输入身份的交付通知。它返回前消息已有保存依据，界面提示才有意义，后续模型输入也可以引用同一条记录而非临时事件文字。"
-          }
-        ],
-        "edge": "LCEL第二阶段：维护完成后交付新输入",
-        "guide": "旧上下文已经维护好，现在才能把用户等待测试时补充的要求交给本轮。闭包先请求队友消息进入持久队列，再重建尚未响应的输入，并逐条保存交付消息。返回本次交付的消息供后面重新整理输入；接收了排队请求，不等于此前模型已经读到它。"
+        "guide": "队列决定本轮应交付一条补充要求以后，父函数把消息和队列类型交来。这里先通过完成消息保存方法取得真实记录ID，再发布带输入身份的交付通知。它返回前消息已有保存依据，界面提示才有意义，后续模型输入也可以引用同一条记录而非临时事件文字。"
       },
       {
         "file": "src/pycode/agent/adapters/history.py",
@@ -957,7 +932,7 @@
         "purpose": "把完成消息、输出引用与发布顺序绑定",
         "notes": [
           "await context.journal.append_message(message)：持久化先于message_end。",
-          "await context.outputs.bind(result.output_id, entry_id)：输出对象绑定到真实完成消息，不只绑定图state。 context.completed.append(message)：RunResult只收集完成事实，不存未完成流式片段。"
+          "context.completed.append(message)：RunResult只收集完成事实，不存未完成流式片段。"
         ],
         "edge": "模型步骤返回后：awrap_model_call继续调用持久化",
         "guide": "模型或工具已经有完整结果，调用方需要把它变成可恢复记录以后再通知界面。这里先追加消息，绑定完整输出及文件快照来源，再加入本轮完成列表并发布结束事件。返回真实记录ID给调用方，后续加载回执和队友确认才能依赖它，不能只凭工具已经返回就确认。"
@@ -994,7 +969,6 @@
           "if self.graph is None: raise StorageError(\"run_expired\", ...)：磁盘历史不自动复活旧执行。",
           "identifiers = {item.id for item in interrupts}：多问题回答必须按真实interrupt ID映射。 Command(resume={interrupts[0].id: answers})：单问题也显式绑定当前中断。"
         ],
-        "helpers": [],
         "guide": "同进程界面还持有等待中的图，用户现在对刚才的命令作出回答，才进入这里。方法读取真实中断，检查答案对应的问题身份并构造恢复命令，再调用同一图。没有活图或问题不符就拒绝，返回的后续结果仍交回原会话处理，不用旧批准创建一次新执行。"
       },
       {
@@ -1014,7 +988,7 @@
         "purpose": "保存完结果后，优先读即时补充要求，再读后续任务",
         "notes": [
           "await context.durable_inputs.finish_boundary(context.run_id)：在宣布结束前关闭输入admission并再检查队列。",
-          "return {... \"jump_to\": \"model\"}：让同一框架图继续，不另写模型循环。 await run_hook(... \"session_end\" ...)：结束Hook后新到的队列仍有第二次检查。"
+          "return {... \"jump_to\": \"model\"}：让同一框架图继续，不另写模型循环。 关闭输入接收前再复查一次队列，结束前到达的输入不会丢。"
         ],
         "helpers": [
           {
@@ -1101,12 +1075,12 @@
           {
             "file": "src/pycode/tools/adapters/settlement.py",
             "name": "ToolSettlementMiddleware.declaration_error",
-            "purpose": "执行前再次核对这次模型真正看到的工具说明",
+            "purpose": "执行前核对调用名在本次请求的工具列表里",
             "notes": [
-              "declared.implementation_hash != spec.implementation_hash：模型看到声明以后实现改变必须拒绝。",
-              "declared.policy_hash != spec.policy_hash：环境/沙箱政策变化也不能复用旧声明身份。"
+              "call.name not in context.disclosed_tool_names：只检查名字是否在本次请求的工具列表里。",
+              "返回 tool_not_declared 的结果 details.executed=False，工具不执行也不进审批。"
             ],
-            "guide": "工具真正执行以前，父函数还要核对模型当时看到的名单及说明，所以传入当前调用与参数。这里检查最终名称、输入结构、实现和政策摘要，必要时调用只读拒绝检查。返回明确拒绝结果或允许继续的空值，不会在这个预检阶段运行工具或提前产生外部效果。"
+            "guide": "工具真正执行以前，父函数先核对模型这次请求里有没有这个工具。照 11.1 第 33.1 节只查名字：不在列表里就返回 tool_not_declared（details.executed=False），在就返回空值让执行器继续。这一步不运行工具，也不提前产生外部效果。"
           }
         ],
         "edge": "直接调用：次序条件允许后进入执行与等待结算",
@@ -1118,7 +1092,7 @@
         "purpose": "按模型原调用顺序保存结果，然后确认消息已收到",
         "notes": [
           "if ready is None: break：后面的快工具不能跳过尚未准备好的前项。",
-          "entry_id = await self.publisher.publish(...)：publisher完成会话 Store与输出引用绑定后才有真实entry_id。 extension.after_persist(...)、team.settle_tool(... accepted=True)：Skill/Team ACK发生在事实持久化之后。"
+          "entry_id = await self.publisher.publish(...)：publisher完成会话 Store与输出引用绑定后才有真实entry_id。 extension.after_persist(...)：扩展通知发生在事实持久化之后。"
         ],
         "helpers": [
           {

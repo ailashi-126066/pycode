@@ -244,7 +244,7 @@ def build(check=False):
                 ("session", "12-"),
                 ("memory", "13-"),
                 ("plans", "14-"),
-                ("team", "15-"),
+                ("subagents", "15-"),
                 ("ui", "16-"),
             ]
         },

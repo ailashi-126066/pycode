@@ -12,7 +12,7 @@
 
 {{chain:05-agent:build}}
 
-Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，并通过注入方法设置初始标题，然后调用build。build把当时registry中的候选工具转换给框架，登记文件工具、可选AGENTS指令、功能扩展、History与Settlement，再调用`create_deep_agent`。简单 Todo 中间件已移除，进度使用结构化 task_action。构图中的执行工具集合与模型当次看到的定义不是一回事。
+Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，并通过注入方法设置初始标题，然后调用build。build把当时registry中的候选工具转换给框架，登记文件工具、可选AGENTS指令、功能扩展、History与Settlement，再调用`create_deep_agent`。简单 Todo 中间件已移除，进度由任务板工具 TaskWrite/TaskUpdate 维护。构图中的执行工具集合与模型当次看到的定义不是一回事。
 
 官方默认摘要和隐式通用子Agent在这里关闭，因为项目已经有需要核对来源的Context摘要流程，也只允许应用明确提供的子Agent。图拿到保存本次运行位置的对象（checkpointer）后，`invoke`才执行`graph.ainvoke`。到此，“以后该调用哪些方法”已经交清楚，下一步看第一次真正请求模型之前框架怎样回调它们。
 
@@ -24,10 +24,10 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 {{chain:05-agent:prepare}}
 
-真正发送前，prepare_model_boundary 加入固定 JSON 输出契约，再做权限与 Skill 范围过滤，调用 ToolDiscovery.disclose。首次提供 ToolSearch、Bash、ReadToolResult 和常用文件工具的完整定义，同时列出所有允许工具的分类、名称和一句话用途。其他工具经 ToolSearch 搜索，结果成功保存后，下一次请求才加载完整参数；没有额外筛选模型。calibrate_model_request 记录最终披露名单与固定系统提示预算；History 随后加入单独计量的动态任务块。猜测未加载工具的调用会被拒绝。
+真正发送前，先做权限与 Skill 范围过滤，再调用 ToolDiscovery.disclose：exposure=direct 的工具（7 个内置工具、ToolSearch、任务板、子 agent 工具）带完整定义，其余工具只在系统提示目录里列名字和一句话用途，经 ToolSearch 搜索成功后，下一次请求才加载完整参数；没有额外筛选模型。calibrate_model_request 记录最终披露名单与固定系统提示预算；History 随后加入单独计量的任务板视图。调用名不在本次请求工具列表里的调用得到 tool_not_declared。
 
 
-维护完成，第二段才读取Team消息并从持久化输入中取出尚未正式交给模型的即时要求，代码把这类输入叫`steer`。比如用户在等待测试时补充“还要覆盖空输入”，这句话此前已经保存为排队输入；现在`deliver_input`先写成正式用户消息，再通知界面它已交付，不能只把临时事件文本塞进模型。
+维护完成，第二段才从持久化输入中取出尚未正式交给模型的即时要求，代码把这类输入叫`steer`。比如用户在等待测试时补充“还要覆盖空输入”，这句话此前已经保存为排队输入；现在`deliver_input`先写成正式用户消息，再通知界面它已交付，不能只把临时事件文本塞进模型。
 
 第三段读取最新快照，让同一个历史整理方法生成发送消息，并用`RemoveMessage(REMOVE_ALL_MESSAGES)`替换框架旧消息列表。否则用户切换分支或采用摘要后，框架保存的消息列表可能还叠着上一份长历史。返回这些状态更新之后，这次模型所需的正文才准备好；接下来还要处理它实际看见的工具说明。
 
@@ -39,7 +39,7 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 {{chain:05-agent:model}}
 
-接着，History把请求交给Bindings中的统一请求步骤。Runner实际请求模型并记录实际用量，完整SDK响应返回以后，转换为项目Message，校验 JSON envelope 的 message 与 task_action，再调用`save_message`。已校验的任务变更和回复随同一条助手消息落盘，工具调用保持原生格式。假设模型要读parser.py和测试文件，这条带tool_calls的assistant必须先写入journal，随后才建立`call_order`，交给后续工具回调使用。
+接着，History把请求交给Bindings中的统一请求步骤。Runner实际请求模型并记录实际用量，完整SDK响应返回以后，转换为项目Message，再调用`save_message`。正文、thinking 和工具调用按有序内容块保存；模型出错或被取消时，部分回复也以 stop_reason=error|aborted 保存。假设模型要读parser.py和测试文件，这条带tool_calls的assistant必须先写入journal，随后才建立`call_order`，交给后续工具回调使用。
 
 模型流式输出时，`ModelEventCallbacks`可以不断告诉界面出现了哪些文字或thinking，但这些片段不是已经完成的assistant。这里等完整消息，是为了保证下一步任何文件读取、修改或运行测试，都能指回一条确实保存过的模型指令。现在才轮到框架工具节点继续。
 
@@ -53,7 +53,7 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 现在可以想象两个读工具：parser.py先返回，测试文件稍后返回；也可能反过来。允许并行时结果先进入`ready_results`，但`settle_ready`仍按assistant的`call_order`推进。当前序结果还没准备好，它不会越过去先公布后项。
 
-真正保存时，Tools调用注入的publisher。`AgentMessagePublisher`绑定了这次run，把结果交给`save_message`写入会话 Store、绑定完整输出，并发布完成消息。然后才确认Skill正文已读入，或告诉Team该消息已正式收到（ACK），最后调用executor.completed触发结束和后置Hook。读文件的结果有了可引用记录，框架下一次才让模型据此决定怎样改parser.py、怎样跑测试。
+真正保存时，Tools调用注入的publisher。`AgentMessagePublisher`绑定了这次run，把结果交给`save_message`写入会话 Store、绑定完整输出，并发布完成消息。然后才通知扩展（例如 SkillSearch 的选择），最后调用executor.emit_tool_execution_end发出结束事件并触发后置Hook。读文件的结果有了可引用记录，框架下一次才让模型据此决定怎样改parser.py、怎样跑测试。
 
 如果工具需要批准，流程在这里可能中断。对于仍持有会话的同进程TUI或嵌入宿主，接下来可以等用户回答；非交互CLI遇到needs_input会退出2并关闭会话，不能在另一个进程复活这张图。最后一步只讨论前一种仍保留图的情况。
 
@@ -65,9 +65,9 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 {{chain:05-agent:resume}}
 
-当模型最终读到测试成功或明确失败结果并回答用户，框架进入`aafter_agent`。这里还不能立刻宣布结束：它会再次看Team收件箱和持久化输入，优先处理即时补充要求（`steer`），再处理后续任务（`follow_up`）。有消息就先保存并通过官方`jump_to="model"`回到模型节点，而不是在图外另写一个while循环。
+当模型最终读到测试成功或明确失败结果并回答用户，框架进入`aafter_agent`。这里还不能立刻宣布结束：它会再次看持久化输入，优先处理即时补充要求（`steer`），再处理后续任务（`follow_up`）。有消息就先保存并通过官方`jump_to="model"`回到模型节点，而不是在图外另写一个while循环。
 
-没有待处理输入时，方法执行图内的session_end Hook，再停止向这次运行接收新排队输入，并最后复查一次是否还有已接收的内容。真正结束以后结果交回AgentSession，那里才保存run_end；正常completed还会调度记忆模块自己的后台整理。这样“模型说完了”“工具结果保存了”“这次run结束了”和“会话要关闭了”各有自己的时点，不会互相代替。
+没有待处理输入时，有 active 任务板就提醒一次让模型选出口；然后停止向这次运行接收新排队输入，并最后复查一次是否还有已接收的内容。真正结束由 AgentRuntime.finish 统一处理：先发 turn_end，再写 run_end{reason}，发 agent_end，触发 run_end Hook。这样“模型说完了”“工具结果保存了”“这次run结束了”和“会话要关闭了”各有自己的时点，不会互相代替。
 
 ## 走完五步，再回查组装和框架职责
 
@@ -101,8 +101,6 @@ Launcher随后调用`AgentRuntime.run`。run先确认输入已写入journal，�
 
 至此，“用户提出修复→模型决定读代码→工具经过审批执行→测试结果保存→模型继续或结束”已经接通。接下来的工具章会放大第四步，进一步看工具参数说明、读取过的文件版本、权限和完整输出怎样真正阻止错误修改，而不是只在提示词中提醒模型小心。
 
-## Team 的进程内交接
+## 子 agent 不是另一套循环
+子 agent 是一个完整的 AgentSession，内部仍是同一个 `create_deep_agent` 图和同样的 middleware；只有启动、等待、审批转发和收尾由 `SubagentManager` 负责。详见 Subagent 章节。
 
-子任务无活动超时后，Team 先停止旧执行并确认工具收尾，再把同一任务的执行线程、持久化 checkpoint、历史和 worktree 交给新成员。continue_task 继续原图；普通取消结束运行；程序重启后有持久化 checkpoint 的运行可显式恢复。活动来自模型和工具事件，不依赖成员自报存活。详细状态和验收流程见 Team 章节。
-
-交接时 continue_task 读取原 checkpoint 和本轮 会话 Store。output_continuations 与模型声明由 State 提供，assistant/call_order 从保存消息推导；临时结算队列不复制，已持久化工具结果用于重建完成集合。后台摘要与旧工具输出清理仍使用原流程。

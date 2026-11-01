@@ -28,7 +28,7 @@ Textual 挂载页面后才调用 `PyApp.on_mount`。它连接输入补全组件�
 
 真正执行由 `start_operation` 创建的 asyncio task 承担，引用放在 `_operation` 中供 busy 判断、取消和等待。`execute_operation` 调用传入的应用函数；若返回 `RunResult`，再经会话统一发布结果并刷新状态。这里没有使用 Textual Worker 装饰器，更没有由框架自动保存一条“后台工作队列”。
 
-用户补充“只跑 parser 测试”时，Queued 只说明会话已把 `input_queued` 写入日志，不是模型已经照做。团队有消息要求主助手继续时，`maybe_wake_team` 也先等 UI 空闲、没有待答主运行，再走同一个主操作入口。排他规则因此同时约束用户输入和团队唤醒，不靠哪个按钮最后改了 busy 标志。
+用户补充“只跑 parser 测试”时，Queued 只说明会话已把 `input_queued` 写入日志，不是模型已经照做。后台子 agent 有结果要交给主助手时，`maybe_wake` 也先等 UI 空闲、没有待答主运行，再走同一个主操作入口。排他规则因此同时约束用户输入和子 agent 唤醒，不靠哪个按钮最后改了 busy 标志。
 
 {{chain:16-ui:input}}
 
@@ -46,11 +46,11 @@ Textual 挂载页面后才调用 `PyApp.on_mount`。它连接输入补全组件�
 
 测试命令需要确认时，`ApprovalPanel` 显示当前操作的内容，用户选择 Approve once 或 Deny。控件发送带 `operation_id` 的 Responded 消息，主 App 再把答案交给 `resume`。它不直接执行 Bash，也不保存一个永久允许开关；运行时仍会核问题是否有效、审批内容是否改变。Plan、普通提问和 MCP 请求使用各自答案面板，不能都套成 approve/deny。
 
-子助手审批还带 `agent_id`。主助手可能正在 `wait_agents`，若把所有答案都塞进主 `_operation`，用户会被 busy 挡住。因此 `on_approval_panel_responded` 为子答案创建独立的 `answer_child` task，交团队恢复指定子会话；关闭时仍把这些 task 一并取消和等待。独立答复不代表子助手获得绕过审批的另一条执行通道。
+子助手审批还带 `agent_id`。主助手可能正在前台等这个子 agent，若把答案塞进主 `_operation`，用户会被 busy 挡住。因此 `on_approval_panel_responded` 为子答案创建独立的 `answer_child` task，经 `answer_agent` 交给子 agent 管理器恢复指定子会话；关闭时仍把这些 task 一并取消和等待。独立答复不代表子助手获得绕过审批的另一条执行通道。
 
-工具完成以后，卡片可通过 `output_id` 展开完整测试输出。`read_next` 把行位置和字节位置交给会话只读接口，更新下一页游标；它读的是已经保存的对象，从不再次运行 pytest。读取也必须经过当前会话的输出存储校验，不能从界面参数直接拼磁盘路径。
+工具完成以后，卡片展开的是会话里保存的结果。超限的输出在结果末尾写明完整文件路径，模型和用户都可以用 read 读那个文件；界面从不再次运行 pytest。`/tasks` 显示当前任务板（可以并行时附分层和关键路径），`/agents` 显示子 agent，`/agents cancel ID` 停止它。
 
-用户最终退出时，`shutdown` 先阻止新渲染，停止并等待主操作，再取消和等待子审批任务，最后关闭会话。前面章节的模型连接、Hook、记忆和团队因此沿同一关闭路径结束。到这里，“修复请求已经保存”“测试批准已回答”“工具结果可重读”和“窗口已关闭”才各有明确依据；后面的评测章节会说明如何从这些记录之外独立判断修复是否正确。
+用户最终退出时，`shutdown` 先阻止新渲染，停止并等待主操作，再取消和等待子审批任务，最后关闭会话。前面章节的模型连接、Hook、记忆和子 agent 因此沿同一关闭路径结束。到这里，“修复请求已经保存”“测试批准已回答”“工具结果可重读”和“窗口已关闭”才各有明确依据；后面的评测章节会说明如何从这些记录之外独立判断修复是否正确。
 
 {{chain:16-ui:approval}}
 
@@ -70,7 +70,7 @@ Textual 挂载页面后才调用 `PyApp.on_mount`。它连接输入补全组件�
 | 完整消息和工具卡片 | `session.inspect`读出的原历史 | 已保存的消息可从会话 Store重新展示 |
 | 等用户回答的审批 | 主运行或指定子成员的当前问题 | 只在本进程原图还在时可以回答 |
 | 上下文token用量 | `SessionView`与`ContextMeter` | 可能使用服务返回用量加后续估算；缺数据就说明不可用 |
-| 展开的测试输出 | `output_id`指向的完整结果对象 | 对象仍保留且归属检查通过才可读取，不重新跑测试 |
+| 展开的测试输出 | 会话里保存的工具结果；超限时 details.full_output_path | 临时目录被清理后，超出预览的部分会丢失 |
 | 输入命令补全 | `CommandRegistry`和当前分支技能目录 | 只是输入帮助，查到名称不等于已批准执行 |
 
 漏掉一次界面刷新不等于丢了结果，可以重新读取已保存历史。反过来，流式画面曾显示的内容也不能代替完整消息。
@@ -112,9 +112,8 @@ Textual 挂载页面后才调用 `PyApp.on_mount`。它连接输入补全组件�
 | `_live_text/_live_thinking` | 尚未成为完整消息的显示片段 | 不写成正式历史，消息结束后清掉临时区域 |
 | `_entry_views/_message_views` | `SessionView`缓存的只读展示数据 | 已完成记录不变时可复用，不回写会话 Store |
 | `_pending_plan` | 用户正在看的回退预览 | 确认后才调用revert，不是Plan批准状态 |
-| 输出ID与读取位置 | 卡片当前对应对象、下一页行与字节位置 | 校验对象归当前会话，不能指定任意磁盘路径 |
 | `pending/pending_run_id` | 当前等待问题与所属运行 | 日志可解释等待；关进程后不能回答旧图审批 |
-| `team.approvals` | 指定子成员在等待的问题 | 答案携具体agent_id，不能误投给主运行或别的子助手 |
+| `subagents.approvals` | 指定子 agent 在等待的问题 | 答案携具体agent_id，不能误投给主运行或别的子助手 |
 
 {{inline:src/pycode/ui/ports/ui.py:InteractiveSession}}
 
@@ -143,7 +142,7 @@ _render_failed阻止后续渲染并提示重新打开；不会把异常当作模
 
 **展开输出会重新跑命令吗？**
 
-不会。读的是output_id对应对象，next_offset／next_byte_offset推进读取位置。
+不会。读的是会话里保存的结果，超限部分读临时文件，都不重新运行命令。
 
 **退出时还有任务没结束？**
 

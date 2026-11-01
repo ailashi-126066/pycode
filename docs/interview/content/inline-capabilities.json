@@ -1,14 +1,4 @@
 {
-  "src/pycode/tools/domain/outputs.py::OutputMetadata": {
-    "file": "src/pycode/tools/domain/outputs.py",
-    "name": "OutputMetadata",
-    "purpose": "完整输出对象的身份、摘要、状态与来源",
-    "notes": [
-      "session、operation、call和source entry分别保留归属，绑定以后其它消息不能重新认领同一输出。",
-      "完整正文、预览、artifact与完成状态各有字段和摘要，截断预览不等于正文丢失，中断也不等于成功。"
-    ],
-    "guide": "刚才工具结果拿到的输出ID需要一份记录说明它对应什么字节、来自哪次操作。这个定义保存这些字段，以及正文放消息还是文件、是否中断、最终归属哪条消息。准备输出和绑定消息时填写它，回读或清理时再核对，因此一串ID不是任意磁盘路径，也不能单凭对象存在就认定命令正常结束。"
-  },
   "src/pycode/sandbox/domain/sandbox.py::SandboxSettings": {
     "file": "src/pycode/sandbox/domain/sandbox.py",
     "name": "SandboxSettings",

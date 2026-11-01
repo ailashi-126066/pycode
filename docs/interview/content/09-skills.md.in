@@ -22,7 +22,7 @@ Skills.load 准备用户消息，由 AgentSession 负责发起一次运行。Ski
 
 {{chain:09-skills:install}}
 
-没有 Skill fork、Python 函数自动注册、专属 worker 或动态工具查找兜底接口。Team 的独立成员和邮箱协作仍保留，与 Skill 无关。
+没有 Skill fork、Python 函数自动注册或动态工具查找兜底接口。照 Pi，Skill 就是一次普通的 read：成功的读结果在 details.skill 记下名字、路径和 allowed-tools，压缩摘要末尾写一行已加载的 skill。
 
 ## 框架与应用边界
 

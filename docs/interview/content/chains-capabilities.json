@@ -104,33 +104,33 @@
                 "guide": "模型或工具已经给出一条完成消息，这里把它真正追加到会话，取得记录ID。工具带完整输出时，再把输出归到这条消息；带文件快照时，也追加对应关系。做完这些才把完成事件发出去，既方便界面实时显示，也让重开会话后能沿同一个ID找回消息、输出和文件变化。"
               }
             ],
-            "guide": "结算器需要保存结果，但不该为了这件事了解Agent内部怎样组织历史。应用提前把当前会话的保存能力绑定到这个对象，结算器只交来一条完成消息。这里再调用save_message并返回真实条目ID，后面的输出绑定、团队确认和通知便能引用同一条记录，而不是各自再写一份结果。"
+            "guide": "结算器需要保存结果，但不该为了这件事了解Agent内部怎样组织历史。应用提前把当前会话的保存能力绑定到这个对象，结算器只交来一条完成消息。这里再调用save_message并返回真实条目ID，后面的扩展通知和结束事件便能引用同一条记录，而不是各自再写一份结果。"
           },
           {
             "file": "src/pycode/tools/services/tool_executor.py",
-            "name": "ToolExecutor.completed",
-            "purpose": "结果保存以后，再通知结束和后置动作",
+            "name": "ToolExecutor.emit_tool_execution_end",
+            "purpose": "结果保存后才发 tool_execution_end 并触发后置 Hook",
             "notes": [
-              "tool_execution_end放在这个独立方法中，而不是execute返回前，调用方就能先完成结果保存再宣布结束。",
-              "post_tool_use、file_change和error按已保存的结果触发；失败或改变文件的事实不会被一条笼统成功通知盖住。"
+              "Pi 的 emitToolExecutionEnd；pycode 按原始调用顺序发出，因为要先持久化再发事件。",
+              "outcome 区分 completed、error、denied、abandoned、interrupted，界面和恢复都读它。"
             ],
-            "guide": "工具执行已经返回，结算器也已经把结果保存好，才会回到这个函数。它先发布工具结束事件，再让后置Hook查看结果；如果确实修改过文件，还会触发文件变化事件。把这一步放在保存之后，是为了保证自动动作和界面所说的完成，都能对应到一份已经存在、重新打开也能找到的记录。"
+            "guide": "settle_ready 已经把工具结果写进会话，才轮到这里。它把 ToolCallState 转到 settled，发出带 status、outcome、duration_ms 的 tool_execution_end，再依次触发 post_tool_use、file_change 和 error Hook。界面看到“结束”时，记录一定已经在磁盘上。"
           }
         ],
         "edge": "工具返回后，按调用顺序结算",
-        "guide": "一个或多个工具已经返回，结果却不一定按模型原来的次序到达。这个函数从第一个尚未保存的调用往后看，只保存连续准备好的结果。每条先写入对话，再通知Skill和团队，最后触发工具结束与后置动作，因此下一个读到完成事件的人能立即找到对应的结果，而不是只见通知不见记录。"
+        "guide": "一个或多个工具已经返回，结果却不一定按模型原来的次序到达。这个函数从第一个尚未保存的调用往后看，只保存连续准备好的结果。每条先写入对话，再通知扩展，最后触发工具结束与后置动作，因此下一个读到完成事件的人能立即找到对应的结果，而不是只见通知不见记录。"
       }
     ],
     "result": [
       "会话 Store存在一条已完成assistant及每个call ID对应工具消息。",
-      "工具输出对象和来源条目已绑定，团队ACK及后置Hook晚于结果提交。",
+      "结果先写入会话，tool_execution_end 和后置Hook晚于结果提交。",
       "图收到Command更新继续原生Agent循环。"
     ]
   },
   "06-tools:permission": {
     "title": "要改parser.py时，程序怎样先等用户决定",
     "input_label": "真实命令、事件或框架入口",
-    "request": "模型已经读到parser.py，现在提出edit_file或测试命令",
+    "request": "模型已经读到parser.py，现在提出edit或测试命令",
     "intro": "先看这次有没有提供过该工具，再看具体参数和权限；需要人批准时暂停同一张图。",
     "why": "批准某动作不等于运行任意同名工具，也不能覆盖后来变化的内容。",
     "nodes": [
@@ -140,43 +140,21 @@
         "purpose": "任务开始前接好需要的权限检查",
         "notes": [
           "自定义检查可以替换普通策略，但scope仍包在外面；因此接入替代实现不能顺便抹掉Skill已有的拒绝条件。",
-          "worker返回WorkerBoundaryGate，团队合并交给TeamToolGate；这些检查放在普通允许逻辑外，不能被一次宽泛批准直接绕开。"
-        ],
-        "helpers": [
-          {
-            "file": "src/pycode/tools/services/permissions.py",
-            "name": "WorkerBoundaryGate.authorize",
-            "purpose": "子会话硬限制不会被父层grant扩大",
-            "notes": [
-              "readonly与非read类别先被拒绝，MCP和Hook来源也不能借子会话获得未隔离的外部效果。",
-              "constraints之后还检查sandbox状态并走mandatory，说明mode=worker不是全部放行，也不能拿cwd冒充系统写隔离。"
-            ],
-            "guide": "子Agent已经提出一个具体动作，这里先确认它有没有超出自己的工作方式。只读任务不能写，未隔离的外部服务也不能成为绕行通道；父会话原有的拒绝仍要执行。对于命令和Bash 执行的 Skill 脚本，还要确认真正启用了系统限制，之后才进入必须的审批，检查通过也只允许当前这个动作继续。"
-          },
-          {
-            "file": "src/pycode/tools/adapters/permissions.py",
-            "name": "TeamToolGate.authorize",
-            "purpose": "每次merge都绑定预览并强制审批",
-            "notes": [
-              "merge_preview与已有同operation预览不同就报merge_preview_stale，因为源代码或目标分支改变以后，原来的批准内容已经不成立。",
-              "合并内容放进approval_details再调用mandatory.authorize，即使自动计划允许普通写入，也不能省掉这次合并批准。"
-            ],
-            "guide": "如果工具只是普通读写，这里沿原来的检查继续；如果要合并子Agent代码，就必须先取得当前差异和目标版本，再单独问用户。它记住本次操作看到的预览，恢复时发现代码变了便要求重新审查，因此用户批准旧差异以后，程序不能把后来变化的另一份代码一起合进去。"
-          }
+          "custom 门和 Skill 范围用 _OuterGate 包在默认链外层：先判断它们，调用仍要经过默认链。"
         ],
         "edge": "应用启动/每run装配；不是立刻授权",
-        "guide": "任务还没开始时，应用先来这里把本次需要的权限检查接好。普通审批、计划限制、Skill限制和用户自定义检查会组合起来；子Agent或团队合并还有额外的硬限制。这里返回的是以后要调用的检查对象，不是在组装时已经批准任何动作，等真实工具和参数出现才逐层判断。"
+        "guide": "任务还没开始时，应用先来这里把本次需要的权限检查接好。普通审批、计划限制、Skill限制和用户自定义检查会组合起来；嵌入方的 custom 门和 Skill 范围包在外层，不替换默认链。这里返回的是以后要调用的检查对象，不是在组装时已经批准任何动作，等真实工具和参数出现才逐层判断。"
       },
       {
         "file": "src/pycode/tools/adapters/settlement.py",
         "name": "ToolSettlementMiddleware.declaration_error",
         "purpose": "确认这次确实给模型提供过这个工具",
         "notes": [
-          "未在disclosed_tool_names中的调用只走validate_call和plans.guard，不调用可能准备外部效果的before_call，也不会弹出审批。",
-          "ToolError统一交tool_failure，保证参数错误里的秘密被隐藏、文本受限；已提供的定义还比较schema、implementation_hash和policy_hash。"
+          "调用名不在本次请求工具列表（disclosed_tool_names）里就直接返回 tool_not_declared，不校验参数、不调用扩展，也不会弹出审批。",
+          "11.1 第 33.1 节 #2 之后只查名字；参数校验、Hook、审批都留给 ToolExecutor。"
         ],
         "edge": "框架工具回调中的声明预检",
-        "guide": "程序知道工具的实现，还要核对模型这次是否真的被允许使用它。没提供过的工具不会进入审批或执行，只能做参数与只读拒绝检查，必要时给出更具体的Plan或Skill错误。已经提供的工具则比较定义和实现有没有变化，确认一致才交执行器，防止模型看见旧定义却运行新代码。"
+        "guide": "程序知道工具的实现，还要核对模型这次是否真的被提供了它，例如 deferred 工具必须先经 ToolSearch 加载。没提供过的工具直接得到 tool_not_declared，不进入审批或执行；提供过的交给执行器，参数校验、Hook 和审批都在那里做。"
       },
       {
         "file": "src/pycode/tools/adapters/permissions.py",
@@ -219,91 +197,43 @@
     ]
   },
   "06-tools:outputs": {
-    "title": "测试日志太长，怎样继续读",
-    "input_label": "真实命令、事件或框架入口",
-    "request": "pytest返回长日志；模型随后用ReadToolResult读下一片",
-    "intro": "前一段是工具保存日志，后一段是模型带输出ID继续读取，两者不是一次同步调用。",
-    "why": "给模型短结果的同时，要保留完整内容和能够核对的来源。",
+    "title": "测试输出太长，截断并写到临时文件",
+    "input_label": "工具结果",
+    "request": "TempOutputStore.prepare / StreamingOutputWriter.finish",
+    "intro": "超过 2000 行或 50KB 的输出照 Pi 截断，完整内容写到 $TMPDIR/pycode/<session_id>/<call_id>.log。",
+    "why": "模型不能一次读几千行，但完整输出要能找回来；模型用普通的 read 读那个文件。",
+    "result": [
+      "结果文本写明显示的是哪几行和完整输出的路径。",
+      "details 追加 truncation 与 full_output_path，原有 details 保留。"
+    ],
+    "groups": true,
     "nodes": [
       {
         "file": "src/pycode/tools/adapters/output_store.py",
-        "name": "StreamingOutputWriter.publish",
-        "purpose": "流式输出完成或中断时发布稳定对象",
+        "name": "TempOutputStore.prepare",
+        "purpose": "非流式结果超限时截断并写出完整内容",
+        "guide": "工具返回以后执行器调用这里。小结果原样返回；超过 2000 行或 50KB 时，read 保留开头、bash 保留结尾，完整文本写到会话自己的临时目录，结果末尾追加 [Showing lines a-b of N ... Full output: 路径]。",
         "notes": [
-          "flush、fsync和临时文件替换先完成，后面才发布元数据；正在写的一半内容不会被冒充为完整输出。",
-          "completed与interrupted分开保存，预览是否截断不改变完整字节摘要，取消后的半段日志也不会被标成成功完成。"
-        ],
-        "helpers": [
-          {
-            "file": "src/pycode/tools/adapters/output_store.py",
-            "name": "FileToolOutputStore.bind",
-            "purpose": "输出存在以后，再连到刚保存的消息",
-            "notes": [
-              "source_entry_id只允许第一次绑定或重复绑定同一个条目，防止已有输出被改称另一条操作产生。",
-              "转成inline之前比较正文摘要、大小和状态，只有消息中已有同一份完整正文，才删除冗余txt，而不是丢掉唯一输出。"
-            ],
-            "edge": "工具结果提交后的独立绑定；非publish直接调用",
-            "guide": "完整输出已经有了ID，刚才的工具消息也已经写进会话，现在才能把两者连起来。这里检查该输出有没有归到另一条消息，再记住当前来源。小输出如果已完整保存在消息里，可以删掉重复正文；大输出仍留在文件，后面的读取和清理都能从来源关系判断它是否仍被需要。"
-          }
-        ],
-        "guide": "工具已经把字节持续写进临时文件，完成或中断时由这里决定怎样正式保存。它刷新文件、计算完整摘要，再给模型准备有长度限制的预览；完整正文和元数据随后发布。返回的结果带输出ID，等工具消息保存后还要绑定来源，所以下一次模型既能读短结果，也能按这个ID找回剩余内容。"
+          "截断后清空 structured_content，避免它和截断后的文本对不上。",
+          "这个目录以只读挂载提供给 read，所以沙箱不需要额外放开。"
+        ]
       },
       {
         "file": "src/pycode/tools/adapters/output_store.py",
-        "name": "FileToolOutputStore.prepare",
-        "purpose": "普通结果也取得完整保存方式和输出ID",
+        "name": "StreamingOutputWriter.finish",
+        "purpose": "流式输出结束时决定是否保留完整文件",
+        "guide": "bash 一边运行一边把输出追加到文件。结束时这里看总大小：没超限就删掉文件、把全文放进结果；超限就保留文件，结果里只放结尾预览和路径。",
         "notes": [
-          "同一个session和operation生成稳定ID，已有对象还会比较内容、call和状态；相同操作不能悄悄发布另一份正文。",
-          "小结果可以先存元数据并留待消息内联，大结果走begin、append、finish；两条路径最后都返回可绑定的output_id。"
-        ],
-        "guide": "普通文件工具可能一次就返回了整段文本，而不是使用流式writer。这里让它也获得同样的输出ID和完整保存方式：先检查是否重复发布，再决定正文放消息里还是文件里。它把准备好的结果交保存记录行器或结算器，之后才写工具消息，因此不同工具不会各自发明一套大输出处理方法。"
-      },
-      {
-        "file": "src/pycode/tools/adapters/read_tool_result.py",
-        "name": "ReadToolResult.execute",
-        "purpose": "把模型的分页参数交给有界输出读取",
-        "notes": [
-          "传给read的行数和字节数再次取上限，即使模型给出很大的合法值，也会给说明文字留空间。",
-          "返回正文同时说明has_more、next_offset和next_byte_offset，因此预览不足时可以继续读，不能把截断当作日志已经结束。"
-        ],
-        "helpers": [
-          {
-            "file": "src/pycode/tools/adapters/output_store.py",
-            "name": "FileToolOutputStore.read",
-            "purpose": "校验当前分支、祖先归属与正文摘要",
-            "notes": [
-              "有history时必须在当前branch路径找到output_id的引用，不靠文件存在就允许读取。",
-              "父会话关系、source entry和正文或artifact摘要分别校验；通过之后才调用read_range，保证切片确实来自可见的那份结果。"
-            ],
-            "helpers": [
-              {
-                "file": "src/pycode/tools/adapters/read_range.py",
-                "name": "read_range",
-                "purpose": "在行号和字节预算内解码一片正文",
-                "notes": [
-                  "行数与字节数同时限制，长行不能因为只占一行就无限占用内存或上下文。",
-                  "结果带继续位置；达到字节预算并不表示文件结束，调用方能准确区分还有内容和已经读完。"
-                ],
-                "guide": "输出存储已经确认了来源，这个辅助函数只负责从确定的字节流取一段。它根据行号、行数和字节预算推进，处理长行与UTF-8边界，再把正文和下一次位置一起返回。权限和文件归属不是在这里重新猜；它给上层提供的是可继续读取的准确切片，防止一条超长日志撑满模型输入。"
-              }
-            ],
-            "guide": "上一步带来的是输出ID和分页位置，尚不能证明用户有权看它。这里先检查范围，再在当前分支找到引用这个输出的原消息；涉及父会话时还要验证继承关系。确认来源、元数据和摘要都吻合后，才读出一小片交回工具，因此猜到一个ID也不能顺便读取别的会话内容。"
-          }
-        ],
-        "edge": "后续独立的ReadToolResult模型调用",
-        "guide": "模型刚看过测试的短预览，还需要更多日志，于是用输出ID和起始行进入这里。工具不直接接受物理路径，而是把有上限的分页参数交给输出存储。取得一片正文以后，它把下一行和下一字节位置一起返回模型，让下一次读取从正确位置继续，而不是一遍遍把整份长日志送进上下文。"
+          "取消时由 abort 关闭文件，结果标为 interrupted，不把半段日志当作完整成功。",
+          "系统清理临时目录后，超出预览部分的完整输出会丢失；预览仍保存在会话里。"
+        ]
       }
-    ],
-    "result": [
-      "完整输出保留可回读引用，小正文可内联。",
-      "当前分支不可见或祖先归属不成立的output_id不能被任意读取。"
-    ],
-    "groups": true
+    ]
   },
   "06-tools:backend": {
     "title": "读parser.py后，怎样安全地修改或搜索",
     "input_label": "真实命令、事件或框架入口",
-    "request": "框架文件工具分别调用read_file、edit_file或grep",
+    "request": "内置工具 read、edit 或 grep 分别进入后端",
     "intro": "先确认真实路径和读到的版本，之后的写入比较同一版本，搜索也先确定允许范围。",
     "why": "用户可能在模型思考时改文件，允许访问目录并不代表可以覆盖新内容。",
     "nodes": [
@@ -349,7 +279,7 @@
             "guide": "写入或编辑已经拿到文件锁，却还不知道当前文件是不是模型先前读过的版本。这个辅助函数区分文件从未读过、读过后删除、读过后变化三种情况；任何需要重新确认的情况都拒绝。只有检查通过父函数才继续写，因此路径安全和版本安全各解决一个问题，不能互相替代。"
           }
         ],
-        "edge": "独立write_file/edit_file回调",
+        "edge": "独立的 write/edit 工具",
         "guide": "模型已经决定写入，外层也处理了执行权限，这里还要保护文件本身。函数先检查后端是否只读，再在同一路径的锁内比较刚才读到的版本；确认没有被别人改过，才原子写入新字节。成功后更新版本记录并返回路径，失败则把原因交回框架，要求模型重新读取而不是盲目覆盖。"
       },
       {
@@ -391,7 +321,7 @@
                 "guide": "rg返回的是任意大小的字节块，不保证每块刚好是一条匹配。搜索函数不断把这些块交到这里，解析器保留尚未完整的片段，区分文件名和匹配内容，再验证路径并累计结果。解析好的片段交给搜索输出处理，最终结果还要由父函数结合退出码判断，不能把一块有文本的数据直接当整次成功。"
               }
             ],
-            "guide": "搜索入口已经传来条件，这里先取得受限的rg参数，再启动进程，持续读取匹配和错误输出。每块数据交给解析器，同时需要时把完整搜索结果转存到输出对象。无论超时还是取消，函数都会结束rg并等待读取任务，最后把匹配、是否截断和失败原因一起交回父工具。"
+            "guide": "搜索入口已经传来条件，这里先取得受限的rg参数，再启动进程，持续读取匹配和错误输出。每块数据交给解析器，同时限制保留的结果大小。无论超时还是取消，函数都会结束rg并等待读取任务，最后把匹配、是否截断和失败原因一起交回父工具。"
           }
         ],
         "edge": "独立grep框架回调",
@@ -523,7 +453,7 @@
       }
     ],
     "result": [
-      "完整stdout/stderr写入输出对象，模型得到tail预览。",
+      "超限时完整stdout/stderr写到临时文件，模型得到结尾预览和文件路径。",
       "timeout/exit_code明确保留，ToolSettlement随后才写会话结果。"
     ]
   },
@@ -579,16 +509,6 @@
     "intro": "先通过子会话硬门，再由资源专用只读grant进入RequiredSandbox。",
     "why": "cwd和普通approve都不能替代真正的写隔离。",
     "nodes": [
-      {
-        "file": "src/pycode/tools/services/permissions.py",
-        "name": "WorkerBoundaryGate.authorize",
-        "purpose": "执行前核对子会话类别、父拒绝和沙箱状态",
-        "notes": [
-          "readonly与非read类别先被拒绝，MCP和Hook来源也不能借子会话获得未隔离的外部效果。",
-          "constraints之后还检查sandbox状态并走mandatory，说明mode=worker不是全部放行，也不能拿cwd冒充系统写隔离。"
-        ],
-        "guide": "子Agent已经提出一个具体动作，这里先确认它有没有超出自己的工作方式。只读任务不能写，未隔离的外部服务也不能成为绕行通道；父会话原有的拒绝仍要执行。对于命令和Bash 执行的 Skill 脚本，还要确认真正启用了系统限制，之后才进入必须的审批，检查通过也只允许当前这个动作继续。"
-      },
       {
         "file": "src/pycode/sandbox/module.py",
         "name": "skill_read_grant",
@@ -834,7 +754,7 @@
           {
             "file": "src/pycode/snapshot/adapters/git_tree.py",
             "name": "GitSnapshotStore.write_json",
-            "purpose": "以摘要envelope原子保存记录",
+            "purpose": "以带摘要的外层记录原子保存",
             "notes": [
               "记录正文和sha256一起保存，read_json随后能检查内容，而不是仅凭文件名判断它可信。",
               "immutable记录不允许同一身份换内容；状态变化用明确可更新记录写出，单文件原子发布不冒充跨文件事务。"
@@ -902,30 +822,17 @@
       },
       {
         "file": "src/pycode/skills/framework.py",
-        "name": "SkillsToolExtension.after_persist",
-        "purpose": "成功读取提交后才登记激活",
+        "name": "SkillsToolExtension.after_tool_call",
+        "purpose": "成功读到 SKILL.md 时把 skill 写进结果 details",
+        "guide": "照 Pi，Skill 就是一次普通的 read。before_call 先按虚拟路径查到 catalog 条目，这里在结果持久化之前把名字、路径、content_hash 和 allowed-tools 放进 details.skill，并标记 protected_content。之后active_skills 沿当前分支读这些结果来确定 allowed-tools 范围。",
         "notes": [
-          "先判断is_error，避免失败或被拒绝的read_file也生成加载记录。",
-          "只对成功的Skill路径调用recorder.record；SkillSearch改变selection而不写skill_load，发现和实际读取仍是两步。"
-        ],
-        "helpers": [
-          {
-            "file": "src/pycode/skills/framework.py",
-            "name": "SkillLoadRecorder.record",
-            "purpose": "读成功后，记住指令版本和来源消息",
-            "notes": [
-              "loaded_hash同时覆盖content_hash和resource_hash，正文没变但脚本变化仍会形成不同加载版本。",
-              "message_entry_id来自刚完成的工具消息；重复的name和loaded_hash直接返回，不为了重复读取堆积相同记录。"
-            ],
-            "guide": "父函数已经确认指令读成功并保存了结果，这里再取得它对应的文档与资源定义，形成一次加载记录。记录同时保存正文版本、资源版本和来源消息ID，相同版本不重复写。后续模型请求或压缩恢复因此可以找到当时真正读过的内容；目录后来更新，也不能把新脚本冒充成这次已经批准使用的版本。"
-          }
-        ],
-        "edge": "read_file工具结果由publisher提交后回调",
-        "guide": "工具结果已经保存并拿到消息ID，结算器才调用这个函数。失败结果不算读到指令；成功读取Skill文档时，它把路径、结果和真实来源ID交给记录器。搜索结果则只更新接下来可选的目录。这样模型下一轮使用的指令有已保存的内容作依据，而不是因为目录里有个名字就被当成已经生效。"
+          "只有成功的 read 才记；失败的读取不算加载。",
+          "不再写单独的 skill_load 记录，也不在压缩后自动重新注入正文；摘要末尾写一行已加载的 skill。"
+        ]
       }
     ],
     "result": [
-      "目录元数据与用户请求可追溯；真正加载版本以skill_load为准。",
+      "目录元数据与用户请求可追溯；真正加载的版本记在 read 结果的 details.skill 里。",
       "reload更新目录，不自动伪造已读取或已执行。"
     ]
   },
@@ -942,7 +849,7 @@
         "purpose": "安装成功后刷新目录并记下来源",
         "notes": [
           "没有installer明确报不可用，不能返回一个没有实际文件的成功安装。",
-          "先await安装，再refresh并记skill_install；目录变化与skill_load分开，更新实现不会自动扩大当前工具权限。"
+          "先await安装，再refresh并记skill_install；目录变化与 skill 的读取分开，更新实现不会自动扩大当前工具权限。"
         ],
         "guide": "用户明确要求安装或更新Skill，服务先把下载发布工作交给installer。只有完整安装成功，才刷新可搜索目录并保存安装信息；返回给用户的是安装结果，而不是已加载指令或脚本执行结果。这样后面的load仍必须真正读取新文档，不能因为文件已经下载就假装模型已经知道并批准使用它。"
       },
@@ -1210,16 +1117,6 @@
     "why": "旧执行契约与当前配置不一致时必须停下来，连接也要由明确所有者回收。",
     "nodes": [
       {
-        "file": "src/pycode/mcp/config.py",
-        "name": "validate_mcp_recovery",
-        "purpose": "pending执行绑定当前server配置摘要",
-        "notes": [
-          "只在pending存在时比较mcp_config_hash，问题明确定位为执行期间配置变化。",
-          "不相同就抛execution_configuration_changed，上层不能因为连接建立成功而省掉旧调用的契约检查。"
-        ],
-        "guide": "应用重新打开会话时，可能发现上一次仍有等待处理的调用。模块已经算出当前server配置摘要，这个小检查把它同原执行记录比较；不一致就要求先解决旧执行，不能继续套用新配置。没有未结束调用时，新任务可以使用新设置，因此它约束的是恢复时偷换内容，不是永远禁止用户更新服务配置。"
-      },
-      {
         "file": "src/pycode/mcp/history.py",
         "name": "MCPProjection.contribute",
         "purpose": "纯历史贡献者恢复目录文本和checkpoint",
@@ -1376,29 +1273,29 @@
         ],
         "helpers": [
           {
-            "file": "src/pycode/hooks/actions.py",
-            "name": "ConfiguredHookActions.matches",
-            "purpose": "有限条件在独立worker中判断",
+            "file": "src/pycode/hooks/types.py",
+            "name": "HookConditionGroup.matches",
+            "purpose": "在进程内对 if 条件求值",
             "notes": [
-              "条件数据通过stdin JSON传给固定worker，不把配置直接当Python表达式eval。",
-              "ConditionOutput限制输出，runner限制等待；只有明确的true才继续execute_one，错误不会伪装成一次正常跳过。"
+              "&& 与 || 不能混用，加载时就报 invalid_hook_condition。",
+              "非法正则在加载配置时报错，不会在运行时当成 False 悄悄跳过。"
             ],
             "edge": "HookActions.matches端口的已注入实现",
-            "guide": "引擎已经找到事件相符的规则，但还要知道这次文件或工具参数是否满足条件。没有条件就直接允许进入动作；有条件时，把有限字段和比较要求送进独立条件worker，等待布尔结果。输出太大、超时或worker失败都明确报错，不能把检查出故障当成条件不匹配，从而悄悄漏掉本应执行的前置检查。"
+            "guide": "Hook 配置的 if 条件在加载时已经解析好，=~ 的正则也预编译并限制长度。触发时这里只用工具名、参数等字段逐项比较，不再启动子进程求值。"
           }
         ],
         "guide": "Agent或工具执行器已经到达一个事件位置，引擎现在从规则中找相符项。同步规则先检查条件，再等待执行结果，需要拒绝时把文本返回原工具；后台规则则建立稳定身份并安排任务，稍后运行。它只决定本事件怎样触发，结果记录和未知中断判断仍交execute_one，所以不会把安排成功当作动作已经成功。"
       },
       {
         "file": "src/pycode/hooks/api.py",
-        "name": "Hooks.execute_one",
-        "purpose": "先查有没有做过，再保存开始和结果",
+        "name": "Hooks.run",
+        "purpose": "执行一个 Hook 动作，任何异常都变成失败结果",
         "notes": [
-          "hook_call写在外部效果之前，崩溃后才知道这次可能已经执行，不会因为缺结果就默认再发一次命令。",
-          "hook_result先保存再completed；成功prompt另写hook_context，下一轮模型看新增内容而不是被篡改的旧消息。"
+          "once 的 Hook 看会话里是否已有该 hook_id 的 hook_context，有就不再跑。",
+          "只有输出需要进上下文时才写 hook_context 记录。"
         ],
         "edge": "同步匹配后执行；结果返回fire决定是否reject",
-        "guide": "引擎已经决定运行某条规则，这里先锁住本次身份并查历史。已有结果就返回原结果；只有开始记录却没有结果，说明效果可能发生过，返回中断而不盲重做。全新动作则先写hook_call，再用执行器运行，随后保存结果、绑定输出并通知调用方，前置检查这时才能据结果决定是否让原工具继续。"
+        "guide": "条件匹配后由这里运行 command 或 prompt 动作。动作抛出的任何异常都转成失败结果（DomainError 保留 code，其他记 hook_failed）。对 pre_tool_use 来说失败就是拦截，工具不执行。"
       }
     ],
     "result": [

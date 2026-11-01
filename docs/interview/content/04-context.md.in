@@ -4,9 +4,9 @@
 
 这里要同时守住两件事：模型必须读到当前这条修复路线，旧测试输出又不能无限挤占输入。Context先把历史整理成这次该发送的消息，再判断是否放得下；确实需要摘要时，先生成，重新检查仍适用后才采用。我们沿这四步往下走。
 
-当前请求还包含显式任务状态。固定规则和 JSON 输出契约说明如何维护任务；工具目录列出全部允许工具的名称与一句话用途；常用工具直接提供完整定义，其余经 ToolSearch 加载。项目说明、Skill、MCP 结果和文件按既有资料或工具消息提供，最新用户输入不重复发送。
+有 active 任务板时请求里还有任务板视图；工具目录列出全部允许工具的名称与一句话用途；常用工具直接提供完整定义，其余经 ToolSearch 加载。项目说明、Skill、MCP 结果和文件按既有资料或工具消息提供，最新用户输入不重复发送。
 
-TaskProjection 从当前分支助手消息的 pycode_task_change 重建 task_state，包含当前任务和其他未完成任务；History 的 attach_task_context 把当前任务、未完成任务索引和最近工具结果元数据加入请求。动态数据单独计量，不混入固定系统配置的校验值，普通新输入不会让后台摘要失效。首次状态为空，由主模型提出任务，程序生成 ID。模型通过 JSON 的 task_action 提出 new、continue 或 switch，程序校验目标、步骤和证据引用后，与助手回复一同提交。图 State 是派生执行视图，压缩快照保留 task_state；原生简单 todos 不再维护第二份进度。完整字段与示例见 [上下文组成](../context-request.md)。
+TaskProjection 沿当前分支取最后一份任务板快照（TaskWrite/TaskUpdate 结果的 details.task_board，或 custom{kind: task_board}），放进 checkpoint["task_board"]。只有 active 的任务板才由 History 的 attach_task_board 注入：每轮一份精简视图，压缩被采用后的下一次请求注入一次完整视图；没有任务板时零注入。注入内容标明是数据，单独计量，不混入固定系统配置。完整字段见 [上下文组成](../context-request.md)。
 
 ## 第一步：从当前历史，整理出这次要发送的消息
 
@@ -18,7 +18,7 @@ TaskProjection 从当前分支助手消息的 pycode_task_change 重建 task_sta
 
 {{chain:04-context:projection}}
 
-基础消息整理好后，还需要加入当前Plan提醒、已召回记忆、MCP目录以及已经读过的Skill指令。Context不自行解释这些模块的数据，而是调用应用先前交进来的重建方法。源码把这些对象叫`ProjectionContributor`，意思就是“根据只读历史补上自己那一部分输入”。默认按memory、plans、system prompt、MCP、Skills的顺序调用。
+基础消息整理好后，还需要加入当前Plan提醒、MCP目录和任务板。Context不自行解释这些模块的数据，而是调用应用先前交进来的重建方法。源码把这些对象叫`ProjectionContributor`，意思就是“根据只读历史补上自己那一部分输入”。默认按plans、system prompt、MCP的顺序调用，最后是任务板。
 
 每个方法还会返回自己需要随摘要保存的补充数据，供以后重新整理输入使用。例如，它只能修改或删除自己事先声明负责的字段，不能改别的功能保存的内容。若它声明某些旧用量不能再作为计算起点，Context也会检查对应消息确实在当前历史路线中。这些补充数据在代码里叫`checkpoint`；Context统一检查返回值，而不必理解各功能自己的文件格式。
 
@@ -56,7 +56,7 @@ TaskProjection 从当前分支助手消息的 pycode_task_change 重建 task_sta
 
 `HistoryMiddleware.abefore_model`先调用摘要prepare，再把它返回的`protected_entry_ids`交给`ToolEvictionService.apply`。这些ID指明后台摘要正在读取哪些消息；从下一次发送里省略旧工具输出时，不能改动这一部分。检查发生在每轮模型请求前，不是只有摘要采用成功后才缩短输出。
 
-选择方法只挑已有完整`output_id`的旧工具结果。比如上一轮pytest返回很长日志，完整字节已单独保存，发送副本就可以换成一句带退出码、错误状态和output_id的说明；模型需要细看时再调用`ReadToolResult`。没有完整对象的结果不能先省略再寄希望于重新执行测试补回来。
+选择方法只挑足够旧的工具结果。比如上一轮pytest返回很长日志，发送副本可以换成一句带退出码和错误状态的说明；原始结果仍保存在会话里，超限的完整输出在 details.full_output_path 指向的临时文件里，模型需要细看时用 read 读。驱逐只改投影，不删原始记录。
 
 {{chain:04-context:eviction}}
 

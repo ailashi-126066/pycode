@@ -18,7 +18,7 @@
 
 ## 第二步：用正常会话做题，同时限制它能改什么
 
-现在判题环境已经成立，runner才调用先前交给它的 `ConfiguredEvaluationSolver.solve`。solver为这一题指定workspace和独立数据目录，并关闭自动记忆、团队委派和项目信任，减少其他会话信息对题目结果的影响。模型服务设置仍使用这次明确传入的providers。
+现在判题环境已经成立，runner才调用先前交给它的 `ConfiguredEvaluationSolver.solve`。solver为这一题指定workspace和独立数据目录，并关闭自动记忆、子 agent 委派和项目信任，减少其他会话信息对题目结果的影响。模型服务设置仍使用这次明确传入的providers。
 
 随后，solver通过 `compose_application(...).open_session()` 打开正常产品会话，再把题目说明作为用户消息交给 `session.run`。也就是说，模型、工具检查、历史和结果保存仍走前面读过的那条产品路径。区别在于本题额外传入 `EvaluationToolGate`，限制允许执行的动作。
 

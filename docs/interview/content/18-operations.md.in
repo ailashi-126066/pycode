@@ -30,11 +30,11 @@
 
 `storage status`只统计程序管理的数据。`storage gc --dry-run`则进一步列出拟处理的动作；gc在这里就是清理不再使用的数据，不是让用户对着目录手动删文件。
 
-CLI先通过 `Application.storage`取得 `StorageGC`，再调用collect。collect让文件适配器清点对象，这里的“对象”是一个输出、一份摘要、一条会话或一个快照等受管理数据。然后 `mark_objects`从需要保留的起点出发，沿引用找到仍然需要的数据。
+CLI先通过 `Application.storage`取得 `StorageGC`，再调用collect。collect让文件适配器清点对象，这里的“对象”是一份摘要、一个快照或一份 Plan 文件等受管理数据。然后 `mark_objects`从需要保留的起点出发，沿引用找到仍然需要的数据。
 
-有了这份结果，才逐项决定：受保护或仍被使用的保留；没有引用的先移到可恢复的位置；已经移走、到保留期且仍无引用的，才考虑彻底删除。当前保留期是30天。执行具体文件动作时还会再检查当时的条件，不能只相信较早那次清点。
+有了这份结果，才逐项决定：受保护或仍被使用的保留，没有引用的直接删除。删除前还会重新清点一次，确认它仍没有被引用，不能只相信较早那次清点。删除不能撤销。
 
-`dry_run=True`只返回决定，不调用真正移动或删除文件的方法。真实执行则逐项审计：失败也会记下结果和错误类型，再把异常抛回去，不能把未完成部分报告成成功。这里的临时移走是存储管理动作，和限制命令权限的进程沙箱不是同一件事。
+`dry_run=True`只返回决定，不调用删除文件的方法。`storage delete-session ID` 确认后直接删除会话目录，会话正被打开时报 session_busy。这里的删除是存储管理动作，和限制命令权限的进程沙箱不是同一件事。
 
 {{chain:18-operations:gc}}
 
@@ -56,7 +56,7 @@ CLI先通过 `Application.storage`取得 `StorageGC`，再调用collect。collec
 
 doctor和storage这些命令通过argparse解析参数，再用asyncio等待产品提供的应用方法。它们不需要为了查看本地状态而创建一张deepagents图，也不必连接模型。
 
-StorageGC只负责先读清单、判断引用，再请求文件适配器执行动作；文件的读取、移动、锁和审计在适配器中完成。这种分工让清理规则可以按数据关系解释，而不是藏在一段遍历目录的代码里。
+StorageGC只负责先读清单、判断引用，再请求文件适配器执行动作；文件的读取、删除和锁在适配器中完成。这种分工让清理规则可以按数据关系解释，而不是藏在一段遍历目录的代码里。
 
 发行脚本使用subprocess调用ruff、build、venv和pip。最小模型会话连接的是本地测试服务，验证安装和框架接线；真实DeepSeek验收是另一件需要明确授权的事。
 
@@ -77,13 +77,12 @@ doctor调用 `compose_application(config).status()`和`sandbox_status()`；stora
 
 ## 遇到失败时，顺着刚才的步骤判断
 
-**没有git，是否所有操作都不能用？** 不一定。Git快照和worker需要它；其他功能按自己的依赖判断。doctor会报告具体缺项，不替不存在的快照制造版本。
+**没有git，是否所有操作都不能用？** 不一定。Git快照和 worktree 子 agent 需要它；其他功能按自己的依赖判断。doctor会报告具体缺项，不替不存在的快照制造版本。
 
 **数据已经移到暂存区，为什么又被恢复？** 如果新的引用表明它仍被使用，清理时应该保留或恢复；“以前没引用”不能覆盖现在的需要。
 
 **记忆文件会被当作没有会话引用的垃圾吗？** 当前清点逻辑显式保护记忆目录，不能仅因某份笔记没有出现在当前会话就删除。
 
-**为什么发行报告还存源码摘要？** `source_digest`核对src、pyproject.toml、requirements-dev.lock和docs/licenses这份清单，防止验证过程中这些输入变化后混用结果。它不覆盖scripts、evals、tests等任意仓库修改，不能把保证扩大。
 
 **本地检查通过，等于已经上线吗？** 不等于。它们解释本机能力、对应安装包和相应平台向量；线上容量、部署和长期运行是另外的验证工作。
 
@@ -95,4 +94,4 @@ doctor调用 `compose_application(config).status()`和`sandbox_status()`；stora
 
 ## 框架升级基线
 
-当前使用 Deep Agents 0.7.32、LangChain 1.4.7、Core 1.7.0、LangGraph 1.2.18、Checkpoint 4.3.1 和 FastMCP 4.1.4。锁文件由干净依赖解析报告生成，并保留 Windows 平台标记。升级验证覆盖现有 Team、审批、交接、流式事件与 MCP；不启用服务端 AsyncSubAgent，不改变 会话 Store、后台摘要或旧工具输出清理。
+当前使用 Deep Agents 0.7.32、LangChain 1.4.7、Core 1.7.0、LangGraph 1.2.18、Checkpoint 4.3.1 和 FastMCP 4.1.4。锁文件由干净依赖解析报告生成，并保留 Windows 平台标记。升级验证覆盖现有子 agent、审批、流式事件与 MCP；不启用服务端 AsyncSubAgent，不改变 会话 Store、后台摘要或旧工具输出清理。

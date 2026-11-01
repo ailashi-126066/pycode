@@ -79,7 +79,7 @@ launcher 拿到这个返回值后，接着调用 `container.runtime.run(...)`。
 | 模块 | 在修复 parser.py 的过程中做什么 | 接给谁使用 |
 |---|---|---|
 | `SandboxModule` | 按设置启动命令，限制读写和网络，并处理超时与取消 | Bash、Python Skill、Hook等需要开进程的地方 |
-| `SnapshotModule` | 保存编辑前后的文件版本，供后面查看差异和回退 | 工具执行、回退和团队worktree |
+| `SnapshotModule` | 保存编辑前后的文件版本，供后面查看差异和回退 | 工具执行、回退和防打转守卫 |
 | `ModelsModule` | 创建模型客户端，发送请求，记录每次实际请求的用量 | Agent、摘要、记忆等需要模型的地方 |
 | `ToolsModule` | 把可用工具接入同一套检查、执行和结果保存流程 | Agent实际调用的工具 |
 | `HooksModule` | 在配置指定的时刻执行检查或通知动作 | 启动、工具执行前后和退出过程 |
@@ -88,7 +88,7 @@ launcher 拿到这个返回值后，接着调用 `container.runtime.run(...)`。
 | `ContextModule` | 从历史中整理模型这次要读的内容，内容太多时安排压缩 | 每次模型请求之前 |
 | `MemoryModule` | 查找和管理保存的笔记，按设置整理值得下次保留的信息 | 会话与模型上下文 |
 | `AgentModule` | 让同一个执行图协调模型和工具，直到完成或等待输入 | launcher启动的本轮工作 |
-| `TeamModule` | 把部分任务交给子Agent，并管理消息、任务和代码整合 | 主Agent的团队工具 |
+| `SubagentsModule` | 创建子agent管理器和Agent/SendMessage/StopAgent工具 | 主Agent的子agent工具 |
 | `UIModule` | 提供终端输出和TUI，让用户看到结果与审批 | 应用的交互入口 |
 | `SkillsModule` | 找到并读取任务需要的Skill指令，接上它允许使用的资源 | 模型上下文和工具执行 |
 | `MCPModule` | 连接已配置的外部服务，把其工具接入统一调用流程 | 模型工具与问题回答流程 |
