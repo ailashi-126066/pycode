@@ -78,6 +78,10 @@ async def test_subagent_close_failure_does_not_skip_launcher_view_or_history(clo
         view,
         None,
         closing=closing,
+        skills=None,
+        plans=None,
+        tasks=None,
+        snapshots=None,
         memory=memory,
         subagents=subagents,
     )
@@ -95,7 +99,22 @@ async def test_active_session_close_keeps_resources_owned_until_run_is_collected
     closing = AsyncExitStack()
     closing.push_async_callback(history.aclose)
     closing.push_async_callback(launcher.aclose)
-    session = AgentSession(history, None, None, launcher, None, None, None, None, closing=closing)
+    session = AgentSession(
+        history,
+        None,
+        None,
+        launcher,
+        None,
+        None,
+        None,
+        None,
+        closing=closing,
+        skills=None,
+        plans=None,
+        memory=None,
+        tasks=None,
+        snapshots=None,
+    )
     async with session.execution():
         with pytest.raises(StorageError) as caught:
             await session.aclose()

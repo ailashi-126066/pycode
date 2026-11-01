@@ -26,9 +26,11 @@ from pycode.session.view import SessionView
 
 if TYPE_CHECKING:
     from pycode.memory import MemoryService
+    from pycode.plans import PlanService
     from pycode.skills import Skills
     from pycode.snapshot import SnapshotService
     from pycode.subagents import SubagentManager
+    from pycode.tasks import TaskBoardService
 
 
 class AgentSession:
@@ -44,11 +46,11 @@ class AgentSession:
         storage,
         *,
         closing: AsyncExitStack,
-        skills: Skills | None = None,
-        plans=None,
-        memory: MemoryService | None = None,
-        tasks=None,
-        snapshots: SnapshotService | None = None,
+        skills: Skills,
+        plans: PlanService,
+        memory: MemoryService,
+        tasks: TaskBoardService,
+        snapshots: SnapshotService,
         subagents: SubagentManager | None = None,
     ) -> None:
         self.history = store
@@ -110,8 +112,7 @@ class AgentSession:
                     return False
                 await self.launcher.cancel_wait(self.require_run_id(start))
                 await recover_conversation(self.history, reason="aborted")
-                if self.plans is not None:
-                    await self.plans.finish(self.require_run_id(start))
+                await self.plans.finish(self.require_run_id(start))
                 return True
         if running is asyncio.current_task():
             raise StorageError("invalid_cancel_owner", "Cancellation must come from another task")
@@ -144,8 +145,7 @@ class AgentSession:
                     "session_needs_input", "Resolve the pending run before changing branches"
                 )
             await self.history.branch(leaf_id)
-            if self.plans is not None:
-                await self.plans.initialize()
+            await self.plans.initialize()
 
     async def run(self, message: Message) -> RunResult:
         if message.role != "user" or not message.id:
@@ -297,8 +297,7 @@ class AgentSession:
             )
             return result
         # The runtime already wrote run_end when the run entered finished.
-        if self.plans is not None:
-            await self.plans.finish(self.require_run_id(start))
+        await self.plans.finish(self.require_run_id(start))
         return result
 
     async def aclose(self) -> None:
@@ -309,11 +308,7 @@ class AgentSession:
 
     async def inspect(self, *, presentation=False):
         state = await self.view.inspect(presentation=presentation)
-        state["plan"] = (
-            plain_data(self.plans.state)
-            if self.plans is not None and self.plans.state is not None
-            else None
-        )
+        state["plan"] = plain_data(self.plans.state) if self.plans.state is not None else None
         state["subagents"] = self.subagents.view() if self.subagents is not None else None
         return state
 

@@ -1,5 +1,7 @@
 import asyncio
 from contextlib import AsyncExitStack
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -63,6 +65,11 @@ async def assemble(tmp_path):
         None,
         None,
         closing=closing,
+        skills=None,
+        memory=None,
+        tasks=None,
+        snapshots=None,
+        plans=SimpleNamespace(finish=AsyncMock(), initialize=AsyncMock()),
     )
     return session, store, launcher
 
