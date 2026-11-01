@@ -74,11 +74,9 @@ def capture_source(
     if previous_index >= 0:
         previous = entries[previous_index]
         previous_summary = previous.data["summary"]
-        # Compactions written before file tracking have no details.
-        details = previous.data.get("details")
-        if details is not None:
-            file_ops.read.update(details["read_files"])
-            file_ops.edited.update(details["modified_files"])
+        details = previous.data["details"]
+        file_ops.read.update(details["read_files"])
+        file_ops.edited.update(details["modified_files"])
     for message in (*messages, *turn_prefix):
         extract_file_ops_from_message(message, file_ops)
     read_files, modified_files = compute_file_lists(file_ops)

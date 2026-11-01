@@ -91,6 +91,9 @@ def upgrade_entry(payload: dict) -> dict:
     data = payload.get("data")
     if isinstance(data, dict) and data.get("kind") == "tool_started":
         data.setdefault("replay", "never")
+    # Compactions written before file tracking (11.1 section 8.3) have no details.
+    if payload.get("type") == "compaction" and isinstance(data, dict):
+        data.setdefault("details", {"read_files": [], "modified_files": []})
     # 11.1 section 31: output_id gave way to details["full_output_path"].
     if isinstance(message, dict) and message["tool_result"] is not None:
         message["tool_result"].pop("output_id", None)
