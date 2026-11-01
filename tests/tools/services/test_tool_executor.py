@@ -71,7 +71,9 @@ async def test_upstream_echo_result_and_event_contract():
         "tool_action_end",
     ]
     # Execution does not announce completion before the settlement owner saves it.
-    await executor.completed(context, ToolCall("tool-1", "echo", {"value": "hello"}), result)
+    await executor.emit_tool_execution_end(
+        context, ToolCall("tool-1", "echo", {"value": "hello"}), result
+    )
     assert [event.kind for event in recorder.events] == [
         "tool_execution_start",
         "tool_action_start",
@@ -79,6 +81,9 @@ async def test_upstream_echo_result_and_event_contract():
         "tool_execution_end",
     ]
     assert all(event.operation_id == "operation-1" for event in recorder.events)
+    end = recorder.events[-1].data
+    assert (end["status"], end["outcome"], end["output_id"]) == ("settled", "completed", None)
+    assert isinstance(end["duration_ms"], int)
 
 
 async def test_upstream_length_truncated_arguments_are_never_executed():
@@ -130,14 +135,17 @@ async def test_tool_io_error_is_a_domain_result():
     assert result.error_code == "tool_io_error"
 
 
-async def test_programming_defect_is_not_silently_converted_to_success():
+async def test_programming_defect_becomes_one_error_result_without_its_message():
     class BrokenTool(EchoTool):
         async def execute(self, context, arguments):
             raise RuntimeError("implementation defect")
 
     executor, context, _, _ = make_executor(BrokenTool())
-    with pytest.raises(RuntimeError, match="implementation defect"):
-        await executor.execute(context, ToolCall("call-1", "echo", {"value": "x"}), "tool_calls")
+    result = await executor.execute(
+        context, ToolCall("call-1", "echo", {"value": "x"}), "tool_calls"
+    )
+    assert result.is_error and result.error_code == "tool_execution_error"
+    assert result.text == "Tool failed with RuntimeError" and result.details["executed"]
 
 
 async def test_cancellation_reaches_tool_and_waits_for_cleanup():

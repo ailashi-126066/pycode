@@ -1,11 +1,15 @@
-"""The official error boundary wraps execution only, inside durable tool settlement."""
+"""The official error boundary wraps execution only, inside durable tool settlement.
+
+Every Exception from execution becomes one error result; LangGraph control flow
+(interrupts) still propagates, and so does cancellation (a BaseException).
+"""
 
 from langchain.agents.middleware import ToolErrorMiddleware
 from langchain.tools import ToolRuntime
 from langchain.tools.tool_node import ToolCallRequest
 from langchain_core.messages import ToolMessage
 
-from pycode.kernel import ToolError, ToolResult, json_dumps
+from pycode.kernel import ToolResult, json_dumps
 from pycode.tools.domain.tool_failures import tool_failure
 
 
@@ -27,8 +31,6 @@ async def execute_tool_errors(call, spec, action):
 
     async def on_error(error, current):
         nonlocal failure
-        if not isinstance(error, (ToolError, OSError)):
-            return None
         failure = tool_failure(error, call, executed=True, uncertain=spec.category != "read")
         return json_dumps(
             {"error_code": failure.error_code, "message": failure.text}, ensure_ascii=False

@@ -37,7 +37,8 @@ async def test_actual_tui_cancelled_sdk_request_is_collected_and_new_input_uses_
                     for entry in app.state["snapshot"]["entries"]
                     if entry["data"].get("kind") == "run_end"
                 ]
-                assert ended[-1]["data"]["outcome"] == "interrupted"
+                assert ended[-1]["data"]["outcome"] == "aborted"
+                assert ended[-1]["data"]["reason"] == "user_cancel"
                 run_id = ended[-1]["run_id"]
                 release.set()
                 await app.send_text("Continue")

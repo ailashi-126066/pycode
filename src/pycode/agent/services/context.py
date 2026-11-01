@@ -41,7 +41,6 @@ class RunContext:
     requests: RequestTracking
     initial_inputs: tuple[Message, ...] = ()
     handoff_pending: bool = False
-    execution_mode: str = "parallel"
     one_at_a_time: bool = False
     completed: list[Message] = field(default_factory=list)
     history_store: HistoryJournal | None = None

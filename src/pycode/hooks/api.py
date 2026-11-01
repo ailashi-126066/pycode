@@ -131,6 +131,7 @@ class Hooks:
                 tool_context.tool_name,
                 {"context": plain_data(context), "action": plain_data(hook.action)},
             )
+            await self._executor.begin(tool_context, call)
             if started:
                 result = ToolResult(
                     call.id,
@@ -200,7 +201,7 @@ class Hooks:
                         run_id=context.run_id,
                     )
                 )
-            await self._executor.completed(tool_context, call, result)
+            await self._executor.emit_tool_execution_end(tool_context, call, result)
             await self._events.emit(
                 "notification",
                 {

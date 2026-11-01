@@ -16,7 +16,6 @@ from langgraph.types import Command
 from pycode.kernel import (
     EntryDraft,
     EventSink,
-    ExecutionMode,
     HistoryJournal,
     Message,
     ModelSelection,
@@ -35,6 +34,8 @@ from pycode.tools import ToolExecutor, ToolOutputStore, ToolRegistry
 from pycode.tools.adapters.framework_tool import make_framework_tool
 from pycode.tools.adapters.state import ToolSettlementState
 from pycode.tools.domain.execution import batch_execution_mode
+from pycode.tools.domain.operations import operation_spec_hash
+from pycode.tools.domain.tool_call_state import abandoned_result, interrupted_result
 from pycode.tools.domain.tool_failures import (
     FailureGuard,
     failure_update,
@@ -81,7 +82,6 @@ class SettlementContext(Protocol):
     registry: ToolRegistry
     completed: list[Message]
     call_order: list[str]
-    execution_mode: ExecutionMode
     failure_guard: FailureGuard
     tool_tasks: set[asyncio.Task]
     interrupted_calls: set[str]
@@ -101,6 +101,38 @@ class SettlementContext(Protocol):
 
 def retryable_read_tool_error(error):
     return isinstance(error, ToolError) and error.retryable
+
+
+def issued_call(context, raw) -> ToolCall:
+    """The persisted call; the framework request only carries its id and arguments."""
+    if context.assistant is None or raw["id"] not in context.call_order:
+        raise StorageError(
+            "model_not_persisted", "Tool call has no persisted completed model message"
+        )
+    return next(call for call in context.assistant.tool_calls if call.id == raw["id"])
+
+
+def operation_context(context, call) -> ToolContext:
+    return ToolContext(
+        context.session_id,
+        context.run_id,
+        f"{context.run_id}:{context.assistant.id}:{call.id}",
+        context.workspace,
+        call.id,
+        call.name,
+        agent_id=context.agent_id,
+    )
+
+
+def persisted_result(context, tool_context) -> ToolResult | None:
+    """A result saved before a restart or interrupt is reused, never executed again."""
+    for message in context.completed:
+        if (
+            message.tool_result is not None
+            and message.tool_result.operation_id == tool_context.operation_id
+        ):
+            return message.tool_result
+    return None
 
 
 class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
@@ -129,14 +161,27 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         try:
             return await self.ordered_call(request, handler)
         except asyncio.CancelledError:
-            if context.handoff_pending:
-                # Completed parallel results may still be waiting for an earlier call.
-                # Publish them before discarding the old runtime's transient queue.
-                async with context.settlement:
-                    await self.settle_ready(context, stopping=True)
+            await self.settle_cancelled(context, request.tool_call)
             raise
         finally:
             context.tool_tasks.discard(owner)
+
+    async def settle_cancelled(self, context, raw):
+        """Cancellation still settles through the one exit, in call order where possible."""
+        call = issued_call(context, raw)
+        async with context.settlement:
+            pending = call.id not in context.ready_results and call.id not in context.settled_calls
+            # A handoff reruns calls that never started in the replacement runtime.
+            if pending and not context.handoff_pending:
+                # Waiting behind a serial barrier or still preparing: nothing was executed.
+                tool_context = operation_context(context, call)
+                await context.executor.begin(tool_context, call)
+                result = await self.finalize_result(
+                    context, call, tool_context, abandoned_result(call)
+                )
+                context.ready_results[call.id] = (call, result, {})
+            # Completed parallel results may still be waiting for an earlier call.
+            await self.settle_ready(context, stopping=True)
 
     async def ordered_call(self, request, handler):
         context = cast(SettlementContext, request.runtime.context)
@@ -160,7 +205,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                     execution_mode="parallel" if read_only else "sequential",
                 )
             specifications.append(spec)
-        serial = batch_execution_mode(context.execution_mode, tuple(specifications)) == "sequential"
+        serial = batch_execution_mode(tuple(specifications)) == "sequential"
         if serial and request.tool_call["id"] in context.call_order:
             position = context.call_order.index(request.tool_call["id"])
             preceding = set(context.call_order[:position])
@@ -172,106 +217,17 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
 
     async def settle_call(self, request, handler):
         context = cast(SettlementContext, request.runtime.context)
-        raw = request.tool_call
-        call = ToolCall(raw["id"], raw["name"], raw["args"])
-        if context.assistant is None or call.id not in context.call_order:
-            raise StorageError(
-                "model_not_persisted", "Tool call has no persisted completed model message"
-            )
-        for original in context.assistant.tool_calls:
-            if original.id == call.id:
-                call = original
-                break
-        tool_context = ToolContext(
-            context.session_id,
-            context.run_id,
-            f"{context.run_id}:{context.assistant.id}:{call.id}",
-            context.workspace,
-            call.id,
-            call.name,
-            agent_id=context.agent_id,
-        )
+        call = issued_call(context, request.tool_call)
+        tool_context = operation_context(context, call)
         framework_updates = {}
-        result = await self.initial_result(context, request, call, tool_context)
+        result = persisted_result(context, tool_context)
         if result is None:
-            request, spec, result = self.resolve_tool(request, context, call, tool_context)
-
-            async def invoke(current_context, current_call, current_spec):
-                return await self.invoke_framework(
-                    request,
-                    handler,
-                    context,
-                    call,
-                    framework_updates,
-                    current_context,
-                    current_call,
-                    current_spec,
-                )
-
-            if result is None:
-                result = await self.declaration_error(context, call, spec, tool_context)
-
-            if result is None:
-                try:
-                    result = await context.executor.execute(
-                        tool_context, call, context.assistant.stop_reason, spec=spec, invoke=invoke
-                    )
-                except asyncio.CancelledError:
-                    if context.handoff_pending and spec.category != "read":
-                        result = ToolResult(
-                            call.id,
-                            call.name,
-                            "Task handoff interrupted this operation. "
-                            "Inspect existing effects before another call.",
-                            is_error=True,
-                            session_id=context.session_id,
-                            run_id=context.run_id,
-                            error_code="tool_interrupted",
-                            operation_id=tool_context.operation_id,
-                            details={"source_assistant_id": context.assistant.id},
-                        )
-                        if context.outputs is not None:
-                            result = await context.outputs.prepare(tool_context, result, "head")
-                        message = Message(
-                            "result:" + tool_context.operation_id, "tool", tool_result=result
-                        )
-                        await self.publisher.publish(message)
-                    raise
-                except GraphInterrupt:
-                    async with context.settlement:
-                        context.interrupted_calls.add(call.id)
-                        await self.settle_ready(context)
-                        async with context.duplicate_calls:
-                            context.dispatched_calls.add(call.id)
-                            context.duplicate_calls.notify_all()
-                        context.settlement.notify_all()
-                    raise
-        result = replace(
-            result,
-            session_id=context.session_id,
-            run_id=context.run_id,
-            operation_id=tool_context.operation_id,
-            details={**result.details, "source_assistant_id": context.assistant.id},
-        )
-        if context.outputs is not None and result.output_id is None:
-            # Pre-execution rejections have the same durable output contract as
-            # executor results; neither the model nor the UI gets a second fact.
-            result = await context.outputs.prepare(tool_context, result, "head")
-            await context.events.emit(
-                "tool_output_ready",
-                {"call_id": result.call_id, "name": result.name, "output_id": result.output_id},
-                operation_id=tool_context.operation_id,
+            # Pi emits tool_execution_start before preparing; rejections are announced too.
+            state = await context.executor.begin(tool_context, call)
+            result = await self.prepare_call(
+                request, handler, context, call, tool_context, state, framework_updates
             )
-        if context.workspace_files is not None:
-            result = replace(
-                result,
-                details={
-                    **result.details,
-                    "read_receipts": dict(context.workspace_files.receipts),
-                },
-            )
-        for extension in self.tool_extensions:
-            result = extension.prepare_result(call, result)
+            result = await self.finalize_result(context, call, tool_context, result)
         async with context.settlement:
             context.ready_results[call.id] = (call, result, framework_updates)
             while call.id not in context.settled_calls:
@@ -300,15 +256,115 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
             }
         )
 
-    async def initial_result(self, context, request, call, tool_context):
-        result = None
-        for message in context.completed:
-            if (
-                message.tool_result is not None
-                and message.tool_result.operation_id == tool_context.operation_id
+    async def prepare_call(
+        self, request, handler, context, call, tool_context, state, framework_updates
+    ):
+        # Re-entry after a permission interrupt: the answer decides approve or deny.
+        resumed = state.status == "awaiting_approval"
+        result = await self.repeated_failure(context, request, call)
+        if result is not None:
+            return result
+        request, spec, result = self.resolve_tool(request, context, call, tool_context)
+        if result is None:
+            result = await self.declaration_error(context, call, spec, tool_context)
+        if result is not None:
+            return result
+
+        async def invoke(current_context, current_call, current_spec):
+            if resumed:
+                await self.record_approval(context, current_context, current_spec, "approve")
+            return await self.invoke_framework(
+                request,
+                handler,
+                context,
+                call,
+                framework_updates,
+                current_context,
+                current_call,
+                current_spec,
+            )
+
+        try:
+            result = await context.executor.execute(
+                tool_context, call, context.assistant.stop_reason, spec=spec, invoke=invoke
+            )
+        except asyncio.CancelledError:
+            # A started call may have partial effects. A handoff reruns replay-safe calls.
+            if state.status == "running" and not (
+                context.handoff_pending and spec.replay == "safe"
             ):
-                result = message.tool_result
-                break
+                cause = (
+                    "task handoff interrupted this operation"
+                    if context.handoff_pending
+                    else "the run was cancelled while this call was running"
+                )
+                cancelled = await self.finalize_result(
+                    context, call, tool_context, interrupted_result(call, cause)
+                )
+                async with context.settlement:
+                    context.ready_results[call.id] = (call, cancelled, framework_updates)
+            raise
+        except GraphInterrupt:
+            if state.status == "validating":
+                # Only the permission gate interrupts before execution starts.
+                state.apply("request_approval")
+            async with context.settlement:
+                context.interrupted_calls.add(call.id)
+                await self.settle_ready(context)
+                async with context.duplicate_calls:
+                    context.dispatched_calls.add(call.id)
+                    context.duplicate_calls.notify_all()
+                context.settlement.notify_all()
+            raise
+        if resumed and result.error_code == "permission_denied":
+            await self.record_approval(context, tool_context, spec, "deny")
+        return result
+
+    async def record_approval(self, context, tool_context, spec, decision):
+        if context.history_store is not None:
+            await context.history_store.append_entry(
+                EntryDraft(
+                    "custom",
+                    data={
+                        "kind": "tool_approval",
+                        "decision": decision,
+                        "spec_hash": operation_spec_hash(spec),
+                    },
+                    run_id=context.run_id,
+                    operation_id=tool_context.operation_id,
+                )
+            )
+
+    async def finalize_result(self, context, call, tool_context, result):
+        result = replace(
+            result,
+            session_id=context.session_id,
+            run_id=context.run_id,
+            operation_id=tool_context.operation_id,
+            details={**result.details, "source_assistant_id": context.assistant.id},
+        )
+        if context.outputs is not None and result.output_id is None:
+            # Pre-execution rejections have the same durable output contract as
+            # executor results; neither the model nor the UI gets a second fact.
+            result = await context.outputs.prepare(tool_context, result, "head")
+            await context.events.emit(
+                "tool_output_ready",
+                {"call_id": result.call_id, "name": result.name, "output_id": result.output_id},
+                operation_id=tool_context.operation_id,
+            )
+        if context.workspace_files is not None:
+            result = replace(
+                result,
+                details={
+                    **result.details,
+                    "read_receipts": dict(context.workspace_files.receipts),
+                },
+            )
+        for extension in self.tool_extensions:
+            result = extension.prepare_result(call, result)
+        return result
+
+    async def repeated_failure(self, context, request, call):
         digest = data_hash(call.arguments)
         if (
             context.failure_guard.get("failure_count", 0) > 0
@@ -326,8 +382,8 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                     lambda: preceding <= context.dispatched_calls
                 )
         guard = context.failure_guard or request.state
-        if result is None and repeated_tool_failure(guard, call.name, digest):
-            result = ToolResult(
+        if repeated_tool_failure(guard, call.name, digest):
+            return ToolResult(
                 call.id,
                 call.name,
                 "repeated_tool_failure: read the current state or choose another approach",
@@ -335,7 +391,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 error_code="repeated_tool_failure",
                 details={"executed": False},
             )
-        return result
+        return None
 
     def resolve_tool(self, request, context, call, tool_context):
         result = None
@@ -551,11 +607,12 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         current_call,
         current_spec,
     ):
-        if current_spec.category != "read" and context.history_store is not None:
+        # Intent before effects (pi-durable): restart recovery tells interrupted from abandoned.
+        if context.history_store is not None:
             await context.history_store.append_entry(
                 EntryDraft(
                     "custom",
-                    data={"kind": "tool_started"},
+                    data={"kind": "tool_started", "replay": current_spec.replay},
                     run_id=context.run_id,
                     operation_id=current_context.operation_id,
                 )
@@ -585,6 +642,7 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
         )
 
     async def settle_ready(self, context: SettlementContext, *, stopping=False):
+        """Settle ready results in call order; stopping skips calls that never finished."""
         for identifier in context.call_order:
             if identifier in context.settled_calls or identifier in context.interrupted_calls:
                 continue
@@ -593,39 +651,43 @@ class ToolSettlementMiddleware(AgentMiddleware[ToolSettlementState]):
                 if stopping:
                     continue
                 break
-            saved_call, saved_result, saved_updates = ready
-            saved_digest = data_hash(saved_call.arguments)
-            context.failure_guard = failure_update(
-                context.failure_guard, saved_call, saved_result, saved_digest
-            )
-            assert saved_result.operation_id is not None
-            entry_id = await self.publisher.publish(
-                Message("result:" + saved_result.operation_id, "tool", tool_result=saved_result),
-                emit_start=True,
-            )
-            saved_path = saved_call.arguments.get("file_path", "")
-            if (
-                context.plans is not None
-                and context.plans.state is not None
-                and saved_path == context.plans.state.virtual_path
-                and not saved_result.is_error
-            ):
-                await context.plans.update_exists()
-            context.settled_calls.add(identifier)
-            saved_context = ToolContext(
-                context.session_id,
-                context.run_id,
-                saved_result.operation_id,
-                context.workspace,
-                saved_call.id,
-                saved_call.name,
-                agent_id=context.agent_id,
-            )
-            for extension in self.tool_extensions:
-                await extension.after_persist(saved_context, saved_call, saved_result, entry_id)
-            if context.team is not None:
-                await context.team.settle_tool(saved_result, accepted=True)
-            await context.executor.completed(saved_context, saved_call, saved_result)
-            async with context.duplicate_calls:
-                context.dispatched_calls.add(identifier)
-                context.duplicate_calls.notify_all()
+            saved_call, saved_result, _ = ready
+            await self.settle(context, saved_call, saved_result)
+
+    async def settle(self, context: SettlementContext, call: ToolCall, result: ToolResult):
+        """The only exit: persist, update guards, then emit tool_execution_end and Hooks."""
+        context.failure_guard = failure_update(
+            context.failure_guard, call, result, data_hash(call.arguments)
+        )
+        assert result.operation_id is not None
+        # Pi: createToolResultMessage + emitToolResultMessage.
+        entry_id = await self.publisher.publish(
+            Message("result:" + result.operation_id, "tool", tool_result=result),
+            emit_start=True,
+        )
+        path = call.arguments.get("file_path", "")
+        if (
+            context.plans is not None
+            and context.plans.state is not None
+            and path == context.plans.state.virtual_path
+            and not result.is_error
+        ):
+            await context.plans.update_exists()
+        context.settled_calls.add(call.id)
+        tool_context = ToolContext(
+            context.session_id,
+            context.run_id,
+            result.operation_id,
+            context.workspace,
+            call.id,
+            call.name,
+            agent_id=context.agent_id,
+        )
+        for extension in self.tool_extensions:
+            await extension.after_persist(tool_context, call, result, entry_id)
+        if context.team is not None:
+            await context.team.settle_tool(result, accepted=True)
+        await context.executor.emit_tool_execution_end(tool_context, call, result)
+        async with context.duplicate_calls:
+            context.dispatched_calls.add(call.id)
+            context.duplicate_calls.notify_all()

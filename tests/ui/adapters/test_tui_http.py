@@ -111,7 +111,8 @@ async def test_tui_close_and_reopen_expires_interrupt_and_keeps_one_interrupted_
                 for message in restored.state["context"]["messages"]
                 if message["tool_result"]
             ]
-            assert len(tools) == 1 and tools[0]["error_code"] == "tool_interrupted"
+            # The approval never came, so the command never started.
+            assert len(tools) == 1 and tools[0]["error_code"] == "tool_abandoned"
             assert len(requests) == 1
             await restored.send_text("Continue without rerunning old commands")
             await settled(restored)

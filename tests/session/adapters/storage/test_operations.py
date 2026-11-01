@@ -1,6 +1,8 @@
 """JSONL is the only durable tool-fact journal; no independent operation table."""
 
-from pycode.kernel.domain.history import SessionHeader
+import pytest
+
+from pycode.kernel.domain.history import EntryDraft, SessionHeader
 from pycode.kernel.domain.messages import Message, ToolCall, ToolResult
 from pycode.session.adapters.storage.session import SqliteSessionStore
 from pycode.session.services.restart import recover_conversation
@@ -13,7 +15,8 @@ def store_at(tmp_path):
     )
 
 
-async def test_complete_model_call_is_durable_and_restart_pairs_it_without_execution(tmp_path):
+@pytest.mark.parametrize("started,code", [(False, "tool_abandoned"), (True, "tool_interrupted")])
+async def test_restart_pairs_unfinished_call_by_whether_it_started(tmp_path, started, code):
     store = store_at(tmp_path)
     await store.append_message(Message("u1", "user", "task"))
     await store.append_message(
@@ -25,13 +28,19 @@ async def test_complete_model_call_is_durable_and_restart_pairs_it_without_execu
             ),
         )
     )
+    if started:
+        await store.append_entry(
+            EntryDraft(
+                "custom", data={"kind": "tool_started", "replay": "never"}, operation_id=":a1:c1"
+            )
+        )
     await store.aclose()
     reopened = store_at(tmp_path)
     try:
         await reopened.claim_writer()
         snapshot = await recover_conversation(reopened)
         result = snapshot.entries[-1].message.tool_result
-        assert result.call_id == "c1" and result.error_code == "tool_interrupted"
+        assert result.call_id == "c1" and result.error_code == code
         assert not (tmp_path / "new.txt").exists()
     finally:
         await reopened.aclose()
@@ -76,6 +85,26 @@ async def test_missing_result_recovery_is_idempotent_and_branch_scoped(tmp_path)
             if entry.message and entry.message.tool_result
         ]
         assert [result.call_id for result in results] == ["current"]
-        assert results[0].error_code == "tool_interrupted"
+        assert results[0].error_code == "tool_abandoned"
+    finally:
+        await store.aclose()
+
+
+@pytest.mark.parametrize("replay,results", [("safe", 0), ("never", 1)])
+async def test_continuing_a_run_leaves_replay_safe_calls_to_rerun(tmp_path, replay, results):
+    store = store_at(tmp_path)
+    try:
+        await store.append_message(Message("u1", "user", "task"))
+        await store.append_message(
+            Message("a1", "assistant", tool_calls=(ToolCall("c1", "Read", {}),))
+        )
+        await store.append_entry(
+            EntryDraft(
+                "custom", data={"kind": "tool_started", "replay": replay}, operation_id=":a1:c1"
+            )
+        )
+        await recover_conversation(store, started_only=True, finish_runs=False)
+        saved = [e for e in (await store.snapshot()).entries if e.message and e.message.tool_result]
+        assert len(saved) == results
     finally:
         await store.aclose()

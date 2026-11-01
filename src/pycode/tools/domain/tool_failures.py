@@ -1,23 +1,25 @@
-"""One stable, bounded mapping for recoverable tool errors; storage defects stay exceptional."""
+"""One stable, bounded mapping from any tool exception to a single error result."""
 
 import re
 from collections.abc import Mapping
 from typing import Any, TypedDict
 
-from pycode.kernel import SECRET_PATTERNS, ToolError, ToolResult
+from pycode.kernel import SECRET_PATTERNS, DomainError, ToolResult
 
 
 def tool_failure(error, call, *, executed=False, uncertain=False):
-    if isinstance(error, ToolError):
+    if isinstance(error, DomainError):
         code = error.code
-        if not isinstance(code, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", code):
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", code):
             code = "tool_execution_error"
         text = str(error)
     elif isinstance(error, OSError):
         code = "tool_io_error"
         text = "Tool I/O operation failed"
     else:
-        raise error
+        # Name only the type: arbitrary exception messages may carry internal detail.
+        code = "tool_execution_error"
+        text = f"Tool failed with {type(error).__name__}"
     for pattern in SECRET_PATTERNS:
         text = re.sub(pattern, "[redacted]", text)
     details = {"executed": executed}

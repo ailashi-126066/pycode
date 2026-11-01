@@ -3,6 +3,11 @@
 from pycode.kernel import ArgumentValidator
 from pycode.tools.domain.approvals import validate_operation_answer
 from pycode.tools.domain.questions import validate_question_answer
+from pycode.tools.domain.tool_call_state import (
+    ToolCallState,
+    abandoned_result,
+    interrupted_result,
+)
 from pycode.tools.domain.tool_failures import failure_update, repeated_tool_failure
 from pycode.tools.ports.extensions import NativeToolBinding, ToolExtension
 from pycode.tools.ports.hooks import ToolHooks
@@ -22,6 +27,9 @@ from pycode.tools.services.tool_executor import ToolExecutor
 from pycode.tools.services.tool_registry import ToolRegistry
 
 __all__ = [
+    "ToolCallState",
+    "abandoned_result",
+    "interrupted_result",
     "ToolExtension",
     "NativeToolBinding",
     "repeated_tool_failure",

@@ -53,7 +53,6 @@ class AgentSession:
         plans=None,
         storage=None,
         memory=None,
-        recover_tool=None,
         recovery_outputs=None,
         team=None,
     ) -> None:
@@ -74,7 +73,6 @@ class AgentSession:
         self._plans = plans
         self._storage = storage
         self._memory = memory
-        self._recover_tool = recover_tool
         self._recovery_outputs = recovery_outputs
         self._team = team
         self._closing = False
@@ -143,8 +141,7 @@ class AgentSession:
                     self._store,
                     outputs or self._recovery_outputs,
                     reason="user_cancel",
-                    outcome="cancelled",
-                    recover_tool=self._recover_tool,
+                    outcome="aborted",
                 )
                 if self._plans is not None:
                     await self._plans.finish(self.require_run_id(start))
@@ -393,7 +390,7 @@ class AgentSession:
         except asyncio.CancelledError:
             if not self._handoff_requested:
                 await recover_conversation(
-                    self._store, self._recovery_outputs, recover_tool=self._recover_tool
+                    self._store, self._recovery_outputs, reason="user_cancel", outcome="aborted"
                 )
             raise
         except DomainError:
@@ -403,7 +400,6 @@ class AgentSession:
                     self._recovery_outputs,
                     reason="run_error",
                     outcome="error",
-                    recover_tool=self._recover_tool,
                 )
             except StorageError:
                 logging.getLogger("pycode.session").exception(
@@ -447,7 +443,7 @@ class AgentSession:
         except asyncio.CancelledError:
             if not self._handoff_requested:
                 await recover_conversation(
-                    self._store, self._recovery_outputs, recover_tool=self._recover_tool
+                    self._store, self._recovery_outputs, reason="user_cancel", outcome="aborted"
                 )
             raise
         return await self.settle_run(start, result)

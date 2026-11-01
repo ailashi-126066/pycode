@@ -197,6 +197,9 @@ async def test_real_process_death_preserves_facts_and_never_replays_old_effects(
                 assert results == []
             elif boundary in {"output_ready", "history_saved"}:
                 assert len(results) == 1 and not results[0]["is_error"]
+            elif boundary == "model_saved":
+                # No tool_started record: the call never ran.
+                assert len(results) == 1 and results[0]["error_code"] == "tool_abandoned"
             else:
                 assert len(results) == 1 and results[0]["error_code"] == "tool_interrupted"
             with pytest.raises(StorageError):

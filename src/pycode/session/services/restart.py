@@ -1,9 +1,13 @@
-"""persistent restart recovery ends lost runs without executing their old calls."""
+"""Persistent restart recovery ends lost runs without executing their old calls.
+
+Recovery only writes records: this process never emitted a start for those calls.
+"""
 
 from dataclasses import replace
 
-from pycode.kernel import EntryDraft, Message, SessionTree, ToolContext, ToolResult
+from pycode.kernel import EntryDraft, Message, SessionTree, ToolContext
 from pycode.session.domain.inputs import pending_input_entries
+from pycode.tools import abandoned_result, interrupted_result
 
 
 async def recover_conversation(
@@ -12,7 +16,6 @@ async def recover_conversation(
     *,
     reason="process_exit",
     outcome="interrupted",
-    recover_tool=None,
     started_only=False,
     finish_runs=True,
 ):
@@ -27,8 +30,11 @@ async def recover_conversation(
             ended.add(entry.run_id)
         if entry.type == "input_expired":
             expired_inputs.add(entry.data["input_entry_id"])
+    # Records written before ToolSpec.replay existed only came from non-read tools.
     started_operations = {
-        entry.operation_id for entry in path if entry.data.get("kind") == "tool_started"
+        entry.operation_id: entry.data.get("replay", "never")
+        for entry in path
+        if entry.data.get("kind") == "tool_started"
     }
     issued = {}
     for entry in path:
@@ -55,7 +61,9 @@ async def recover_conversation(
             if key in paired:
                 continue
             operation_id = f"{run_id}:{message.id}:{call.id}"
-            if started_only and operation_id not in started_operations:
+            replay = started_operations.get(operation_id)
+            # Continuing a run reruns calls that never started and replay-safe calls.
+            if started_only and replay in {None, "safe"}:
                 continue
             context = ToolContext(
                 snapshot.header.session_id,
@@ -65,34 +73,26 @@ async def recover_conversation(
                 call.id,
                 call.name,
             )
-            confirmed = await recover_tool(context, call, snapshot) if recover_tool else None
-            output_id = None
-            if confirmed is not None and outputs is not None:
-                confirmed = await outputs.prepare(context, confirmed, "head")
-                output_id = confirmed.output_id
-            elif outputs is not None:
-                output_id = await outputs.interrupted_reference(context)
-            result = ToolResult(
-                call.id,
-                call.name,
-                "tool_interrupted: the previous process ended without a persistent result. "
-                "Effects may have occurred; inspect current state before a new call.",
-                is_error=True,
-                error_code="tool_interrupted",
+            if operation_id in started_operations:
+                output_id = (
+                    await outputs.interrupted_reference(context) if outputs is not None else None
+                )
+                result = interrupted_result(
+                    call, "the previous process ended without a persistent result"
+                )
+                details = {"output_recovered": bool(output_id)}
+            else:
+                output_id = None
+                result = abandoned_result(call)
+                details = result.details
+            result = replace(
+                result,
                 session_id=snapshot.header.session_id,
                 run_id=run_id,
                 operation_id=operation_id,
                 output_id=output_id,
-                details={"source_assistant_id": message.id, "output_recovered": bool(output_id)},
+                details={**details, "source_assistant_id": message.id},
             )
-            if confirmed is not None:
-                result = replace(
-                    confirmed,
-                    details={
-                        **confirmed.details,
-                        "source_assistant_id": message.id,
-                    },
-                )
             result_entry_id = await store.append_message(
                 Message(f"interrupted:{message.id}:{call.id}", "tool", tool_result=result)
             )

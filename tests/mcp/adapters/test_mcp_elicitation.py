@@ -4,7 +4,6 @@ import pytest
 
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
-from pycode.kernel import StorageError
 from pycode.kernel.domain.messages import Message
 from tests.mcp.adapters.test_mcp import mcp_config
 from tests.skills.adapters.test_skills_http import skill_reply
@@ -24,13 +23,15 @@ async def test_mcp_elicitation_is_an_error_not_an_input_wait(tmp_path, monkeypat
             "s1", create=True, refresh_models=False
         )
         try:
-            with pytest.raises(StorageError) as error:
-                await session.run(Message("u1", "user", "Ask MCP"))
-            assert error.value.code == "mcp_elicitation_unsupported"
-            assert len(requests) == 1
+            # Like every tool exception, the failure becomes one error result for the model.
+            result = await session.run(Message("u1", "user", "Ask MCP"))
+            assert result.outcome == "completed" and len(requests) == 2
             state = await session.inspect()
             assert not state["pending"]
             entries = state["snapshot"]["entries"]
+            results = [e["message"]["tool_result"] for e in entries if e["message"]]
+            results = [item for item in results if item]
+            assert [item["error_code"] for item in results] == ["mcp_elicitation_unsupported"]
             assert not any(entry["type"] == "mcp_elicitation" for entry in entries)
         finally:
             await session.aclose()

@@ -65,7 +65,7 @@ async def test_changed_server_schema_is_recorded_but_pending_call_keeps_old_cont
                 if entry["message"] and entry["message"]["role"] == "tool"
             ]
             assert (
-                results[-1]["error_code"] == "tool_interrupted"
+                results[-1]["error_code"] == "tool_abandoned"
                 and results[-1]["name"] == "mcp__srv__mutate"
             )
             assert len(requests) == 2

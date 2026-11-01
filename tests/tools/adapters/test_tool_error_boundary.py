@@ -37,14 +37,24 @@ async def test_existing_error_result_is_preserved_without_a_second_wrapper():
         StorageError("save_failed", "test"),
         SnapshotError("snapshot_failed", "test"),
         RuntimeError("program defect"),
-        GraphInterrupt(()),
+        TypeError("bad return"),
     ],
 )
-async def test_storage_snapshot_program_and_control_errors_are_not_recovered(error):
+async def test_every_execution_exception_becomes_one_error_result(error):
     async def action():
         raise error
 
-    with pytest.raises(type(error)) as caught:
+    result = await execute_tool_errors(ToolCall("call", "echo", {}), EchoTool.spec, action)
+    assert result.is_error and result.call_id == "call" and result.details["executed"]
+
+
+async def test_framework_interrupt_is_not_recovered():
+    error = GraphInterrupt(())
+
+    async def action():
+        raise error
+
+    with pytest.raises(GraphInterrupt) as caught:
         await execute_tool_errors(ToolCall("call", "echo", {}), EchoTool.spec, action)
     assert caught.value is error
 

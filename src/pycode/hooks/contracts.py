@@ -14,10 +14,13 @@ class HookActions(Protocol):
 
 
 class HookExecution(Protocol):
+    async def begin(self, context: ToolContext, call: ToolCall) -> object: ...
     async def execute(
         self, context: ToolContext, call: ToolCall, stop_reason: StopReason
     ) -> ToolResult: ...
-    async def completed(self, context: ToolContext, call: ToolCall, result: ToolResult) -> None: ...
+    async def emit_tool_execution_end(
+        self, context: ToolContext, call: ToolCall, result: ToolResult
+    ) -> None: ...
 
 
 class HookPlanGuard(Protocol):

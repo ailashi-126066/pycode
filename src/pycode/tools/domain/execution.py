@@ -3,9 +3,7 @@
 from pycode.kernel import ExecutionMode, ToolSpec
 
 
-def batch_execution_mode(requested: ExecutionMode, tools: tuple[ToolSpec, ...]) -> ExecutionMode:
-    if requested == "sequential":
-        return "sequential"
+def batch_execution_mode(tools: tuple[ToolSpec, ...]) -> ExecutionMode:
     if any(tool.execution_mode == "sequential" for tool in tools):
         return "sequential"
     return "parallel"

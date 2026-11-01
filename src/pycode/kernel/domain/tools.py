@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 ExecutionMode = Literal["parallel", "sequential"]
 ToolCategory = Literal["read", "write", "command", "external"]
+# Borrowed from pi-durable: "safe" calls rerun after a restart instead of settling as interrupted.
+Replay = Literal["never", "safe"]
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,12 @@ class ToolSpec:
     policy_hash: str | None = None
     model_visible: bool = True
     approval_details: dict[str, Any] = field(default_factory=dict)
+    # None resolves to "safe" for read tools and "never" for everything else.
+    replay: Replay | None = None
+
+    def __post_init__(self) -> None:
+        if self.replay is None:
+            object.__setattr__(self, "replay", "safe" if self.category == "read" else "never")
 
 
 @dataclass(frozen=True)

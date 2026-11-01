@@ -27,7 +27,7 @@ from pycode.agent.adapters.state import PycodeState
 from pycode.agent.ports import TitleAssignment
 from pycode.agent.services.context import RunContext
 from pycode.kernel import ModelError, RunResult, SessionTree, StorageError, ToolSpec, data_hash
-from pycode.tools import failure_update, validate_operation_answer
+from pycode.tools import ToolCallState, failure_update, validate_operation_answer
 
 AGENTS_MD_PROMPT = (
     "<agent_memory>\n{agent_memory}\n</agent_memory>\n"
@@ -253,6 +253,13 @@ class AgentRuntime:
                 value = Command(resume={interrupts[0].id: answers})
             else:
                 raise StorageError("invalid_resume", "Multiple questions require interrupt IDs")
+        # A reopened process has no call states yet; the open permission questions
+        # say which calls already announced their start and await approval.
+        for item in checkpoint.interrupts:
+            if item.value["kind"] == "permission":
+                context.executor.tool_calls.setdefault(
+                    item.value["operation_id"], ToolCallState("awaiting_approval")
+                )
         context.dispatched_calls.difference_update(context.interrupted_calls)
         context.interrupted_calls.clear()
         return await self.invoke(value, context)
@@ -306,13 +313,5 @@ class AgentRuntime:
         for task in pending:
             if not task.done() and not task.cancelling():
                 task.cancel()
+        # Cancelled calls settle themselves (team mailbox included) on the way out.
         await asyncio.gather(*pending, return_exceptions=True)
-        if context.team is not None:
-            for message in context.completed:
-                if message.tool_result is not None:
-                    await context.team.settle_tool(message.tool_result, accepted=True)
-            assistant = context.assistant
-            if assistant is not None:
-                for call in assistant.tool_calls:
-                    operation_id = f"{context.run_id}:{assistant.id}:{call.id}"
-                    await context.team.settle_tool(operation_id, accepted=False)

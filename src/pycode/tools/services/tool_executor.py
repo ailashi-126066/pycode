@@ -2,9 +2,11 @@
 # Adaptation: framework middleware owns scheduling and session Store settlement.
 """Validate, authorize and execute one tool; no second execution ledger."""
 
+import time
 from dataclasses import replace
 
 from pycode.kernel import SnapshotError, StorageError, ToolError, clone_value, plain_data
+from pycode.tools.domain.tool_call_state import ToolCallState
 from pycode.tools.domain.tool_failures import tool_failure
 from pycode.tools.domain.turn_guard import tool_calls_may_execute
 from pycode.tools.ports.hooks import ToolHooks
@@ -32,6 +34,20 @@ class ToolExecutor:
         self.outputs = outputs
         self.snapshots = snapshots
         self.hooks = hooks
+        # Keyed by operation_id; one executor lives as long as one run container.
+        self.tool_calls: dict[str, ToolCallState] = {}
+
+    async def begin(self, context, call) -> ToolCallState:
+        """Announce a call once; re-entry after an approval interrupt keeps its state."""
+        state = self.tool_calls.setdefault(context.operation_id, ToolCallState())
+        if state.status == "issued":
+            await self.events.emit(
+                "tool_execution_start",
+                {"call_id": call.id, "name": call.name},
+                operation_id=context.operation_id,
+            )
+            state.apply("validate")
+        return state
 
     async def execute(self, context, call, stop_reason, *, spec=None, invoke=None):
         async def progress(text):
@@ -42,11 +58,7 @@ class ToolExecutor:
             )
 
         context = replace(context, call_id=call.id, tool_name=call.name, progress=progress)
-        await self.events.emit(
-            "tool_execution_start",
-            {"call_id": call.id, "name": call.name},
-            operation_id=context.operation_id,
-        )
+        state = await self.begin(context, call)
         before = None
         result_name = call.name
         result = None
@@ -71,7 +83,13 @@ class ToolExecutor:
                     raise ToolError("hook_rejected", rejected)
                 if spec.category != "read":
                     await self.hooks.fire("permission_request", context, hook_call, spec)
+            # A permission interrupt leaves the call awaiting_approval (set by settlement);
+            # the resumed authorize returns only when the user approved.
             await self.gate.authorize(context, spec, hook_call)
+            if state.status == "awaiting_approval":
+                state.apply("approve")
+            elif state.status == "validating":
+                state.apply("run")
             if self.hooks is not None and spec.category == "command":
                 await self.hooks.fire("command_execute", context, hook_call, spec)
             if (
@@ -150,10 +168,19 @@ class ToolExecutor:
                 ) from error
         return result
 
-    async def completed(self, context, call, result):
-        """Only notify after ToolSettlementMiddleware has persisted the result."""
+    # Pi: emitToolExecutionEnd. Only called after the result has been persisted.
+    async def emit_tool_execution_end(self, context, call, result):
+        state = self.tool_calls[context.operation_id]
+        state.settle(result)
         await self.events.emit(
-            "tool_execution_end", plain_data(result), operation_id=context.operation_id
+            "tool_execution_end",
+            {
+                **plain_data(result),
+                "status": state.status,
+                "outcome": state.outcome,
+                "duration_ms": round((time.monotonic() - state.began) * 1000),
+            },
+            operation_id=context.operation_id,
         )
         if self.hooks is None:
             return

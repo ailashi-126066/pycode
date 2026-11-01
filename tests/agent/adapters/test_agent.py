@@ -340,7 +340,10 @@ async def test_graph_tool_cancellation_is_collected_before_run_returns():
     with pytest.raises(asyncio.CancelledError):
         await running
     assert cleaned.is_set()
-    assert [message.role for message in journal.messages] == ["user", "assistant"]
+    assert [message.role for message in journal.messages] == ["user", "assistant", "tool"]
+    assert journal.messages[-1].tool_result.error_code == "tool_interrupted"
+    end = next(event for event in recorder.events if event.kind == "tool_execution_end")
+    assert end.data["outcome"] == "interrupted"
     assert recorder.events[-1].kind == "agent_end"
     assert recorder.events[-1].data["outcome"] == "aborted"
 
