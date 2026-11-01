@@ -305,3 +305,7 @@ DeepSeek 验收按第 7 节，缺少密钥询问用户，不能宣布已验证�
 记忆仅提取被压缩范围的 user 原文；摘要仅背景，不记录推断；手动 extract 使用最近 user 消息；没有值得记的则不修改。保留原字数/条数上限和明确偏好/约定/决定的指令。测试范围、角色过滤、连续压缩和“没有就不改”。
 
 本文同步不代表代码已实现。当前 HEAD/未提交进度及任务状态以 11.1.md、plan 和实时 git 状态共同核实。
+
+## 13. 实施核查补充
+
+ConversationHistoryBackend 提供异步会话树虚拟 JSON 读取，并非转发包装。保留其 BackendProtocol 实现及只读语义，不用 ScopedBackend 的同步转发覆盖 aread/als/agrep；文件仍平铺到 session/history_backend.py。plans/skills 的包装简化继续按实际职责执行。
