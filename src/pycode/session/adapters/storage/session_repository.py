@@ -1,7 +1,6 @@
 """Resolve safe session identities; no reference project data is consulted."""
 
 import asyncio
-import json
 import re
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -48,15 +47,6 @@ class SqliteSessionRepository:
         path = directory / "session.sqlite"
 
         def header_for():
-            deletion = (
-                self._directory.parent / "quarantine" / "sessions" / session_id / "record.json"
-            )
-            if deletion.exists():
-                record = json.loads(deletion.read_bytes())
-                if record["status"] != "restored":
-                    raise StorageError(
-                        "session_quarantined", "Restore this deleted session before opening it"
-                    )
             if path.exists():
                 return read_header(path)
             if not create:

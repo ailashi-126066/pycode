@@ -1,6 +1,5 @@
-"""Managed-object inventory, checked moves, 30-day quarantine and audit records."""
+"""Managed-object inventory and direct deletion of unreferenced objects."""
 
-import hashlib
 import json
 import os
 import re
@@ -9,12 +8,11 @@ import subprocess
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from pycode.kernel import StorageError, json_dumps, plain_data
+from pycode.kernel import StorageError, plain_data
 from pycode.kernel.adapters.file_lease import FileLease
-from pycode.kernel.adapters.path_io import atomic_write, file_sha256, owned_io
+from pycode.kernel.adapters.path_io import owned_io
 from pycode.session.adapters.storage.layout import StorageLayout
 from pycode.session.adapters.storage.session import read_header, read_records
-from pycode.session.adapters.storage.session_codec import encode_header
 from pycode.session.domain.storage import StorageInventory, StoredObject, mark_objects
 
 
@@ -51,7 +49,6 @@ class FileStorageObjects:
         self.root = user_data.resolve()
         self.workspace = workspace.resolve()
         self.project = StorageLayout(workspace, user_data).project.resolve()
-        self.quarantine = self.root / "quarantine" / "objects"
         self.allowed_roots = [self.root, self.workspace / ".pycode" / "plans"]
         # Memory (<id>.md files, settings.json) is never a managed object.
         self.memory_roots = [self.root / "memory", self.workspace / ".pycode" / "memory"]
@@ -68,12 +65,6 @@ class FileStorageObjects:
             if resolved.is_relative_to(root.resolve()) and resolved != root.resolve():
                 return resolved
         raise StorageError("gc_path_escape", "Content operation escapes managed storage")
-
-    def object_key(self, object_id):
-        return hashlib.sha256(object_id.encode("utf-8")).hexdigest()
-
-    def record_path(self, object_id):
-        return self.quarantine / self.object_key(object_id) / "record.json"
 
     def read_json(self, path):
         try:
@@ -109,9 +100,7 @@ class FileStorageObjects:
                 ):
                     continue
                 self.inventory_project(project, scan)
-        self.inventory_deleted_sessions(projects, scan)
         self.inventory_memory_roots(scan)
-        self.inventory_quarantine(scan)
         return self.resolve_inventory(scan)
 
     def inventory_project(self, project, scan):
@@ -228,80 +217,11 @@ class FileStorageObjects:
                 scan.aliases.setdefault(str(path.resolve()), []).append(identifier)
                 scan.aliases.setdefault(path.stem, []).append(identifier)
 
-    def inventory_deleted_sessions(self, projects, scan):
-        if projects.exists():
-            for project in sorted(projects.iterdir()):
-                deleted = project / "quarantine" / "sessions"
-                if not deleted.exists():
-                    continue
-                for record in sorted(deleted.glob("*/record.json")):
-                    data = self.read_json(record)
-                    if data["status"] != "quarantined":
-                        continue
-                    identifier = f"session:{project.name}:{data['session_id']}"
-                    files = []
-                    size = 0
-                    for moved in data["moved"]:
-                        path = self.checked(moved["quarantine"])
-                        if path.exists():
-                            files.append(str(path))
-                            size += path.stat().st_size
-                    scan.objects[identifier] = StoredObject(
-                        identifier,
-                        "session",
-                        tuple(files),
-                        size,
-                        quarantined_at=data["quarantined_at"],
-                        metadata={
-                            "session_record": str(record),
-                            "session_id": data["session_id"],
-                            "project_id": project.name,
-                        },
-                    )
-                    scan.aliases.setdefault(data["session_id"], []).append(identifier)
-                    references = []
-                    for filename in files:
-                        if Path(filename).name != "session.sqlite":
-                            continue
-                        _, entries, _ = read_records(Path(filename))
-                        for entry in entries:
-                            references.extend(string_values(plain_data(entry)))
-                    scan.tokens_by_object[identifier] = references
-
     def inventory_memory_roots(self, scan):
         for workspace in scan.known_workspaces:
             root = Path(workspace).resolve() / ".pycode" / "memory"
             if root not in self.memory_roots:
                 self.memory_roots.append(root)
-
-    def inventory_quarantine(self, scan):
-        if self.quarantine.exists():
-            for path in sorted(self.quarantine.glob("*/record.json")):
-                data = self.read_json(path)
-                identifier = data["object_id"]
-                if data["status"] != "quarantined":
-                    continue
-                    # Records retain original paths so restored references resolve to
-                    # the same identity, without making quarantine a second history.
-                stored = StoredObject(
-                    identifier,
-                    data["kind"],
-                    tuple(data["files"]),
-                    data["size"],
-                    quarantined_at=data["quarantined_at"],
-                    protected=data.get("protected", False),
-                    metadata=data.get("metadata", {}),
-                )
-                scan.objects[identifier] = stored
-                alias = stored.metadata.get("alias")
-                if alias:
-                    scan.aliases.setdefault(alias, []).append(identifier)
-                tokens = []
-                for moved in data["moved"]:
-                    target = self.checked(moved["quarantine"])
-                    if target.suffix == ".json" and target.exists():
-                        tokens.extend(string_values(self.read_json(target)))
-                scan.tokens_by_object[identifier] = tokens
 
     def resolve_inventory(self, scan):
         roots = set()
@@ -340,44 +260,6 @@ class FileStorageObjects:
     async def inventory(self):
         return await owned_io(self.inventory_sync)
 
-    def audit_sync(self, data):
-        path = self.root / "storage-audit.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("ab") as output:
-            output.write(
-                (json_dumps(data, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
-            )
-            output.flush()
-            os.fsync(output.fileno())
-
-    async def audit(self, data):
-        await owned_io(self.audit_sync, data)
-
-    def move_checked(self, source, target):
-        source = self.checked(source)
-        target = self.checked(target)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if target.exists():
-            if file_sha256(source) != file_sha256(target):
-                raise StorageError(
-                    "gc_restore_conflict", "Destination object has different contents"
-                )
-            source.unlink()
-            return
-        try:
-            os.replace(source, target)
-        except OSError as error:
-            if error.errno != 18:
-                raise
-            shutil.copyfile(source, target)
-            with target.open("rb") as copied:
-                os.fsync(copied.fileno())
-            if file_sha256(source) != file_sha256(target):
-                raise StorageError(
-                    "gc_copy_failed", "Cross-filesystem quarantine copy failed verification"
-                ) from error
-            source.unlink()
-
     def purge_snapshot_ref(self, item):
         gitdir = self.checked(item.metadata["gitdir"])
         expected = (
@@ -412,8 +294,8 @@ class FileStorageObjects:
             [*command, "gc", "--prune=now"], capture_output=True, check=True, env=environment
         )
 
-    async def apply(self, item, action, timestamp):
-        def mutate():
+    async def delete(self, item):
+        def delete():
             self.lease.acquire()
             snapshot_lease = None
             try:
@@ -422,152 +304,43 @@ class FileStorageObjects:
                         Path(item.metadata["gitdir"]).parent / "snapshot.lock"
                     )
                     snapshot_lease.acquire()
-                if action in {"quarantine", "purge"}:
-                    current = self.inventory_sync()
-                    if item.object_id in mark_objects(current):
-                        raise StorageError(
-                            "gc_reference_changed", "Object gained a reference during collection"
-                        )
-                    for candidate in current.objects:
-                        if candidate.object_id == item.object_id and candidate.protected:
-                            raise StorageError(
-                                "gc_reference_changed",
-                                "Object gained an active owner during collection",
-                            )
-                if item.kind == "session":
-                    record = self.checked(item.metadata["session_record"])
-                    data = self.read_json(record)
-                    if action != "purge":
-                        raise StorageError(
-                            "invalid_session_gc_action",
-                            "Deleted sessions require explicit restoration",
-                        )
-                    for moved in data["moved"]:
-                        self.checked(moved["quarantine"]).unlink(missing_ok=True)
-                    data["status"] = "purged"
-                    data["purged_at"] = timestamp
-                    atomic_write(record, json_dumps(data).encode("utf-8"))
-                    return
-                record = self.record_path(item.object_id)
-                if action == "quarantine":
-                    moved = []
-                    for index, original in enumerate(item.files):
-                        path = self.checked(original)
-                        target = record.parent / (str(index) + path.suffix)
-                        moved.append({"original": str(path), "quarantine": str(target)})
-                    metadata = dict(item.metadata)
-                    if item.kind in {"summary", "snapshot", "plan"}:
-                        metadata["alias"] = item.object_id.rsplit(":", 1)[1]
-                    data = {
-                        "object_id": item.object_id,
-                        "kind": item.kind,
-                        "files": list(item.files),
-                        "moved": moved,
-                        "size": item.size,
-                        "metadata": metadata,
-                        "quarantined_at": timestamp,
-                        "status": "quarantined",
-                    }
-                    atomic_write(record, json_dumps(data, sort_keys=True).encode("utf-8"))
-                    for entry in moved:
-                        if Path(entry["original"]).exists():
-                            self.move_checked(entry["original"], entry["quarantine"])
-                else:
-                    data = self.read_json(record)
-                    if action == "restore":
-                        for entry in data["moved"]:
-                            if Path(entry["quarantine"]).exists():
-                                self.move_checked(entry["quarantine"], entry["original"])
-                        data["status"] = "restored"
-                    elif action == "purge":
-                        if item.kind == "snapshot":
-                            self.purge_snapshot_ref(item)
-                        for entry in data["moved"]:
-                            self.checked(entry["quarantine"]).unlink(missing_ok=True)
-                        data["status"] = "purged"
-                    else:
-                        raise StorageError("invalid_gc_action", "Unknown object lifecycle action")
-                    data["updated_at"] = timestamp
-                    atomic_write(record, json_dumps(data, sort_keys=True).encode("utf-8"))
+                current = self.inventory_sync()
+                if item.object_id in mark_objects(current) or any(
+                    candidate.object_id == item.object_id and candidate.protected
+                    for candidate in current.objects
+                ):
+                    raise StorageError(
+                        "gc_reference_changed", "Object gained a reference during collection"
+                    )
+                files = [self.checked(path) for path in item.files]
+                if item.kind == "snapshot":
+                    self.purge_snapshot_ref(item)
+                for path in files:
+                    path.unlink(missing_ok=True)
             finally:
                 if snapshot_lease is not None:
                     snapshot_lease.close()
                 self.lease.close()
 
-        await owned_io(mutate)
+        await owned_io(delete)
 
-    def session_record(self, session_id):
+    async def delete_session(self, session_id):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", session_id):
             raise StorageError("invalid_session_id", "Session ID must be an opaque identity")
-        return self.project / "quarantine" / "sessions" / session_id / "record.json"
+        directory = self.project / "sessions" / session_id
 
-    async def quarantine_session(self, session_id, timestamp):
-        def quarantine():
+        def delete():
+            if not (directory / "session.sqlite").exists():
+                raise StorageError("session_not_found", f"Session not found: {session_id}")
             self.lease.acquire()
+            writer = FileLease(directory / "writer.lock")
             try:
-                directory = self.project / "sessions" / session_id
-                record = self.session_record(session_id)
-                moved = []
-                header_bytes = encode_header(read_header(directory / "session.sqlite"))
-                atomic_write(self.project / "session-info" / (session_id + ".json"), header_bytes)
-                for name in ("session.sqlite", "execution.sqlite"):
-                    source = directory / name
-                    if source.exists():
-                        moved.append(
-                            {"original": str(source), "quarantine": str(record.parent / name)}
-                        )
-                data = {
-                    "session_id": session_id,
-                    "status": "quarantined",
-                    "quarantined_at": timestamp,
-                    "moved": moved,
-                }
-                atomic_write(record, json_dumps(data).encode("utf-8"))
-                for entry in moved:
-                    self.move_checked(entry["original"], entry["quarantine"])
-                self.audit_sync(
-                    {
-                        "action": "session_quarantine",
-                        "session_id": session_id,
-                        "timestamp": timestamp,
-                        "result": "completed",
-                    }
-                )
+                # An open session holds its writer lease; deleting it then fails.
+                writer.acquire()
+                writer.close()
+                shutil.rmtree(directory)
             finally:
+                writer.close()
                 self.lease.close()
 
-        await owned_io(quarantine)
-
-    async def mark_session_deleted(self, session_id, timestamp):
-        data = {"session_id": session_id, "status": "quarantining", "quarantined_at": timestamp}
-        await owned_io(
-            atomic_write, self.session_record(session_id), json_dumps(data).encode("utf-8")
-        )
-
-    async def restore_session(self, session_id, timestamp):
-        def restore():
-            self.lease.acquire()
-            try:
-                record = self.session_record(session_id)
-                data = self.read_json(record)
-                if data["status"] != "quarantined":
-                    raise StorageError(
-                        "session_restore_unavailable", "Session is not in quarantine"
-                    )
-                for entry in data["moved"]:
-                    self.move_checked(entry["quarantine"], entry["original"])
-                data["status"] = "restored"
-                data["restored_at"] = timestamp
-                atomic_write(record, json_dumps(data).encode("utf-8"))
-                self.audit_sync(
-                    {
-                        "action": "session_restore",
-                        "session_id": session_id,
-                        "timestamp": timestamp,
-                        "result": "completed",
-                    }
-                )
-            finally:
-                self.lease.close()
-
-        await owned_io(restore)
+        await owned_io(delete)

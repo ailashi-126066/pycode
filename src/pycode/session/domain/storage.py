@@ -10,7 +10,6 @@ class StoredObject:
     files: tuple[str, ...]
     size: int
     references: tuple[str, ...] = ()
-    quarantined_at: float | None = None
     protected: bool = False
     metadata: dict = field(default_factory=dict)
 
@@ -21,15 +20,11 @@ class StorageInventory:
     roots: tuple[str, ...]
 
 
-RETENTION_SECONDS = 30 * 24 * 60 * 60
-
-
-def mark_objects(inventory, active_references=()):
+def mark_objects(inventory):
     by_id = {}
     for item in inventory.objects:
         by_id[item.object_id] = item
     pending = list(inventory.roots)
-    pending.extend(active_references)
     marked = set()
     while pending:
         identifier = pending.pop()

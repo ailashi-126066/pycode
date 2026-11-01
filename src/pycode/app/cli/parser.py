@@ -167,9 +167,9 @@ def build_parser():
     actions.add_parser("status")
     collect = actions.add_parser("gc")
     collect.add_argument("--dry-run", action="store_true")
-    for action in ("delete-session", "restore-session"):
-        item = actions.add_parser(action)
-        item.add_argument("session_id")
+    delete = actions.add_parser("delete-session")
+    delete.add_argument("session_id")
+    delete.add_argument("--yes", action="store_true", help="Delete without asking")
     sub = sessions.add_subparsers(dest="session_command", required=True)
     sub.add_parser("list")
     for name in ("show", "tree"):

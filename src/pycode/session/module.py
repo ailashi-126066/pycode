@@ -47,7 +47,7 @@ class SessionsModule:
         objects = FileStorageObjects(
             self.user_data, self.workspace, owned_session_id=owned_session_id
         )
-        return StorageGC(objects, self.repository(), self.timing)
+        return StorageGC(objects)
 
     def history_backend(self, history):
         return ConversationHistoryBackend(history)

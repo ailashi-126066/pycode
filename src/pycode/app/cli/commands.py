@@ -108,11 +108,13 @@ async def storage_command(args, config, output):
         value = await storage.status()
     elif args.storage_command == "gc":
         value = await storage.collect(dry_run=args.dry_run)
-    elif args.storage_command == "delete-session":
-        await storage.delete_session(args.session_id)
-        value = {"session_id": args.session_id, "deleted": True}
     else:
-        value = await storage.restore_session(args.session_id)
+        # Deletion cannot be undone, so it is confirmed first.
+        question = f"Delete session {args.session_id}? [y/N] "
+        confirmed = args.yes or await asyncio.to_thread(input, question) == "y"
+        if confirmed:
+            await storage.delete_session(args.session_id)
+        value = {"session_id": args.session_id, "deleted": confirmed}
     output.value(value)
     return 0
 
