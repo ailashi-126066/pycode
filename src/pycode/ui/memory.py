@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 """Memory inspection lists the saved memory files the system prompt indexes."""
 
 from textual.app import ComposeResult

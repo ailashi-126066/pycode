@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 """Inline Plan review sends one operation-bound decision to AgentSession."""
 
 from textual.app import ComposeResult

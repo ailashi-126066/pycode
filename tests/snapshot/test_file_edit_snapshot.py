@@ -5,7 +5,7 @@ import pytest
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel import Message
-from tests.snapshot.adapters.test_git_tree import git, repository
+from tests.snapshot.test_git_tree import git, repository
 from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
@@ -62,10 +62,14 @@ async def test_read_receipt_survives_approval_restart_and_exact_edit_gets_snapsh
         store = await compose_application(config).session_repository().open("s1")
         snapshot = await store.snapshot()
         boundaries = [
-            entry for entry in snapshot.entries if entry.data.get("kind") == "file_snapshot"
+            entry.message.tool_result.details["file_snapshot"]
+            for entry in snapshot.entries
+            if entry.message is not None
+            and entry.message.tool_result is not None
+            and "file_snapshot" in entry.message.tool_result.details
         ]
-        assert len(boundaries) == 1 and boundaries[0].data["paths"] == ("file.txt",)
-        assert boundaries[0].data["before"] != boundaries[0].data["after"]
+        assert len(boundaries) == 1 and boundaries[0]["paths"] == ("file.txt",)
+        assert boundaries[0]["before"] != boundaries[0]["after"]
         await store.aclose()
 
 

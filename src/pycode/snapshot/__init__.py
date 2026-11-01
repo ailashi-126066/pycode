@@ -1,6 +1,15 @@
-"""Public native contracts, policies and services for snapshot."""
+# Pi 没有，pycode 新增
+"""Concrete snapshot storage and reversible session navigation."""
 
-from pycode.snapshot.domain.snapshots import FileVersion, RestoreFile, RestorePlan, Snapshot
-from pycode.snapshot.ports.snapshots import SnapshotStore
+from pycode.snapshot.snapshot import SnapshotService, revert_targets
+from pycode.snapshot.store import GitSnapshotStore
+from pycode.snapshot.types import FileChange, FileVersion, Snapshot
 
-__all__ = ["FileVersion", "RestoreFile", "RestorePlan", "Snapshot", "SnapshotStore"]
+__all__ = [
+    "SnapshotService",
+    "GitSnapshotStore",
+    "FileChange",
+    "FileVersion",
+    "Snapshot",
+    "revert_targets",
+]

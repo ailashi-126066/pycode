@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 # Source: author-owned mewcode/runtime/output.py.
 # SHA-256: 1726aae4ccd94dc643956234638c60c2e148ad1215afc87bea6ddd40168bee71
 # Adaptation: stream-json writes the 11.1 section 3.1 events with their envelope as-is.

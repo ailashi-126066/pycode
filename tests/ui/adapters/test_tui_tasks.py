@@ -60,7 +60,7 @@ async def test_tasks_show_evidence_layers_and_clear(tmp_path, monkeypatch):
 
 def test_layers_only_when_steps_can_run_in_parallel():
     from pycode.kernel import Board, Step
-    from pycode.ui.adapters.tasks import tasks_text
+    from pycode.ui.tasks import tasks_text
 
     line = Board("b", "g", ("done",), (Step("a", "A", ()), Step("b", "B", ("a",))))
     assert "Layers" not in tasks_text(line)

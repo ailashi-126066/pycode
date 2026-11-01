@@ -1,4 +1,4 @@
-from pycode.ui.adapters.agents import AgentsPanel
+from pycode.ui.agents import AgentsPanel
 
 
 def test_agents_panel_shows_each_subagent_by_name():

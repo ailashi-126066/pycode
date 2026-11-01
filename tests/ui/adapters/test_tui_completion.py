@@ -6,11 +6,11 @@ from textual.widgets import Static
 from pycode.app.bootstrap import compose_application
 from pycode.app.configuration.settings import AppConfig
 from pycode.kernel import StorageError, json_dumps
-from pycode.ui.adapters.chat_input import ChatInput
-from pycode.ui.adapters.commands import COMMANDS
-from pycode.ui.adapters.completion import CompletionPopup
-from pycode.ui.adapters.model_picker import ModelPicker
-from pycode.ui.adapters.tui import PyApp
+from pycode.ui.chat_input import ChatInput
+from pycode.ui.commands import COMMANDS
+from pycode.ui.completion import CompletionPopup
+from pycode.ui.model_picker import ModelPicker
+from pycode.ui.tui import PyApp
 from tests.skills.services.test_skills import write_skill
 from tests.support.execution import provider
 from tests.support.http_provider import protocol_server

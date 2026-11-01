@@ -13,7 +13,6 @@ import subprocess
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
-from uuid import uuid4
 
 from pydantic import TypeAdapter
 
@@ -26,12 +25,9 @@ from pycode.kernel import (
     owned_io,
     plain_data,
 )
-from pycode.snapshot.domain.snapshots import (
+from pycode.snapshot.types import (
     FileChange,
     FileVersion,
-    RestoreFile,
-    RestorePlan,
-    RestoreRecord,
     Snapshot,
 )
 
@@ -285,9 +281,6 @@ class GitSnapshotStore:
             candidate = root / name
             if not candidate.parent.resolve().is_relative_to(self._workspace):
                 continue
-            if re.fullmatch(r"\..+\.pycode-restore-[a-f0-9]{32}\.partial", candidate.name):
-                skipped.append(name)
-                continue
             if name in ignored or any(
                 candidate.is_relative_to(excluded.resolve()) for excluded in self._excluded
             ):
@@ -351,267 +344,29 @@ class GitSnapshotStore:
 
         return await self.run_io(diff)
 
-    async def preview(self, targets, *, expected_tree_id=None, expected_trees=None):
-        def preview():
+    async def write_path(self, name: str, tree_id: str) -> None:
+        """Restore one path from a captured tree; callers record partial multi-file writes."""
+
+        def write():
             root = self.discover()
             if root is None:
                 raise SnapshotError("snapshot_unavailable", "File snapshots require a Git project")
             with self.leased():
-                for name in targets:
-                    self.checked_path(root, name)
-                current = self.capture_sync(root)
-                expected = self.get_sync(expected_tree_id) if expected_tree_id else current
-                files, conflicts = [], []
-                for name, tree_id in sorted(targets.items()):
-                    target = self.get_sync(tree_id)
-                    if expected_trees is not None and name in expected_trees:
-                        expected = self.get_sync(expected_trees[name])
-                    physical = self.version(
-                        self.checked_path(root, name),
-                        original_mode=expected.files[name].mode if name in expected.files else None,
-                    )
-                    if physical != expected.files.get(name):
-                        conflicts.append(name)
-                    patch, binary = self.patch(current.tree_id, tree_id, name)
-                    files.append(
-                        RestoreFile(
-                            name,
-                            tree_id,
-                            expected.files.get(name),
-                            target.files.get(name),
-                            patch,
-                            binary,
-                        )
-                    )
-                return RestorePlan(
-                    uuid4().hex,
-                    str(self._workspace),
-                    current.tree_id,
-                    tuple(files),
-                    tuple(conflicts),
-                )
-
-        return await self.run_io(preview)
-
-    def restore_path(self, restore_id):
-        if not re.fullmatch(r"[a-f0-9]{32}", restore_id):
-            raise SnapshotError("invalid_restore_id", "Invalid restore transaction ID")
-        return self._directory / "restores" / f"{restore_id}.json"
-
-    def apply(self, plan, *, recovering=False):
-        if plan.workspace != str(self._workspace) or plan.conflicts:
-            raise SnapshotError(
-                "restore_conflict", "Restore conflicts must be resolved before modifying files"
-            )
-        root = self.discover()
-        if root is None:
-            raise SnapshotError("snapshot_unavailable", "File snapshots require a Git project")
-        self.get_sync(plan.before_tree_id)
-        completed, pending = [], []
-        for item in plan.files:
-            target = self.get_sync(item.target_tree_id).files.get(item.path)
-            if target != item.target:
-                raise SnapshotError(
-                    "restore_plan_changed",
-                    "Restore target no longer matches its registered snapshot",
-                )
-            path = self.checked_path(root, item.path)
-            current = self.version(
-                path, original_mode=item.expected.mode if item.expected else None
-            )
-            if recovering and current == item.target:
-                completed.append(item.path)
-            elif current != item.expected:
-                raise SnapshotError(
-                    "restore_conflict",
-                    "Workspace contains external changes; no files were restored",
-                )
-            else:
-                pending.append(item)
-        record_path = self.restore_path(plan.restore_id)
-        record = RestoreRecord(plan, "prepared", tuple(completed))
-        self.write_json(record_path, record)
-        staged = []
-        cleanup = []
-        try:
-            for item in pending:
-                path = self.checked_path(root, item.path)
-                temporary = None
-                if item.target is not None:
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    temporary = path.with_name(
-                        f".{path.name}.pycode-restore-{plan.restore_id}.partial"
-                    )
-                    data, _ = self.git(["cat-file", "blob", item.target.object_id], own=True)
-                    actual_id, _ = self.git(
-                        ["hash-object", "--no-filters", "--stdin"], own=True, data=data
-                    )
-                    if (
-                        len(data) != item.target.size
-                        or actual_id.strip().decode() != item.target.object_id
-                    ):
-                        raise SnapshotError(
-                            "snapshot_corrupt", "Snapshot blob size verification failed"
-                        )
-                    if temporary.exists() or temporary.is_symlink():
-                        if (
-                            not recovering
-                            or self.version(temporary, original_mode=item.target.mode)
-                            != item.target
-                        ):
-                            raise SnapshotError(
-                                "restore_staging_conflict",
-                                "Restore staging file changed externally",
-                            )
-                        cleanup.append(temporary)
-                        staged.append((item, path, temporary))
-                        continue
-                    if item.target.mode == "120000":
-                        os.symlink(os.fsdecode(data), temporary)
-                        cleanup.append(temporary)
-                    else:
-                        with temporary.open("xb") as output:
-                            cleanup.append(temporary)
-                            output.write(data)
-                            output.flush()
-                            os.fsync(output.fileno())
-                        if os.name == "posix":
-                            temporary.chmod(0o755 if item.target.mode == "100755" else 0o644)
-                staged.append((item, path, temporary))
-            record = replace(record, status="restoring")
-            self.write_json(record_path, record)
-            for item, path, temporary in staged:
-                self.checked_path(root, item.path)
-                current = self.version(
-                    path, original_mode=item.expected.mode if item.expected else None
-                )
-                if current != item.expected:
-                    raise SnapshotError(
-                        "restore_conflict",
-                        "File changed during restoration; inspect the recovery record",
-                    )
-                if temporary is None:
+                path = self.checked_path(root, name)
+                target = self.get_sync(tree_id).files.get(name)
+                if target is None:
                     path.unlink(missing_ok=True)
+                    return
+                data = self.read_blob(target.object_id)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if path.is_symlink():
+                    path.unlink()
+                if target.mode == "120000":
+                    path.unlink(missing_ok=True)
+                    os.symlink(os.fsdecode(data), path)
                 else:
-                    os.replace(temporary, path)
-                completed.append(item.path)
-                record = replace(record, completed_paths=tuple(completed))
-                self.write_json(record_path, record)
-            record = replace(record, status="completed")
-            self.write_json(record_path, record)
-            return record
-        except BaseException as error:
-            record = replace(
-                record,
-                status="failed",
-                completed_paths=tuple(completed),
-                error_code=error.code if isinstance(error, SnapshotError) else "restore_io_error",
-            )
-            self.write_json(record_path, record)
-            raise
-        finally:
-            for temporary in cleanup:
-                if temporary.parent.resolve().is_relative_to(self._workspace):
-                    temporary.unlink(missing_ok=True)
+                    path.write_bytes(data)
+                    if os.name == "posix":
+                        path.chmod(0o755 if target.mode == "100755" else 0o644)
 
-    async def restore(self, plan):
-        def restore():
-            with self.leased():
-                record_path = self.restore_path(plan.restore_id)
-                if record_path.exists():
-                    record = self.read_json(record_path, RestoreRecord)
-                    if record.plan != plan:
-                        raise SnapshotError("restore_plan_changed", "Restore identity changed")
-                    if record.status in {"completed", "compensated"}:
-                        return record
-                    if record.compensation_id is not None:
-                        raise SnapshotError(
-                            "restore_compensation_pending", "Finish the pending compensation"
-                        )
-                    return self.apply(plan, recovering=True)
-                return self.apply(plan)
-
-        return await self.run_io(restore)
-
-    async def recover(self, restore_id, *, compensate=False, plan=None):
-        fallback_plan = plan
-
-        def recover():
-            with self.leased():
-                record_path = self.restore_path(restore_id)
-                if not record_path.exists() and fallback_plan is not None:
-                    if fallback_plan.restore_id != restore_id:
-                        raise SnapshotError("restore_plan_changed", "Restore identity changed")
-                    self.write_json(record_path, RestoreRecord(fallback_plan, "prepared"))
-                record = self.read_json(record_path, RestoreRecord)
-                if fallback_plan is not None and record.plan != fallback_plan:
-                    raise SnapshotError("restore_plan_changed", "Restore identity changed")
-                if record.status == "compensated" or (
-                    not compensate and record.status == "completed"
-                ):
-                    return record
-                if record.compensation_id is not None and not compensate:
-                    raise SnapshotError(
-                        "restore_compensation_pending", "Finish the pending compensation"
-                    )
-                plan = record.plan
-                reverse = None
-                if compensate:
-                    if record.compensation_id is not None:
-                        reverse = self.read_json(
-                            self.restore_path(record.compensation_id), RestoreRecord
-                        )
-                        plan = reverse.plan
-                    else:
-                        before = self.get_sync(plan.before_tree_id)
-                        files = tuple(
-                            RestoreFile(
-                                item.path,
-                                before.tree_id,
-                                item.target,
-                                before.files.get(item.path),
-                                "",
-                                item.binary,
-                            )
-                            for item in plan.files
-                        )
-                        plan = replace(plan, restore_id=uuid4().hex, files=files)
-                        reverse = RestoreRecord(plan, "prepared")
-                        self.write_json(self.restore_path(plan.restore_id), reverse)
-                        record = replace(
-                            record, status="compensating", compensation_id=plan.restore_id
-                        )
-                        self.write_json(record_path, record)
-                restored = (
-                    reverse
-                    if reverse is not None and reverse.status == "completed"
-                    else self.apply(plan, recovering=True)
-                )
-                if compensate:
-                    root = self.discover()
-                    if root is None:
-                        raise StorageError(
-                            "snapshot_unavailable", "Snapshot repository disappeared"
-                        )
-                    for item in record.plan.files:
-                        path = self.checked_path(root, item.path)
-                        temporary = path.with_name(
-                            f".{path.name}.pycode-restore-{record.plan.restore_id}.partial"
-                        )
-                        if (
-                            temporary.exists() or temporary.is_symlink()
-                        ) and item.target is not None:
-                            if (
-                                self.version(temporary, original_mode=item.target.mode)
-                                == item.target
-                            ):
-                                temporary.unlink()
-                    self.write_json(
-                        self.restore_path(restore_id),
-                        replace(
-                            record, status="compensated", compensation_id=restored.plan.restore_id
-                        ),
-                    )
-                return restored
-
-        return await self.run_io(recover)
+        await self.run_io(write)

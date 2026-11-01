@@ -1,11 +1,11 @@
+# Pi 没有，pycode 新增
 # Source: MewCode local app.py and tests/test_tui_framework.py; hashes in docs/source-map.md.
 # Adaptation: only public application commands and native projections; owned UI tasks and Events.
 """Interactive terminal presentation shares AgentSession with non-interactive CLI."""
 
 import asyncio
-import logging
 import shlex
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from textual.app import App, ComposeResult
@@ -16,21 +16,24 @@ from textual.widgets import Button, Collapsible, Markdown, Static
 
 from pycode import __version__
 from pycode.kernel import DomainError, Event, Message, RunResult, StorageError, json_dumps
-from pycode.ui.adapters.agents import AgentsPanel
-from pycode.ui.adapters.approval import ApprovalPanel
-from pycode.ui.adapters.chat_input import ChatInput
-from pycode.ui.adapters.commands import CommandRegistry
-from pycode.ui.adapters.completion import CompletionPopup
-from pycode.ui.adapters.memory import MemoryPanel
-from pycode.ui.adapters.model_picker import ModelPicker
-from pycode.ui.adapters.plans import PlanPanel
-from pycode.ui.adapters.questions import QuestionPanel
-from pycode.ui.adapters.recovery import RevertPanel
-from pycode.ui.adapters.tasks import tasks_text
-from pycode.ui.adapters.theme import themes
-from pycode.ui.adapters.tool_output import ToolOutputCard
-from pycode.ui.adapters.usage import UsageScreen
-from pycode.ui.ports.ui import InteractiveSession, InteractiveSessions
+from pycode.ui.agents import AgentsPanel
+from pycode.ui.approval import ApprovalPanel
+from pycode.ui.chat_input import ChatInput
+from pycode.ui.commands import CommandRegistry
+from pycode.ui.completion import CompletionPopup
+from pycode.ui.memory import MemoryPanel
+from pycode.ui.model_picker import ModelPicker
+from pycode.ui.plans import PlanPanel
+from pycode.ui.questions import QuestionPanel
+from pycode.ui.recovery import RevertPanel
+from pycode.ui.tasks import tasks_text
+from pycode.ui.theme import themes
+from pycode.ui.tool_output import ToolOutputCard
+from pycode.ui.usage import UsageScreen
+
+if TYPE_CHECKING:
+    from pycode.app import ConfiguredInteractiveSessions
+    from pycode.session import AgentSession
 
 
 def abbreviated_tokens(value):
@@ -160,7 +163,7 @@ class PyApp(App):
 
     def __init__(
         self,
-        sessions: InteractiveSessions,
+        sessions: "ConfiguredInteractiveSessions",
         *,
         session_id=None,
         sandbox_status="OS 沙箱不可用；使用权限审批",
@@ -169,8 +172,7 @@ class PyApp(App):
         self._sessions = sessions
         self._initial_session_id = session_id
         self._sandbox_status = sandbox_status
-        self.session: InteractiveSession | None = None
-        self._render_failed = False
+        self.session: "AgentSession | None" = None
         self.session_id = None
         self.state: dict[str, Any] | None = None
         self.ready = asyncio.Event()
@@ -197,7 +199,7 @@ class PyApp(App):
         self.theme = "pycode-dark"
 
     @property
-    def active_session(self) -> InteractiveSession:
+    def active_session(self) -> "AgentSession":
         session = self.session
         if session is None:
             raise StorageError("session_unavailable", "Open a session before this operation")
@@ -253,22 +255,7 @@ class PyApp(App):
         self.post_message(self.RuntimeEvent(event))
 
     async def on_py_app_runtime_event(self, message):
-        if self._render_failed:
-            return
-        try:
-            await self.render_runtime_event(message)
-        except Exception as error:
-            self.render_failed(error)
-
-    def render_failed(self, error):
-        self._render_failed = True
-        logging.getLogger("pycode.ui").error(
-            "Disabled failed UI renderer: %s", error, exc_info=True
-        )
-        self.notice(
-            "Display failed; saved history remains available. Reopen the session to refresh.",
-            "error",
-        )
+        await self.render_runtime_event(message)
 
     async def render_runtime_event(self, message):
         event = message.event
@@ -395,7 +382,6 @@ class PyApp(App):
             raise
         identity = (await opened.inspect())["snapshot"]["header"]["session_id"]
         self.session, self.session_id = opened, identity
-        self._render_failed = False
         self._memory_report = None
         self._pending_plan = None
         self._running_tools = {}
@@ -468,12 +454,7 @@ class PyApp(App):
         if self.session is None or self._closed:
             return
         self.state = await self.active_session.inspect(presentation=True)
-        if self._render_failed:
-            return
-        try:
-            await self.refresh_widgets()
-        except Exception as error:
-            self.render_failed(error)
+        await self.refresh_widgets()
 
     async def refresh_widgets(self):
         self.refresh_commands()
@@ -522,22 +503,13 @@ class PyApp(App):
                         payload, agent_id=child_source["agent_id"] if child_source else None
                     )
                 )
-        if self.view_state["pending_revert_id"]:
-            self.notice(
-                "Revert recovery required: " + self.view_state["pending_revert_id"], "warning"
-            )
-            await self.query_one("#pending", Vertical).mount(
-                RevertPanel(transaction_id=self.view_state["pending_revert_id"])
-            )
-        elif self._pending_plan is not None:
-            await self.query_one("#pending", Vertical).mount(RevertPanel(self._pending_plan))
+        if self._pending_plan is not None:
+            await self.query_one("#pending", Vertical).mount(RevertPanel(**self._pending_plan))
         elif not pending and self._show_agents and subagents is not None:
             await self.query_one("#pending", Vertical).mount(AgentsPanel(subagents))
         elif not pending and self._memory_report is not None:
             await self.query_one("#pending", Vertical).mount(MemoryPanel(self._memory_report))
-        self.query_one("#chat-input", ChatInput).disabled = bool(
-            self.view_state["pending_run_id"] or self.view_state["pending_revert_id"]
-        )
+        self.query_one("#chat-input", ChatInput).disabled = bool(self.view_state["pending_run_id"])
         self.query_one("#chat-input", ChatInput).update_completion()
         selected = self.view_state["context"]["selection"]
         label = "模型：" + selected["model_id"] if selected else "模型：等待首轮请求"
@@ -621,7 +593,16 @@ class PyApp(App):
                 catalog = entry["data"]["entries"]
                 break
             current = entry["parent_id"]
-        self.commands.set_skills(catalog)
+        self.commands.set_skills(catalog if self.active_session.skills is not None else ())
+        hidden = set()
+        for service, commands in (
+            (self.active_session.memory, ("/memory",)),
+            (self.active_session.skills, ("/skill", "/skills", "/reload")),
+            (self.active_session.subagents, ("/agents",)),
+        ):
+            if service is None:
+                hidden.update(commands)
+        self.commands.hidden = hidden
         self.query_one("#chat-input", ChatInput).update_completion()
 
     def on_option_list_option_selected(self, event):
@@ -658,7 +639,10 @@ class PyApp(App):
 
     async def answer_child(self, agent_id, answer):
         try:
-            await self.active_session.answer_agent(agent_id, answer)
+            agents = self.active_session.subagents
+            if agents is None:
+                raise StorageError("subagents_unavailable", "Subagents are disabled")
+            await agents.answer(agent_id, answer)
         except DomainError as error:
             self.notice(str(error), "error")
         finally:
@@ -678,26 +662,29 @@ class PyApp(App):
 
     def on_revert_panel_responded(self, event):
         event.stop()
-        if event.action == "revert-discard":
+        if event.action == "revert-cancel":
             self._pending_plan = None
             self.start_operation(self.refresh_state)
-        elif event.action == "revert-apply":
+        elif event.action == "revert-confirm":
             self.start_operation(self.apply_revert)
-        elif event.action in {"restore-continue", "restore-compensate"}:
-            self.start_operation(self.recover_revert, event.action == "restore-compensate")
 
-    async def preview_revert(self, target, mode):
-        self._pending_plan = await self.active_session.preview_revert(target, mode)
+    async def prepare_revert(self, target, mode):
+        session = self.active_session
+        async with session.execution():
+            session.require_settled(await session.history.snapshot())
+            paths = await session.snapshots.changed_paths(target, mode)
+            self._pending_plan = {"target": target, "mode": mode, "paths": paths}
 
     async def apply_revert(self):
-        await self.active_session.revert(self._pending_plan)
-        self._pending_plan = None
-
-    async def recover_revert(self, compensate):
-        await self.active_session.recover_revert(
-            self.view_state["pending_revert_id"], compensate=compensate
-        )
-        self._pending_plan = None
+        choice, self._pending_plan = self._pending_plan, None
+        if choice is None:
+            return
+        session = self.active_session
+        async with session.execution():
+            session.require_settled(await session.history.snapshot())
+            await session.snapshots.revert(choice["target"], choice["mode"])
+            await session.launcher.invalidate_summary("reverted")
+            await session.plans.initialize()
 
     async def stop_active(self):
         if self.busy:
@@ -801,15 +788,15 @@ class PyApp(App):
         if not args:
             self.start_operation(self.show_memory)
         elif len(args) == 2 and args[0] == "mode":
-            self.start_operation(self.active_session.memory_mode, args[1])
+            self.start_operation(self.mutate, self.active_session.memory.set_mode, args[1])
         elif len(args) >= 3 and args[0] == "edit":
             self.start_operation(self.edit_memory, args[1], " ".join(args[2:]), scope)
         elif len(args) == 2 and args[0] in {"remove", "delete"}:
             self.start_operation(self.remove_memory, args[1], scope)
         elif args == ["clear"]:
-            self.start_operation(self.active_session.memory_clear)
+            self.start_operation(self.mutate, self.active_session.memory.clear)
         elif args == ["extract"]:
-            self.start_operation(self.active_session.memory_extract)
+            self.start_operation(self.extract_memory)
         else:
             return False
 
@@ -826,9 +813,9 @@ class PyApp(App):
 
     async def command_tasks(self, args):
         if args == ["clear"]:
-            self.start_operation(self.active_session.clear_task_board)
+            self.start_operation(self.mutate, self.active_session.tasks.clear)
         elif not args:
-            board = await self.active_session.task_board()
+            board = await self.active_session.tasks.current()
             self.notice(tasks_text(board) if board is not None else "没有任务板")
         else:
             return False
@@ -839,13 +826,16 @@ class PyApp(App):
             await self.refresh_state()
             return True
         if len(args) == 2 and args[0] == "cancel":
-            await self.active_session.cancel_agent(args[1])
+            agents = self.active_session.subagents
+            if agents is None:
+                return False
+            await agents.stop(args[1])
             await self.refresh_state()
             return True
         return False
 
     async def command_usage(self, args):
-        self.push_screen(UsageScreen(await self.active_session.usage()))
+        self.push_screen(UsageScreen(await self.active_session.view.usage()))
 
     async def command_compact(self, args):
         if args:
@@ -880,12 +870,12 @@ class PyApp(App):
             + description
             + "\n"
         )
-        report = await self.active_session.save_skill(name, content)
+        report = await self.mutate(self.active_session.skills.create, name, content, settled=True)
         self.notice("Skill 已创建：" + report["path"])
         await self.refresh_state()
 
     async def read_skill(self, name):
-        document = await self.active_session.read_skill(name)
+        document = await self.active_session.skills.read(name)
         self.notice(document.raw + "\nRevision: " + document.entry.content_hash)
 
     async def command_load_skill(self, name, arguments):
@@ -900,10 +890,12 @@ class PyApp(App):
         self.action_toggle_theme()
 
     async def command_revert(self, args):
-        if not 1 <= len(args) <= 2:
+        if not 1 <= len(args) <= 2 or (
+            len(args) == 2 and args[1] not in {"dialogue", "code", "both"}
+        ):
             return False
         self.start_operation(
-            self.preview_revert,
+            self.prepare_revert,
             None if args[0] == "root" else args[0],
             args[1] if len(args) == 2 else "dialogue",
         )
@@ -911,45 +903,64 @@ class PyApp(App):
     async def command_quit(self, args):
         await self.action_close()
 
+    async def mutate(self, operation, *args, settled=False, **kwargs):
+        session = self.active_session
+        async with session.execution():
+            if settled:
+                session.require_settled(await session.history.snapshot())
+            return await operation(*args, **kwargs)
+
+    async def extract_memory(self):
+        return await self.mutate(self.active_session.memory.extract, settled=True)
+
     async def show_memory(self):
-        self._memory_report = await self.active_session.memory_list()
+        self._memory_report = await self.active_session.memory.list()
 
     async def edit_memory(self, memory_id, content, scope=None):
-        await self.active_session.memory_edit(memory_id, content, scope=scope)
+        await self.mutate(self.active_session.memory.edit, memory_id, content, scope=scope)
         self.notice("Memory updated: " + memory_id)
         await self.show_memory()
 
     async def remove_memory(self, memory_id, scope=None):
-        await self.active_session.memory_remove(memory_id, scope=scope)
+        await self.mutate(self.active_session.memory.remove, memory_id, scope=scope)
         self.notice("Memory deleted: " + memory_id)
         await self.show_memory()
 
     async def show_storage(self):
-        report = await self.active_session.storage_status()
+        report = await self.active_session.storage.status()
         self.notice(json_dumps(report, ensure_ascii=False))
 
     async def collect_storage(self, dry_run):
-        report = await self.active_session.storage_gc(dry_run=dry_run)
+        report = await self.mutate(self.active_session.storage.collect, dry_run=dry_run)
         self.notice(json_dumps(report, ensure_ascii=False))
 
     async def enter_plan(self, task):
-        result = await self.active_session.enter_plan(task)
+        await self.mutate(self.active_session.plans.enter, settled=True)
         self.notice("Plan mode entered")
-        return result
+        if task:
+            return await self.active_session.run(Message(uuid4().hex, "user", task))
+        return None
 
     async def load_skill(self, name, arguments):
-        result = await self.active_session.load_skill(name, arguments)
+        selected = await self.active_session.skills.load(name, arguments)
+        prompt = (
+            f"Use the {selected['name']} Skill. Read {selected['path']} for its instructions.\n"
+            f"Task arguments: {selected['arguments']}"
+        )
+        result = await self.active_session.run(
+            Message(uuid4().hex, "user", prompt, provider_metadata={"skill_request": selected})
+        )
         self.notice("Skill task: " + name)
         return result
 
     async def reload_skills(self):
-        catalog = await self.active_session.reload_skills()
+        catalog = await self.mutate(self.active_session.skills.refresh, settled=True)
         self.notice(f"Skill catalog refreshed: {len(catalog['entries'])} entries")
 
     async def search_skills(self, query):
-        found = await self.active_session.skill_search(query)
+        found = await self.active_session.skills.search(query)
         self.notice("\n".join(item["name"] + ": " + item["description"] for item in found))
 
     async def install_skill(self, url):
-        report = await self.active_session.install_skill(url)
+        report = await self.mutate(self.active_session.skills.install, url, settled=True)
         self.notice("Installed Skill " + report["skill_name"] + " at " + report["target_dir"])

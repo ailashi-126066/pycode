@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 # Source: code-python/mewcode/commands/completion.py candidate selection design.
 # Adaptation: native OptionList for scrolling and selecting the clicked row.
 """Command candidates beside the prompt; selecting only edits the input."""

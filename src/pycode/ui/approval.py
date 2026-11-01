@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 # Source: MewCode local permission_dialog.py.
 # SHA-256: 87f1c767a00123f05660c08c2c73749b9530a0d5f6040f29ff8b3bab27e2de57
 # Adaptation: operation-bound response message; no Future, implicit grant or direct execution.

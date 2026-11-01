@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 # Source: code-python/mewcode/commands/registry.py and parser.py.
 # Adaptation: pycode's existing commands and application entry points only.
 """One registry for existing terminal command dispatch, help and completion."""
@@ -58,7 +59,7 @@ COMMANDS = (
     Command("/theme", "Switch color theme", "command_theme"),
     Command(
         "/revert",
-        "Preview a conversation or code revert",
+        "Revert conversation or files after confirmation",
         "command_revert",
         "ENTRY|root [dialogue|code|both]",
         True,
@@ -72,6 +73,7 @@ class CommandRegistry:
     def __init__(self):
         self._commands = {command.name: command for command in COMMANDS}
         self._skills = {}
+        self.hidden = set()
 
     def set_skills(self, entries):
         self._skills = {
@@ -87,6 +89,8 @@ class CommandRegistry:
         }
 
     def find(self, name):
+        if name in self.hidden or (name.startswith("/skill:") and "/skill" in self.hidden):
+            return None
         command = self._commands.get(name) or self._skills.get(name)
         if command is None and name.startswith("/skill:"):
             # Preserve the existing trusted-catalog validation and error path.
@@ -99,5 +103,5 @@ class CommandRegistry:
         return tuple(
             command
             for name, command in sorted((self._commands | self._skills).items())
-            if name.startswith(text)
+            if name.startswith(text) and name not in self.hidden
         )

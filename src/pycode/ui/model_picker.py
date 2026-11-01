@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 """Scrollable provider/model picker that stays beside the prompt."""
 
 from textual.widgets import OptionList

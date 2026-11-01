@@ -5,11 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from pycode.kernel import SnapshotError
-from pycode.snapshot.adapters.git_tree import GitSnapshotStore
+from pycode.snapshot.store import GitSnapshotStore
 
 VECTORS = json.loads(
-    (Path(__file__).parents[2] / "fixtures/snapshot-baselines.json").read_text(encoding="utf-8")
+    (Path(__file__).parents[1] / "fixtures/snapshot-baselines.json").read_text(encoding="utf-8")
 )
 
 
@@ -57,12 +56,9 @@ async def test_source_capture_restore_vectors_in_temporary_git_only(tmp_path, ca
             (workspace / name).unlink()
     for name, content in case["after"].items():
         (workspace / name).write_text(content, encoding="utf-8")
-    after = await store.capture()
-    plan = await store.preview(
-        {name: before.tree_id for name in case["restore_paths"]}, expected_tree_id=after.tree_id
-    )
-    assert not plan.conflicts
-    assert (await store.restore(plan)).status == "completed"
+    await store.capture()
+    for name in case["restore_paths"]:
+        await store.write_path(name, before.tree_id)
     for name in set(case["before"]) | set(case["after"]):
         path = workspace / name
         if name in case["expected"]:
@@ -72,26 +68,3 @@ async def test_source_capture_restore_vectors_in_temporary_git_only(tmp_path, ca
     assert git(workspace, "rev-parse", "HEAD") == head
     if index is not None:
         assert (workspace / ".git/index").read_bytes() == index
-
-
-async def test_external_conflict_stops_entire_restore_and_keeps_unrelated_paths(tmp_path):
-    workspace = repository(tmp_path)
-    for name in ("one", "two", "unrelated"):
-        (workspace / name).write_text("old")
-    git(workspace, "add", ".")
-    git(workspace, "commit", "-qm", "initial")
-    store = GitSnapshotStore(workspace, tmp_path / "storage")
-    before = await store.capture()
-    (workspace / "one").write_text("new")
-    (workspace / "two").write_text("new")
-    after = await store.capture()
-    plan = await store.preview(
-        {"one": before.tree_id, "two": before.tree_id}, expected_tree_id=after.tree_id
-    )
-    (workspace / "two").write_text("external edit")
-    with pytest.raises(SnapshotError) as error:
-        await store.restore(plan)
-    assert error.value.code == "restore_conflict"
-    assert (workspace / "one").read_text() == "new"
-    assert (workspace / "two").read_text() == "external edit"
-    assert (workspace / "unrelated").read_text() == "old"

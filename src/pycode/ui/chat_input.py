@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 # Source: MewCode local app.py; SHA-256:
 # 2680a87b05640a668323ae5712bed84eec2bc424cb47ec70e3d876450ec81696
 # Adaptation: submit/newline only; commands go through the injected application.
@@ -9,9 +10,9 @@ from textual.binding import Binding
 from textual.message import Message
 from textual.widgets import TextArea
 
-from pycode.ui.adapters.commands import CommandRegistry
-from pycode.ui.adapters.completion import CompletionPopup
-from pycode.ui.adapters.model_picker import ModelPicker
+from pycode.ui.commands import CommandRegistry
+from pycode.ui.completion import CompletionPopup
+from pycode.ui.model_picker import ModelPicker
 
 
 class ChatInput(TextArea):

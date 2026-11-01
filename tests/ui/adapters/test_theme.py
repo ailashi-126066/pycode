@@ -1,6 +1,6 @@
 from rich.color import Color, ColorSystem
 
-from pycode.ui.adapters.theme import DARK, LIGHT, themes
+from pycode.ui.theme import DARK, LIGHT, themes
 
 
 def luminance(color):

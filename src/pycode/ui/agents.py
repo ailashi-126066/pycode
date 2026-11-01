@@ -1,3 +1,4 @@
+# Pi 没有，pycode 新增
 """Subagent status for /agents."""
 
 from textual.app import ComposeResult
