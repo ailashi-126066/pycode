@@ -14,8 +14,8 @@ class AppConfig:
     summary_keep_recent_tokens: int = 20000
     # The only run budget: a run ends with turn_limit after this many turns.
     max_turns: int = 100
-    # A repeated action on an unchanged workspace, or a tree seen this often, is a loop.
-    loop_repeat_threshold: int = 2
+    # A repeated action, or a tree seen this often, is a loop. Only set here; no CLI flag.
+    loop_repeat_threshold: int = 3
     sandbox: SandboxSettings = field(default_factory=SandboxSettings)
     project_trusted: bool = False
     skill_index_budget: int = 2000
@@ -59,6 +59,8 @@ class AppConfig:
             raise ValueError("Summary configuration is invalid")
         if self.max_turns < 1:
             raise ValueError("Maximum turns must be positive")
+        if self.loop_repeat_threshold < 1:
+            raise ValueError("Loop repeat threshold must be positive")
 
 
 def load_config(workspace: str | None = None, user_data: str | None = None) -> AppConfig:
