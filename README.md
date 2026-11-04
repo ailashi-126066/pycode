@@ -59,8 +59,12 @@ PowerShell 中用 `Copy-Item` 复制示例，用 `$env:DEEPSEEK_API_KEY = '自�
 也支持从工作区的本地 `.env` 加载凭据；凭据不会复制到子 agent 的 worktree。
 
 `--trust-project` 启用项目 `AGENTS.md` 和项目 Skill 来源；用户 `~/.pycode/AGENTS.md` 默认加载。
-长期记忆默认 auto：模型用 `manage_user_memory` / `manage_project_memory` 主动记，压缩被采用后从本次被摘要掉的 user 原文后台整理（摘要仅作背景）；
-`--memory-mode off` 关闭。`--max-turns`（默认 100）限制一次运行的轮数。
+长期记忆默认 auto：模型用 `manage_user_memory` / `manage_project_memory` 主动记；每次压缩被采用后，
+后台使用该次压缩捕获的原始消息整理记忆；每完成 5 次用户请求，还会提前提取新增的用户信息。
+两种触发复用 LangMem Store Manager 和现有 Markdown 存储，只允许把用户消息明确表达的信息保存为记忆，
+助手回复、工具结果及摘要仅作背景。后台任务串行执行，每次压缩保留，等待中的提前提取合并为最新一次。
+`--memory-mode off` 关闭并取消待处理记忆任务。`--max-turns`（默认 100）限制一次运行的模型轮数，
+与记忆提取的 5 次用户请求间隔无关。
 
 ## 工具
 
@@ -94,6 +98,9 @@ bash 调用。任务板以 completed、failed、blocked（把问题交给用户�
 
 非交互 CLI 需要审批时输出 `needs_input` 并退出 2；重新打开后可以 resume 回答保存的审批。
 完整记录保存在 SQLite Store，执行位置保存在 checkpoint；重新打开不自动执行工具。
+
+正常关闭会话时最多等待 10 秒完成后台记忆任务，超时取消。TUI 用 `Ctrl+Shift+Q`、`/quit force`
+（或 `/exit force`）强制退出时立即取消后台记忆；CLI 被中断时也取消。已经写入的记忆保留。
 
 ## 子 agent、命令与权限
 

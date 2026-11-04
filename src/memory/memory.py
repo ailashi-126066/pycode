@@ -1,8 +1,8 @@
 # Pi 没有，pycode 新增
 """MemoryService: the prompt index, manage tools, a read-only mount and consolidation.
 
-Consolidation runs in the background after a compaction is adopted (at most one at a time)
-and on demand through /memory extract. LangMem's Store Manager writes the same files.
+Consolidation runs after adopted compactions and every five completed user requests,
+with a shared worker and manual extraction lock. LangMem writes the same files.
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from uuid import uuid4
 from langchain_core.messages import HumanMessage, SystemMessage
 from langmem import create_memory_store_manager
 
-from ..context import retained_context_entries
+from ..context import background_request_prefix, retained_context_entries
 from ..kernel import (
     Message,
     SessionScope,
@@ -38,6 +38,8 @@ DIALOGUE_CHARS = 24000
 DIALOGUE_MESSAGES = 40
 # Store Manager searches with dilated windows of the dialogue; a scope holds at most 50.
 QUERY_LIMIT = 50
+EXTRACTION_INTERVAL = 5
+CLOSE_TIMEOUT = 10
 INSTRUCTIONS = (
     "Maintain durable long-term memory for a coding assistant. Record only what the user "
     "explicitly stated in their own messages: lasting preferences, project conventions and "
@@ -45,6 +47,8 @@ INSTRUCTIONS = (
     "from it; the summary is background only. Merge duplicates and update outdated entries "
     "instead of adding near-copies. Skip one-off task requests, temporary state and guesses. "
     "Never save credentials, tokens, passwords or keys. Keep each memory short and factual. "
+    "The shared source conversation prefix is context only. Extract only from the user "
+    "messages supplied in this extraction session, not from other source messages. "
     "If nothing is worth recording, make no changes."
 )
 
@@ -96,6 +100,27 @@ def recent_source(snapshot):
     return summary, user_messages(path[start:])
 
 
+def recent_messages(snapshot):
+    """Stable original dialogue prefix; extraction eligibility is restricted separately."""
+    path = SessionTree(snapshot.index).path(snapshot.leaf_id)
+    retained = retained_context_entries(path)
+    return tuple(
+        entry.message
+        for entry in retained
+        if entry.message is not None and entry.message.role != "system"
+    )
+
+
+def extraction_users(messages):
+    """Synthetic subagent notifications are not facts stated by the user."""
+    return tuple(
+        message
+        for message in messages
+        if message.role == "user"
+        and message.provider_metadata.get("source") != "subagent_notification"
+    )
+
+
 def framework_messages(summary, messages):
     converted = []
     if summary:
@@ -143,11 +168,18 @@ class MemoryService:
         self.closed = False
         self.pending = deque()
         self.last_compaction_id: str | None = None
+        self.pending_periodic = None
+        self.completed_runs: set[str] = set()
+        self.turns_since_extraction = 0
+        self.last_memory_message_id: str | None = None
+        self.branch_anchor: str | None = None
+        self.extraction_lock = asyncio.Lock()
 
     async def open(self, session: SessionScope) -> None:
         self.history = session.history
         self.session_id = session.session_id
         self.read_only = session.read_only
+        self.agent_id = session.agent_id
         # User memory always; project memory only in a trusted project.
         self.roots: dict[Scope, Path] = {"user": session.user_data / "memory"}
         if self.trusted:
@@ -181,22 +213,22 @@ class MemoryService:
             return ()
         return (memory_index(self.store.records(self.scopes)),)
 
-    async def aclose(self) -> None:
+    async def aclose(self, *, force=False) -> None:
+        if self.closed and self.task is None:
+            return
         self.closed = True
-        await self.collect(cancel=True)
-
-    def compacted(self, snapshot):
-        """Queue the adopted snapshot, not whatever history contains when the task runs.
-
-        Assembly calls this once after adopting compaction. A single worker drains every
-        accepted range, including a new compaction while the previous model call waits.
-        """
-        if self.closed or self.mode == "off" or self.read_only:
+        if force:
+            await self.collect(cancel=True)
             return
-        if snapshot.leaf_id == self.last_compaction_id:
-            return
-        self.last_compaction_id = snapshot.leaf_id
-        self.pending.append(snapshot)
+        try:
+            async with asyncio.timeout(CLOSE_TIMEOUT):
+                await self.collect()
+        except TimeoutError:
+            pass
+        finally:
+            await self.collect(cancel=True)
+
+    def start_worker(self):
         if self.task is None or self.task.done():
             self.task = asyncio.create_task(
                 self.background(),
@@ -204,13 +236,92 @@ class MemoryService:
                 context=contextvars.Context(),
             )
 
+    async def completed(self, snapshot, run_id):
+        """Count settled user requests, never model/tool turns or resumed approvals."""
+        if self.closed or self.mode == "off" or self.read_only or self.agent_id != "lead":
+            return
+        path = SessionTree(snapshot.index).path(snapshot.leaf_id)
+        ids = {entry.id for entry in path}
+        if self.branch_anchor is not None and self.branch_anchor not in ids:
+            self.turns_since_extraction = 0
+            self.last_memory_message_id = None
+            self.pending_periodic = None
+        self.branch_anchor = snapshot.leaf_id
+        if run_id in self.completed_runs:
+            return
+        self.completed_runs.add(run_id)
+        self.turns_since_extraction += 1
+        if self.turns_since_extraction < EXTRACTION_INTERVAL:
+            return
+        self.turns_since_extraction = 0
+        # Only one periodic request waits; its immutable snapshot is replaced by the latest.
+        self.pending_periodic = snapshot
+        self.start_worker()
+
+    def compacted_source(self, snapshot, source):
+        """Use exactly the original messages captured by the adopted summary job."""
+        self.enqueue_compaction(snapshot, source)
+
+    def compacted(self, snapshot):
+        """Queue the adopted snapshot, not whatever history contains when the task runs.
+
+        Assembly calls this once after adopting compaction. A single worker drains every
+        accepted range, including a new compaction while the previous model call waits.
+        """
+        self.enqueue_compaction(snapshot)
+
+    def enqueue_compaction(self, snapshot, source=None):
+        if self.closed or self.mode == "off" or self.read_only or self.agent_id != "lead":
+            return
+        if snapshot.leaf_id == self.last_compaction_id:
+            return
+        self.last_compaction_id = snapshot.leaf_id
+        self.pending.append((snapshot, source))
+        self.start_worker()
+
     async def background(self):
-        while self.pending:
-            snapshot = self.pending.popleft()
+        while self.pending or self.pending_periodic is not None:
+            periodic = not self.pending
+            if periodic:
+                snapshot, self.pending_periodic = self.pending_periodic, None
+                source = None
+            else:
+                snapshot, source = self.pending.popleft()
             # One failure boundary per accepted compaction; later queued work still runs.
             try:
-                summary, messages = compacted_source(snapshot)
-                await self.consolidate("memory-compaction-" + uuid4().hex, summary, messages)
+                if periodic:
+                    raw = recent_messages(snapshot)
+                    users = extraction_users(raw)
+                    cursor = next(
+                        (
+                            i
+                            for i, message in enumerate(users)
+                            if message.id == self.last_memory_message_id
+                        ),
+                        -1,
+                    )
+                    messages = users[cursor + 1 :]
+                    summary = ""
+                elif source is not None:
+                    # Split-turn compaction sends two summary requests; preserve each
+                    # request's exact source prefix instead of concatenating them.
+                    for raw in (source.messages, source.turn_prefix_messages):
+                        messages = extraction_users(raw)
+                        await self.consolidate(
+                            "memory-compaction-" + uuid4().hex,
+                            "",
+                            messages,
+                            original_messages=raw,
+                        )
+                    continue
+                else:
+                    summary, messages = compacted_source(snapshot)
+                    raw = messages
+                await self.consolidate(
+                    "memory-" + uuid4().hex, summary, messages, original_messages=raw
+                )
+                if periodic and messages:
+                    self.last_memory_message_id = messages[-1].id
             except Exception as error:  # noqa: BLE001 - background failures are non-fatal
                 logger.debug(
                     "Memory consolidation failed: %s", getattr(error, "code", type(error).__name__)
@@ -218,10 +329,18 @@ class MemoryService:
 
     async def extract(self):
         """The manual /memory extract: the recent dialogue; failures reach the caller."""
-        summary, messages = recent_source(await self.history.snapshot())
-        await self.consolidate("manual-memory-" + uuid4().hex, summary, messages)
+        snapshot = await self.history.snapshot()
+        raw = recent_messages(snapshot)
+        messages = extraction_users(raw)
+        await self.consolidate(
+            "manual-memory-" + uuid4().hex, "", messages, original_messages=raw
+        )
 
-    async def consolidate(self, run_id, summary, messages):
+    async def consolidate(self, run_id, summary, messages, *, original_messages=()):
+        async with self.extraction_lock:
+            await self._consolidate(run_id, summary, messages, original_messages)
+
+    async def _consolidate(self, run_id, summary, messages, original_messages):
         """One LangMem Store Manager pass per scope; filtered entries are skipped."""
         if not messages:
             return
@@ -239,6 +358,7 @@ class MemoryService:
                 max_output_tokens=4096,
                 input_limit=16000,
                 max_calls=24,
+                request_prefix=background_request_prefix(original_messages or messages),
             ) as model:
                 manager = create_memory_store_manager(
                     model,
@@ -260,6 +380,7 @@ class MemoryService:
             return
         if cancel:
             self.pending.clear()
+            self.pending_periodic = None
             task.cancel()
         # background() keeps every failure inside the task; this only waits for it.
         await asyncio.wait((task,))
@@ -270,6 +391,7 @@ class MemoryService:
         if mode not in {"auto", "off"}:
             raise StorageError("invalid_memory_mode", "Choose auto or off")
         if mode == "off":
+            self.mode = mode
             await self.collect(cancel=True)
         await self.store.set_mode(NAMESPACES["user"], mode)
         self.mode = mode

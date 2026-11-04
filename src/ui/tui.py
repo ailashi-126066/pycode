@@ -152,6 +152,7 @@ class PyApp(App):
     BINDINGS = [
         Binding("ctrl+c", "stop", "Stop", priority=True),
         Binding("ctrl+q", "close", "Quit", priority=True),
+        Binding("ctrl+shift+q", "force_close", "Force quit", show=False, priority=True),
         Binding("escape", "dismiss_notice", show=False),
         Binding("f6", "toggle_theme", "Theme"),
     ]
@@ -695,19 +696,27 @@ class PyApp(App):
         await self.shutdown()
         self.exit()
 
+    async def action_force_close(self):
+        await self.shutdown(force=True)
+        self.exit()
+
     def action_toggle_theme(self):
         self.theme = "pycode-light" if self.theme == "pycode-dark" else "pycode-dark"
 
-    async def shutdown(self):
+    async def shutdown(self, *, force=False):
         if self._closed:
+            if force and self.session is not None:
+                await self.active_session.memory.aclose(force=True)
             return
         self._closed = True
+        if force and self.session is not None:
+            await self.active_session.memory.aclose(force=True)
         await self.stop_active()
         for task in tuple(self._answer_tasks):
             task.cancel()
         await asyncio.gather(*self._answer_tasks, return_exceptions=True)
         if self.session is not None:
-            await self.active_session.aclose()
+            await self.active_session.aclose(force=force)
 
     async def on_unmount(self):
         await self.shutdown()
@@ -893,7 +902,12 @@ class PyApp(App):
         )
 
     async def command_quit(self, args):
-        await self.action_close()
+        if args in (["force"], ["--force"]):
+            await self.action_force_close()
+        elif not args:
+            await self.action_close()
+        else:
+            return False
 
     async def mutate(self, operation, *args, settled=False, **kwargs):
         session = self.active_session

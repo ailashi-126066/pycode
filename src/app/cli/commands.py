@@ -63,6 +63,7 @@ async def command(args, config):
         # Nobody can answer a subagent's approval here (11.1 section 36 Q2).
         interactive=False,
     )
+    force_close = False
     try:
         handler = _EXECUTION_COMMANDS.get(name)
         if handler is None:
@@ -72,10 +73,11 @@ async def command(args, config):
             return result
         return await finish_execution(session, output, result)
     except asyncio.CancelledError:
+        force_close = True
         await publish_cancelled(session)
         raise
     finally:
-        await session.aclose()
+        await session.aclose(force=force_close)
 
 
 async def storage_command(args, config, output):

@@ -300,13 +300,33 @@ class AgentSession:
             return result
         # The runtime already wrote run_end when the run entered finished.
         await self.plans.finish(self.require_run_id(start))
+        if result.outcome == "completed" and self.memory is not None:
+            snapshot = await self.history.snapshot()
+            initial = next(
+                (
+                    entry.message
+                    for entry in snapshot.entries
+                    if entry.message is not None
+                    and entry.message.id == start.data["input_id"]
+                ),
+                None,
+            )
+            if (
+                initial is not None
+                and initial.provider_metadata.get("source") != "subagent_notification"
+            ):
+                await self.memory.completed(snapshot, self.require_run_id(start))
         return result
 
-    async def aclose(self) -> None:
+    async def aclose(self, *, force=False) -> None:
         if not self._closing and self._active_task is not None:
             raise StorageError("session_busy", "Cancel and collect the active run before closing")
         self._closing = True
-        await self._cleanup.aclose()
+        try:
+            if force and self.memory is not None:
+                await self.memory.aclose(force=True)
+        finally:
+            await self._cleanup.aclose()
 
     async def inspect(self, *, presentation=False):
         state = await self.view.inspect(presentation=presentation)
@@ -343,7 +363,14 @@ class AgentSession:
                 return None
             messages, self._notifications = self._notifications, []
             text = "\n\n".join(message.text for message in messages)
-            return await self._run_locked(Message(uuid4().hex, "user", text))
+            return await self._run_locked(
+                Message(
+                    uuid4().hex,
+                    "user",
+                    text,
+                    provider_metadata={"source": "subagent_notification"},
+                )
+            )
 
     async def publish_result(self, result, *, collect_background=False):
         if result.run_id is None:

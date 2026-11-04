@@ -11,6 +11,7 @@ from .summary import (
     FileSummaryStore,
     SummaryService,
     SummaryWorkflow,
+    background_request_prefix,
 )
 from .types import SummaryReport, SummarySettings, SummarySource
 
@@ -29,6 +30,7 @@ __all__ = [
     "SummarySource",
     "SummaryWorkflow",
     "ToolEvictionService",
+    "background_request_prefix",
     "estimate_messages",
     "instruction_files",
     "retained_context_entries",

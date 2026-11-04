@@ -212,6 +212,7 @@ async def background_model(
     max_output_tokens=4096,
     input_limit=16000,
     max_calls=24,
+    request_prefix=(),
 ):
     selected = replace(
         provider,
@@ -219,6 +220,12 @@ async def background_model(
         thinking=provider.thinking if thinking else {},
         reasoning_effort=provider.reasoning_effort if thinking else None,
     )
+    if request_prefix:
+        # Full source prefixes can be as large as the conversation being compacted;
+        # the ordinary small-component budget would reject them before transport.
+        input_limit = InputBudget.create(
+            selected.context_window, selected.max_output_tokens
+        ).input_limit
     owner = await open_model(
         config, selected, consumers, session_id, run_id, purpose, retry_policy=retry_policy
     )
@@ -229,6 +236,7 @@ async def background_model(
             logical_prefix=logical_prefix,
             input_limit=input_limit,
             max_calls=max_calls,
+            request_prefix=request_prefix,
         )
     finally:
         await owner.aclose()
@@ -555,7 +563,7 @@ async def build_run(launcher, options):
                 generator,
                 settings,
                 events,
-                on_compacted=launcher.memory.compacted,
+                on_compacted_source=launcher.memory.compacted_source,
             )
         else:
             launcher.summary.configure(settings, generator, events)

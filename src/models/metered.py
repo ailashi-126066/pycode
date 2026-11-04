@@ -76,6 +76,7 @@ class MeteredChatModel(BaseChatModel):
     logical_prefix: str
     input_limit: int
     max_calls: int = 32
+    request_prefix: tuple[BaseMessage, ...] = Field(default=(), exclude=True, repr=False)
     sequence: RequestSequence = Field(default_factory=RequestSequence, exclude=True)
     schemas: list = Field(default_factory=list, exclude=True)
     response_schema: dict | None = Field(default=None, exclude=True)
@@ -174,6 +175,19 @@ class MeteredChatModel(BaseChatModel):
                     )
                 ),
                 *messages,
+            ]
+        if self.request_prefix:
+            # Anthropic requires system instructions at the beginning. Framework task
+            # instructions become suffix messages, leaving the shared system unchanged.
+            suffix = [
+                HumanMessage(content=message.content)
+                if isinstance(message, SystemMessage)
+                else message
+                for message in messages
+            ]
+            messages = [
+                *(message.model_copy(deep=True) for message in self.request_prefix),
+                *suffix,
             ]
         serialized_messages = [
             message.model_dump(mode="json", include={"content", "additional_kwargs", "tool_calls"})

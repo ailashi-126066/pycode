@@ -18,7 +18,8 @@ NAMESPACES: dict[Scope, tuple[str, ...]] = {
 # Opens one metered chat model for a background job and closes it on exit. Memory calls it
 # with keywords: session_id, run_id, purpose, logical_prefix, thinking (False turns it off),
 # retry_policy, max_output_tokens and input_limit (upper bounds, clamped to the provider)
-# and max_calls. Assembly binds the configuration and the provider.
+# max_calls and request_prefix (shared original dialogue before framework instructions).
+# Assembly binds the configuration and the provider.
 BackgroundModel = Callable[..., AbstractAsyncContextManager[BaseChatModel]]
 
 
