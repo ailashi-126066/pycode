@@ -61,11 +61,9 @@ def build_agent(
     checkpointer=None,
 ):
     prompt = f"{SYSTEM_PROMPT}\n\n工作目录：{workspace.resolve()}\n操作系统：{platform.system()}"
-    tools = [read, write, edit, bash, grep, find, ls]
-    compaction.measure(prompt, tools)
     return create_agent(
         model,
-        tools=tools,
+        tools=[read, write, edit, bash, grep, find, ls],
         system_prompt=prompt,
         middleware=[
             # First, so it wraps the retry below and sees context-overflow errors.

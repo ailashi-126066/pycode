@@ -32,48 +32,47 @@ class CompactionMiddleware(AgentMiddleware):
         self.model = model  # the agent's own model, called here without tools
         self.start_at, self.adopt_at = thresholds(context_window, max_output_tokens)
         self.max_tokens = min(8192, max_output_tokens)
-        # Estimated system prompt plus tool definitions; see measure().
+        # Estimated system prompt plus tool definitions, refreshed on every model request.
         self.overhead = 0
         # Lives only in this process; a summary lost on exit is generated again when needed.
         self.job: Job | None = None
 
-    async def abefore_model(self, state, runtime):
-        messages = state["messages"]
+    async def awrap_model_call(self, request, handler):
+        """Around every model request: compact first when needed, then call the model."""
+        # The request carries the system prompt and tool definitions; state does not.
+        system = request.system_message.text if request.system_message else ""
+        tools = json.dumps([convert_to_openai_tool(tool) for tool in request.tools], default=str)
+        self.overhead = estimate_text(system + tools)
+        messages, writer = list(request.messages), request.runtime.stream_writer
+
+        # 1. Normal case: start a background summary at 80%, adopt it at 90%.
+        kept = None
         tokens = context_tokens(messages, self.overhead)
         if tokens >= self.start_at and not self.job_covers(messages):
-            self.start_job(messages, runtime.stream_writer)
-        if tokens < self.adopt_at or self.job is None:
-            return None
-        kept = await self.adopt(messages, runtime.stream_writer)
-        return (
-            None if kept is None else {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *kept]}
-        )
+            self.start_job(messages, writer)
+        if tokens >= self.adopt_at and self.job is not None:
+            kept = await self.adopt(messages, writer)
 
-    def measure(self, system: str, tools: list) -> None:
-        """Estimate the system prompt plus tool definitions: once when the agent is built, so the
-        first check of a process is not missing them, then on every request as tools change."""
-        definitions = json.dumps([convert_to_openai_tool(tool) for tool in tools], default=str)
-        self.overhead = estimate_text(system + definitions)
-
-    async def awrap_model_call(self, request, handler):
-        self.measure(request.system_message.text if request.system_message else "", request.tools)
         try:
-            return await handler(request)
+            response = await handler(request.override(messages=kept) if kept else request)
         except ContextOverflowError:
-            # The model accepts less than the configured window: compact to well below the size
-            # that just failed, retry once, and save the compacted history.
-            messages = list(request.messages)
-            writer = request.runtime.stream_writer
-            limit = context_tokens(messages, self.overhead)
-            self.start_job(messages, writer, limit)
-            kept = await self.adopt(messages, writer, limit) if self.job else None
+            # 2. The model accepts less than the configured window: compact below the size
+            # that just failed and retry once.
+            current = kept or messages
+            limit = context_tokens(current, self.overhead)
+            self.start_job(current, writer, limit)
+            kept = await self.adopt(current, writer, limit) if self.job else None
             if kept is None:
                 raise
             response = await handler(request.override(messages=kept))
-            update = [RemoveMessage(id=REMOVE_ALL_MESSAGES), *kept, *response.result]
-            return ExtendedModelResponse(
-                model_response=response, command=Command(update={"messages": update})
-            )
+
+        if kept is None:
+            return response
+        # Save the compacted history together with the reply: clear state, then add both.
+        update = [RemoveMessage(id=REMOVE_ALL_MESSAGES), *kept, *response.result]
+        return ExtendedModelResponse(
+            model_response=response, command=Command(update={"messages": update})
+        )
 
     def job_covers(self, messages) -> bool:
         """The running summary still describes how this conversation begins (no branch switch)."""
