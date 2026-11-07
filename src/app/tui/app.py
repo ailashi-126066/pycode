@@ -150,6 +150,9 @@ class PycodeApp(App):
         if skill is not None:
             await self.write_info(f"已加载 Skill：{skill}")
             request["pinned_skills"] = [skill]
+            # Rescan the skill directories first: /skill checked the name against the disk,
+            # and the list this session cached on its first run may not have it yet.
+            request["skills_metadata"] = None
         await self.drive(request)
 
     @work(exclusive=True, group="agent")
