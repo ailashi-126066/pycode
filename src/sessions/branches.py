@@ -1,7 +1,7 @@
 """Branches are LangGraph checkpoint history. The current branch is always the newest
 checkpoint of the thread; reverting or switching copies an older checkpoint to the top."""
 
-from ..compaction.summarize import count_turns
+from ..compaction.summarize import count_turns, is_summary
 
 
 def turn_count(state) -> int:
@@ -20,6 +20,25 @@ async def current_path(agent, config) -> list:
         parent = state.parent_config
         state = by_id.get(parent["configurable"]["checkpoint_id"]) if parent else None
     return path
+
+
+async def full_history(agent, config) -> list:
+    """Every message of the current branch, oldest first, including the ones compaction
+    replaced: they are still in earlier checkpoints. Each summary sits where it was adopted,
+    right before the first message it kept."""
+    messages, seen = [], set()
+    for state in reversed(await current_path(agent, config)):
+        current = state.values.get("messages", [])
+        for position, message in enumerate(current):
+            if message.id in seen:
+                continue
+            seen.add(message.id)
+            kept = current[position + 1] if position + 1 < len(current) else None
+            if is_summary(message) and kept is not None and kept.id in seen:
+                messages.insert([m.id for m in messages].index(kept.id), message)
+            else:
+                messages.append(message)
+    return messages
 
 
 async def revert(agent, config, turn: int) -> None:

@@ -122,7 +122,7 @@ async def revert_command(args, settings, agent, store, config) -> int:
 async def open_command(args, settings, agent, store, config) -> int:
     await require_session(store, args.session, settings)
     state = await agent.aget_state(config)
-    print_history(state.values.get("messages", []))
+    print_history(await branches.full_history(agent, config))
     if not state.interrupts:
         return 0
     answers = {item.id: ask_approval(item.value) for item in state.interrupts}
@@ -237,11 +237,12 @@ async def stream_until_pause(agent, request, config, context) -> list:
 
 
 def print_history(messages) -> None:
+    """The whole conversation; a line marks where the model's context was compacted."""
     turn = 0
     for message in messages:
         if is_summary(message):
-            turn = count_turns([message])
-            print(f"\n[1-{turn}] 前 {turn} 轮已压缩成摘要")
+            turns = count_turns([message])
+            print(f"\n── 上下文已压缩：以上 {turns} 轮在模型的上下文里换成了摘要 ──")
         elif isinstance(message, HumanMessage):
             turn += 1
             print(f"\n[{turn}] 你：{message.text}")
