@@ -32,7 +32,7 @@ class CompactionMiddleware(AgentMiddleware):
         self.model = model  # the agent's own model, called here without tools
         self.start_at, self.adopt_at = thresholds(context_window, max_output_tokens)
         self.max_tokens = min(8192, max_output_tokens)
-        # Estimated system prompt plus tool definitions, refreshed on every model request.
+        # Estimated system prompt plus tool definitions; see measure().
         self.overhead = 0
         # Lives only in this process; a summary lost on exit is generated again when needed.
         self.job: Job | None = None
@@ -49,10 +49,14 @@ class CompactionMiddleware(AgentMiddleware):
             None if kept is None else {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *kept]}
         )
 
+    def measure(self, system: str, tools: list) -> None:
+        """Estimate the system prompt plus tool definitions: once when the agent is built, so the
+        first check of a process is not missing them, then on every request as tools change."""
+        definitions = json.dumps([convert_to_openai_tool(tool) for tool in tools], default=str)
+        self.overhead = estimate_text(system + definitions)
+
     async def awrap_model_call(self, request, handler):
-        system = request.system_message.text if request.system_message else ""
-        tools = json.dumps([convert_to_openai_tool(tool) for tool in request.tools], default=str)
-        self.overhead = estimate_text(system + tools)
+        self.measure(request.system_message.text if request.system_message else "", request.tools)
         try:
             return await handler(request)
         except ContextOverflowError:
