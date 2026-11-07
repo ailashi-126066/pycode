@@ -76,12 +76,16 @@ async def open_server(stack, name: str, options: dict, log_file: Path) -> list[B
     if isinstance(transport, StdioTransport):
         transport.log_file = log_file  # its stderr would otherwise be drawn over the TUI
     client = Client(transport, elicitation_handler=decline, timeout=CALL_SECONDS)
-    async with asyncio.timeout(CONNECT_SECONDS):
-        await stack.enter_async_context(client)
-        listed = await client.list_tools()
-    tools = []
-    for remote in listed:
-        tool = await as_langchain_tool(remote, client)  # still calls the server's own name
-        tool.name = f"mcp__{name}__{remote.name}"
-        tools.append(tool)
+    # Its own stack first: if anything below fails, leaving this block disconnects it now.
+    async with AsyncExitStack() as attempt:
+        async with asyncio.timeout(CONNECT_SECONDS):
+            await attempt.enter_async_context(client)
+            listed = await client.list_tools()
+        tools = []
+        for remote in listed:
+            tool = await as_langchain_tool(remote, client)  # still calls the server's own name
+            tool.name = f"mcp__{name}__{remote.name}"
+            tools.append(tool)
+        # Everything worked: hand the connection to `stack`, which keeps it until pycode closes.
+        await stack.enter_async_context(attempt.pop_all())
     return tools
