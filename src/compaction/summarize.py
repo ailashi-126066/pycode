@@ -102,6 +102,16 @@ def is_summary(message: BaseMessage) -> bool:
     return isinstance(message, HumanMessage) and "pycode_summary" in message.additional_kwargs
 
 
+def is_skill(message: BaseMessage) -> bool:
+    """A SKILL.md that /skill pinned into the conversation (Deep Agents SkillsMiddleware)."""
+    return message.additional_kwargs.get("lc_source") == "pinned_skill"
+
+
+def is_user_turn(message: BaseMessage) -> bool:
+    """Only what the user typed starts a turn; summaries and pinned skills are HumanMessages too."""
+    return isinstance(message, HumanMessage) and not is_summary(message) and not is_skill(message)
+
+
 def summary_text(message: HumanMessage) -> str:
     return message.text.removeprefix(SUMMARY_PREFIX).removesuffix(SUMMARY_SUFFIX)
 
@@ -111,7 +121,7 @@ def count_turns(messages: list[BaseMessage]) -> int:
     return sum(
         m.additional_kwargs["pycode_summary"]["turns"] if is_summary(m) else 1
         for m in messages
-        if isinstance(m, HumanMessage)
+        if is_summary(m) or is_user_turn(m)
     )
 
 

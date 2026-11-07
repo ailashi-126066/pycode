@@ -4,9 +4,9 @@ import json
 import math
 from dataclasses import dataclass
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
-from .summarize import is_summary
+from .summarize import is_summary, is_user_turn
 
 # The newest messages stay as they are; only older ones go into the summary.
 KEEP_RECENT_TOKENS = 20_000
@@ -65,10 +65,6 @@ def context_tokens(messages: list[BaseMessage], overhead: int) -> int:
     return overhead + sum(estimate_message(m) for m in messages)
 
 
-def is_turn_start(message: BaseMessage) -> bool:
-    return isinstance(message, HumanMessage) and not is_summary(message)
-
-
 @dataclass(frozen=True)
 class Cut:
     index: int  # messages[:index] become the summary
@@ -87,7 +83,7 @@ def choose_cut(messages: list[BaseMessage], overhead: int, limit: int) -> Cut | 
         index -= 1
 
     # Prefer keeping the whole turn the cut falls in...
-    turn = next((i for i in range(index, first - 1, -1) if is_turn_start(messages[i])), None)
+    turn = next((i for i in range(index, first - 1, -1) if is_user_turn(messages[i])), None)
     if turn is not None and turn > first:
         whole = overhead + SUMMARY_RESERVE + sum(estimate_message(m) for m in messages[turn:])
         if whole < limit:
@@ -95,4 +91,4 @@ def choose_cut(messages: list[BaseMessage], overhead: int, limit: int) -> Cut | 
     # ...unless that leaves nothing to summarize or still does not fit: then cut inside it.
     if index <= first:
         return None
-    return Cut(index, ongoing=not is_turn_start(messages[index]))
+    return Cut(index, ongoing=not is_user_turn(messages[index]))

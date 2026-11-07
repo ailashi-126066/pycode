@@ -4,7 +4,7 @@ import asyncio
 from contextlib import AsyncExitStack
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage
 from langgraph.types import Command
 from textual import work
 from textual.app import App, ComposeResult
@@ -15,7 +15,7 @@ from textual.widgets import Static
 from ... import __version__
 from ...agent import open_agent
 from ...compaction.budget import context_tokens
-from ...compaction.summarize import count_turns, is_summary
+from ...compaction.summarize import count_turns, is_skill, is_summary, is_user_turn
 from ...context import Context
 from ...sessions.branches import full_history
 from ...sessions.catalog import get_session, save_session
@@ -104,6 +104,8 @@ class PycodeApp(App):
             await commands.run(self, f"/open {self.session_id}")
         await self.refresh_status()
         self.query_one(ChatInput).focus()
+        if failed := [server.name for server in self.opened.servers if server.error]:
+            self.show_notice(f"MCP 服务器连接失败：{', '.join(failed)}，用 /mcp 查看", "error")
 
     async def reopen_agent(self) -> None:
         """Open (or, after /model, reopen) the agent and its storage."""
@@ -138,12 +140,17 @@ class PycodeApp(App):
     # ---- running the agent ----
 
     @work(exclusive=True, group="agent")
-    async def run_turn(self, text: str) -> None:
+    async def run_turn(self, text: str, skill: str | None = None) -> None:
+        """One user turn; with `skill`, that skill's SKILL.md is pinned in after the message."""
         session = await get_session(self.opened.store, self.session_id)
         title = session.title if session else text
         await save_session(self.opened.store, self.session_id, self.settings.workspace, title)
         await self.write_user(text)
-        await self.drive({"messages": [{"role": "user", "content": text}]})
+        request = {"messages": [{"role": "user", "content": text}]}
+        if skill is not None:
+            await self.write_info(f"已加载 Skill：{skill}")
+            request["pinned_skills"] = [skill]
+        await self.drive(request)
 
     @work(exclusive=True, group="agent")
     async def answer_pending(self, approvals: list[Approval]) -> None:
@@ -152,7 +159,8 @@ class PycodeApp(App):
 
     async def drive(self, request) -> None:
         """Stream the run into one assistant turn, asking whenever it pauses for approval."""
-        context = Context(files=Files(self.settings.workspace))
+        skill_dirs = list(self.settings.skill_dirs.values())
+        context = Context(files=Files(self.settings.workspace, read_only=skill_dirs))
         turn = AssistantTurn(self.blocks)
         await self.transcript.mount(turn)
         try:
@@ -218,7 +226,10 @@ class PycodeApp(App):
                 text = f"── 上下文已压缩：以上 {turns} 轮在模型的上下文里换成了摘要 ──"
                 await self.write_info(text, "marker")
                 continue
-            if isinstance(message, HumanMessage):
+            if is_skill(message):
+                await self.write_info(f"已加载 Skill：{message.additional_kwargs['skill']['name']}")
+                continue
+            if is_user_turn(message):
                 if turn is not None:
                     await turn.finish()
                 turn = None

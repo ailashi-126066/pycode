@@ -3,8 +3,8 @@
 import platform
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from pathlib import Path
 
+from deepagents.middleware.skills import SkillsMiddleware
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     HumanInTheLoopMiddleware,
@@ -17,15 +17,20 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from .config import Settings
 from .context import Context
+from .middleware.agents_md import agents_md_middleware
 from .middleware.compaction import CompactionMiddleware
+from .middleware.skills import skills_middleware
+from .middleware.tool_search import ToolSearchMiddleware
 from .models import Provider, create_model, load_providers
 from .sessions.catalog import open_storage
+from .tools import mcp
 from .tools.bash import bash
 from .tools.edit import edit
 from .tools.files import ToolError
 from .tools.find import find
 from .tools.grep import grep
 from .tools.ls import ls
+from .tools.mcp import Server
 from .tools.read import read
 from .tools.write import write
 
@@ -54,29 +59,38 @@ def tool_error(error: Exception, request) -> str:
 
 def build_agent(
     model: BaseChatModel,
-    workspace: Path,
+    settings: Settings,
     compaction: CompactionMiddleware,
+    skills: SkillsMiddleware,
+    servers: list[Server] = (),
     *,
-    max_turns: int = 100,
     checkpointer=None,
 ):
-    prompt = f"{SYSTEM_PROMPT}\n\n工作目录：{workspace.resolve()}\n操作系统：{platform.system()}"
+    workspace = settings.workspace.resolve()
+    prompt = f"{SYSTEM_PROMPT}\n\n工作目录：{workspace}\n操作系统：{platform.system()}"
+    mcp_tools = [tool for server in servers for tool in server.tools]
+    needs_approval = ["write", "edit", "bash"]
+    needs_approval += [tool.name for server in servers if server.approve for tool in server.tools]
     return create_agent(
         model,
-        tools=[read, write, edit, bash, grep, find, ls],
+        tools=[read, write, edit, bash, grep, find, ls, *mcp_tools],
         system_prompt=prompt,
         middleware=[
-            # First, so it wraps the retry below and sees context-overflow errors.
+            # These three add to the system prompt and the tool list, so they come before
+            # compaction: it then measures exactly what the model is sent.
+            ToolSearchMiddleware(deferred=mcp_tools),
+            skills,
+            agents_md_middleware(settings.instruction_files),
+            # Before the retry below, so it sees context-overflow errors.
             compaction,
             # Pauses before these tools run until the user approves or rejects each call.
             HumanInTheLoopMiddleware(
                 interrupt_on={
-                    name: {"allowed_decisions": ["approve", "reject"]}
-                    for name in ("write", "edit", "bash")
+                    name: {"allowed_decisions": ["approve", "reject"]} for name in needs_approval
                 }
             ),
             ModelRetryMiddleware(max_retries=3),
-            ModelCallLimitMiddleware(run_limit=max_turns, exit_behavior="end"),
+            ModelCallLimitMiddleware(run_limit=settings.max_turns, exit_behavior="end"),
             ToolErrorMiddleware(on_error=tool_error),
         ],
         context_schema=Context,
@@ -91,12 +105,15 @@ class Opened:
     agent: object  # the compiled LangGraph agent
     store: object  # session records (sessions/catalog.py)
     compaction: CompactionMiddleware  # also used for manual compaction
+    skills: SkillsMiddleware  # also used to list skills for /skills and /skill
+    servers: list[Server]  # MCP servers, connected or with the error that stopped them
     provider: Provider
 
 
 @asynccontextmanager
 async def open_agent(settings: Settings):
-    """The agent on persistent SQLite storage; storage closes when the context exits."""
+    """The agent on persistent SQLite storage with its MCP servers connected; both close
+    when the context exits."""
     providers = load_providers(settings.providers_file)
     provider = next((p for p in providers if p.name == settings.provider_name), None)
     if provider is None and settings.provider_name:
@@ -106,12 +123,11 @@ async def open_agent(settings: Settings):
     compaction = CompactionMiddleware(
         model, context_window=provider.context_window, max_output_tokens=provider.max_output_tokens
     )
-    async with open_storage(settings.database) as (checkpointer, store):
-        agent = build_agent(
-            model,
-            settings.workspace,
-            compaction,
-            max_turns=settings.max_turns,
-            checkpointer=checkpointer,
-        )
-        yield Opened(agent, store, compaction, provider)
+    skills = skills_middleware(settings.skill_dirs)
+    mcp_log = settings.data_dir / "mcp.log"
+    async with (
+        open_storage(settings.database) as (checkpointer, store),
+        mcp.connect(settings.mcp_file, mcp_log) as servers,
+    ):
+        agent = build_agent(model, settings, compaction, skills, servers, checkpointer=checkpointer)
+        yield Opened(agent, store, compaction, skills, servers, provider)

@@ -1,8 +1,11 @@
-"""Settings shared by every entry point (the CLI now, the TUI later)."""
+"""Settings shared by every entry point (the TUI, and the evals later)."""
 
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+# Skills shipped with pycode (commit, review, test).
+BUILTIN_SKILLS = Path(__file__).parent / "skills"
 
 
 @dataclass(frozen=True)
@@ -17,3 +20,24 @@ class Settings:
     @property
     def database(self) -> Path:
         return self.data_dir / "sessions.sqlite"
+
+    @property
+    def mcp_file(self) -> Path:
+        # Only the user's own file: a project file would start its commands on opening the repo.
+        return self.data_dir / "mcp.json"
+
+    @property
+    def skill_dirs(self) -> dict[str, Path]:
+        """Where skills are found, by label; a later directory wins on equal skill names."""
+        project = self.workspace.resolve()
+        return {
+            "Built-in": BUILTIN_SKILLS,
+            "User": self.data_dir / "skills",
+            "Project .agents": project / ".agents" / "skills",
+            "Project .pycode": project / ".pycode" / "skills",
+        }
+
+    @property
+    def instruction_files(self) -> list[Path]:
+        """AGENTS.md files put into the system prompt: the user's, then the project's."""
+        return [self.data_dir / "AGENTS.md", self.workspace.resolve() / "AGENTS.md"]

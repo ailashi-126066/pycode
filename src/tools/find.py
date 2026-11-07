@@ -17,7 +17,7 @@ def find(pattern: str, runtime: ToolRuntime[Context], path: str = ".", limit: in
         limit: Maximum number of paths to return.
     """
     files = runtime.context.files
-    base = files.resolve(path).relative_to(files.workspace)
+    base = files.search_root(path)
     if shutil.which("rg") is None:
         raise ToolError("ripgrep (rg) is not installed")
     try:

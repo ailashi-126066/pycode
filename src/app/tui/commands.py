@@ -3,9 +3,8 @@
 from dataclasses import replace
 from uuid import uuid4
 
-from langchain_core.messages import HumanMessage
-
-from ...compaction.summarize import count_turns, is_summary
+from ...compaction.summarize import count_turns, is_user_turn
+from ...middleware.skills import list_skills
 from ...models import load_providers
 from ...sessions import branches
 from ...sessions.catalog import delete_session, get_session, list_sessions
@@ -20,13 +19,16 @@ COMMANDS = {
     "/switch": "/switch N：切换到 /branches 里的第 N 个分支",
     "/delete": "/delete ID：删除会话",
     "/compact": "立即压缩上下文",
+    "/skills": "列出可用的 Skill",
+    "/skill": "/skill 名字 [要求]：按这个 Skill 的说明完成要求",
+    "/mcp": "列出 MCP 服务器和它们的工具",
     "/model": "/model [名字]：列出或切换 providers.json 里的模型",
     "/theme": "切换深色和浅色主题",
     "/help": "列出所有命令",
     "/quit": "退出",
 }
 # Commands that change the conversation wait until the model stops.
-WHILE_RUNNING = {"/sessions", "/branches", "/theme", "/help", "/quit"}
+WHILE_RUNNING = {"/sessions", "/branches", "/skills", "/mcp", "/theme", "/help", "/quit"}
 
 
 async def run(app, text: str) -> None:
@@ -87,7 +89,7 @@ async def list_branches(app, argument):
     lines = []
     for number, leaf in enumerate(await branches.branches(agent, app.config), 1):
         messages = leaf.values.get("messages", [])
-        asks = [m.text for m in messages if isinstance(m, HumanMessage) and not is_summary(m)]
+        asks = [m.text for m in messages if is_user_turn(m)]
         last = asks[-1][:40] if asks else "（已压缩）"
         mark = "（当前）" if leaf.config["configurable"]["checkpoint_id"] == head else ""
         wait = "（等待审批）" if leaf.next else ""
@@ -126,6 +128,33 @@ async def compact(app, argument):
     await app.refresh_status()
 
 
+async def skills(app, argument):
+    found = await list_skills(app.opened.skills)
+    lines = [f"{s['name']}  {s['description']}\n    {s['path']}" for s in found]
+    await app.write_info("\n".join(lines) or "没有找到 Skill")
+
+
+async def skill(app, argument):
+    name, _, request = argument.partition(" ")
+    if not name:
+        raise ValueError("用法：/skill 名字 [要求]")
+    if name not in {s["name"] for s in await list_skills(app.opened.skills)}:
+        raise ValueError(f"没有 Skill {name}，输入 /skills 查看")
+    app.run_turn(request.strip() or f"按 {name} Skill 的说明执行", skill=name)
+
+
+async def mcp_servers(app, argument):
+    lines = []
+    for server in app.opened.servers:
+        approval = "需要审批" if server.approve else "免审批"
+        if server.error:
+            lines.append(f"{server.name}  连接失败：{server.error}")
+        else:
+            lines.append(f"{server.name}  {len(server.tools)} 个工具，{approval}")
+            lines += [f"    {tool.name}" for tool in server.tools]
+    await app.write_info("\n".join(lines) or f"没有配置 MCP 服务器（{app.settings.mcp_file}）")
+
+
 async def model(app, argument):
     providers = load_providers(app.settings.providers_file)
     if not argument:
@@ -162,6 +191,9 @@ HANDLERS = {
     "/switch": switch,
     "/delete": delete,
     "/compact": compact,
+    "/skills": skills,
+    "/skill": skill,
+    "/mcp": mcp_servers,
     "/model": model,
     "/theme": theme,
     "/help": help_command,
