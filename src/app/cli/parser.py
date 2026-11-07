@@ -1,6 +1,9 @@
 # Pi 没有，pycode 新增
 """Explicit commands keep execution, navigation and file restoration distinct."""
-
+# 本文件负责定义 pycode 命令行的使用规则：支持哪些命令（如 run、tui、resume），
+# 每个命令接受哪些参数（如 --workspace、--providers），以及默认值、可选值和帮助说明。
+# build_parser() 把这些规则组装成解析器并返回；main.py 调用它的 parse_args(argv)，
+# 将用户输入转换成 args.command、args.workspace 等属性，供后续代码使用。
 import argparse
 
 from ... import __version__

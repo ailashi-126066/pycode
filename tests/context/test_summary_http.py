@@ -53,7 +53,11 @@ async def test_manual_compaction_uses_native_sdk_metering_checkpoint_and_restart
         await restored.aclose()
         assert len(received) == 2
         assert not received[0]["body"].get("tools")
-        assert received[0]["body"]["messages"][0]["content"] == SUMMARIZATION_SYSTEM_PROMPT
+        summary_messages = received[0]["body"]["messages"]
+        # The preserved conversation prefix precedes the summary task instructions.
+        assert summary_messages[0]["role"] == "system"
+        assert "source data" in summary_messages[0]["content"]
+        assert SUMMARIZATION_SYSTEM_PROMPT in summary_messages[-1]["content"]
         assert not any(
             "old task 0" in str(message.get("content", ""))
             for message in received[1]["body"]["messages"]

@@ -233,8 +233,8 @@ class AgentSession:
             )
         )
         try:
-            result = await self.launcher.run(
-                provider, self.history, self.require_run_id(start), (message,), history
+            result = await self.launcher.execute(
+                provider, self.require_run_id(start), inputs=(message,), history=history
             )
         except asyncio.CancelledError:
             await recover_conversation(self.history, reason="aborted")
@@ -243,7 +243,7 @@ class AgentSession:
             # Settles a failure raised outside the runtime's own finish (G5).
             await recover_conversation(self.history, reason="error")
             raise
-        return await self.settle_run(start, result)
+        return await self.record_run_result(start, result)
 
     @staticmethod
     def require_run_id(entry: SessionEntry) -> str:
@@ -272,15 +272,12 @@ class AgentSession:
             )
         )
         try:
-            result = await self.launcher.resume(
-                provider, self.history, self.require_run_id(start), answers
+            result = await self.launcher.execute(
+                provider, self.require_run_id(start), resume=True, answers=answers
             )
         except asyncio.CancelledError:
             await recover_conversation(self.history, reason="aborted")
             raise
-        return await self.settle_run(start, result)
-
-    async def settle_run(self, start, result):
         return await self.record_run_result(start, result)
 
     async def record_run_result(self, start, result):
@@ -306,8 +303,7 @@ class AgentSession:
                 (
                     entry.message
                     for entry in snapshot.entries
-                    if entry.message is not None
-                    and entry.message.id == start.data["input_id"]
+                    if entry.message is not None and entry.message.id == start.data["input_id"]
                 ),
                 None,
             )
@@ -386,7 +382,7 @@ class AgentSession:
             self.require_settled(await self.history.snapshot())
             provider = await self.models.restore(self._default)
             await self.history.append_entry(EntryDraft("custom", data={"kind": "compact_request"}))
-            return await self.launcher.compact(provider, self.history)
+            return await self.launcher.compact(provider)
 
     def require_settled(self, snapshot):
         if self.pending_run(snapshot) is not None:

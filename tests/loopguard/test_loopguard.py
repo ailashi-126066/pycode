@@ -115,9 +115,7 @@ async def settle(feature, call_id, name, arguments, text="ok", *, category="comm
 
 
 def runtime(turn=2):
-    return SimpleNamespace(
-        context=SimpleNamespace(run_state=SimpleNamespace(turn=turn, reason=None))
-    )
+    return SimpleNamespace(context=SimpleNamespace())
 
 
 async def test_guard_reminds_once_then_its_middleware_ends_the_run():
@@ -136,8 +134,10 @@ async def test_guard_reminds_once_then_its_middleware_ends_the_run():
     assert await middleware.abefore_model({}, runtime()) is None
     await settle(feature, "c2", "bash", {"command": "make"})
     current = runtime()
-    assert await middleware.abefore_model({}, current) == {"jump_to": "end"}
-    assert current.context.run_state.reason == "loop_detected"
+    assert await middleware.abefore_model({"turn": 2}, current) == {
+        "jump_to": "end",
+        "reason": "loop_detected",
+    }
 
 
 async def test_continue_answer_clears_the_counts(monkeypatch):
@@ -156,7 +156,7 @@ async def test_continue_answer_clears_the_counts(monkeypatch):
         await feature.on_event(
             Event(0, "s", "r", "message_start", {"message": {"role": "assistant"}})
         )
-    assert await middleware.abefore_model({}, runtime(turn=4)) is None
+    assert await middleware.abefore_model({"turn": 4}, runtime()) is None
     assert questions[0]["operation_id"] == "r:loop-4" and feature.guard.evidence is None
 
 

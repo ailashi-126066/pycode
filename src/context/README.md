@@ -11,5 +11,5 @@ contributors 是 `(snapshot, path, checkpoint) -> ProjectionContribution | None`
 同步交给回调，再发 applied 事件。app 将 memory.compacted 接到这个入口，不让后台任务再读取不确定的最新状态。
 配置更新不会丢掉已连接的回调。压缩失败或尚未采用时不会调用。
 
-阅读顺序：types → projector/prompts → budget/compaction → summary → eviction。
+阅读顺序：types → projector/prompts → budget/compaction → summary。
 本包不认识 Feature 基类，也不通过通用服务列表寻找能力。

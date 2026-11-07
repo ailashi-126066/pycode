@@ -1,10 +1,9 @@
 # Pi 没有，pycode 新增
-"""Record the effective model footprint before each request."""
+"""Record effective tools and system-prompt budget; never compact or rebuild messages."""
 
 from ..kernel import (
     EntryDraft,
     SessionTree,
-    ToolError,
     ToolSpec,
     data_hash,
     estimate_text,
@@ -27,19 +26,13 @@ def model_tool_specs(tools, context: RunContext) -> tuple[ToolSpec, ...]:
                 )
             )
             continue
-        try:
-            spec = context.registry.get_spec(tool.name)
-        except ToolError:
-            schema = tool.tool_call_schema
-            if not isinstance(schema, dict):
-                schema = schema.model_json_schema()
-            spec = ToolSpec(tool.name, tool.description, schema, source="deepagents")
-        specs.append(spec)
+        # Request preparation already removed unregistered framework tools.
+        specs.append(context.registry.get_spec(tool.name))
     specs.sort(key=lambda spec: spec.name)
     return tuple(specs)
 
 
-async def calibrate_model_request(request, converter):
+async def calibrate_model_request(request):
     context: RunContext = request.runtime.context
     actual_tools = model_tool_specs(request.tools, context)
     # Only fully disclosed definitions authorize execution; catalog names never count.
@@ -49,7 +42,7 @@ async def calibrate_model_request(request, converter):
     if actual_tools != context.model_tools or system_hash != context.system_hash:
         context.model_tools = actual_tools
         context.system_hash = system_hash
-        history = context.history_store
+        history = context.history
         snapshot = await history.snapshot()
         previous = None
         for entry in reversed(SessionTree(snapshot.index).path(snapshot.leaf_id)):
@@ -73,15 +66,4 @@ async def calibrate_model_request(request, converter):
                     run_id=context.run_id,
                 )
             )
-        report = None
-        summary = context.summary
-        if summary is not None:
-            summary.set_tools(actual_tools)
-            report = await summary.prepare()
-        projector = context.projector
-        snapshot = await history.snapshot()
-        projection = projector.transform_context(snapshot)
-        context.model_source_leaf_id = snapshot.leaf_id
-        if report is not None and report.applied_job_id is not None:
-            request = request.override(messages=converter(projection.messages, context.selection))
     return request

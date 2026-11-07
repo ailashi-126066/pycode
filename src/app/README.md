@@ -3,7 +3,10 @@
 从 `composition.py` 读取应用的显式组装流程。功能使用普通服务，由 app 连接工具、gate、前后钩子、提示、投影与事件消费者。
 
 - `api.py` 提供 Application、compose_application 和交互会话入口。
-- `composition.py` 创建实际服务，分别用 AsyncExitStack 管理 session 和 run 资源；暂停时保留 run，结束后关闭，初始化失败时逆序释放已打开资源。
+- `composition.py` 只创建并连接具体服务，SessionServices 集中保存组装所需对象；build_run 返回 RuntimeContainer。
+- `build_run` 按事件与文件资源 → 工具 → 模型与上下文服务 → RunContext → AgentRuntime 排列；`build_file_backend`、`build_tools` 是同文件的具体组装函数，不引入工厂层。
+- 执行、暂停保留、恢复和关闭由 `agent/launcher.py` 的 RunLauncher 管理；app 通过 create_run 提供资源构造函数，不反向参与执行调度。
+- AsyncExitStack 管理已获得的资源，初始化失败时逆序释放。
 - `config.py` 定义 AppConfig、Provider 配置和凭据加载。
 - `cli/` 负责参数解析及命令分发。`pycode` 与 `python -m pycode` 使用同一入口。
 

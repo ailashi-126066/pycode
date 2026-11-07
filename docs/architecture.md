@@ -15,7 +15,9 @@ pycode 的底层照 Pi（HEAD `2c8d1fe`）翻译成 Python，用 LangChain / Lan
 
 `app/composition.py` 明确创建具体服务并连接函数、工具、挂载和 framework middleware；
 不使用 Feature 基类、通用注册器或按类型查找服务。AgentSession 暴露具体 memory/skills/plans/tasks 等入口。
+app 通过 `SessionServices` 和 `build_run` 连接具体资源；`agent/launcher.py::RunLauncher` 管理运行的启动、恢复、暂停保留和关闭。
 会话与运行分别使用 AsyncExitStack 关闭资源，初始化失败时先释放已经获得的资源。
+固定模型/工具函数直接导入，不通过 RuntimeBindings 或单一实现的工厂转交。
 
 架构脚本只检查依赖方向及跨包从包根导出导入；品牌检查独立保留。
 不再维护 feature-dependencies.json、port-implementations.json，不规定 Protocol 数量。
@@ -24,17 +26,24 @@ pycode 的底层照 Pi（HEAD `2c8d1fe`）翻译成 Python，用 LangChain / Lan
 
 ## 一次运行
 
-1. `AgentSession.run` 写用户消息，app 组装 `AgentRuntime`（`agent/runtime.py`，
-   唯一的 `create_deep_agent` 图）和 `RunContext`。
+1. `AgentSession.run` 校验输入、处理重复消息并写历史，直接调用 `RunLauncher.execute`。
+   launcher 通过 app 提供的 `create_run` 构造 `AgentRuntime` 和 `RunContext`，随后调用 runtime。
+   `AgentRuntime`（`agent/runtime.py`）拥有唯一的 `create_deep_agent` 图。
 2. 循环由 LangGraph 跑，`HistoryMiddleware`（`agent/loop.py`）提供 Pi `AgentLoopConfig` 的几个钩子：
-   `abefore_model`（维护上下文、轮次预算、防打转）、`awrap_model_call`（投影、注入、请求、保存回复）、
+   `abefore_model`（轮次预算和运行状态）、`awrap_model_call`（准备输入、请求、保存回复）、
    `aafter_model` / `aafter_agent`（结束一轮、steering 与 follow-up、任务板结束前检查）。
-   `RunState`（`agent/context.py`）显式记录 `starting → model_turn ⇄ tool_turn → awaiting_input →
-   verifying → finished`。
+   `awrap_model_call` 主体只按顺序调用 `prepare_request → request_model → save_response`；请求准备集中到
+   `prepare_request`（实际工具与预算 → 历史维护 → 引导输入 → 最终消息）。`prepare_model_boundary` 只补齐、筛选、披露工具，
+   calibration 只记录实际请求配置；模型记录、重试和回复校验集中在 `ModelRequestRunner`。
+   `PycodeState`（`agent/context.py`）统一保存 `turn`、`phase`、`reason`，阶段转换通过纯函数校验。
+   `ended_turn` 记录已发布结束事件的轮数；暂停由框架检查点的 interrupts 表达，恢复沿用图状态。
 3. 工具调用由 `ToolSettlementMiddleware`（`tools/settlement.py`）包住 tools 节点：准备阶段按顺序串行
    （校验、审批一次一个、执行前钩子），执行阶段并发；有工具声明 `sequential` 时整批串行。`ToolExecutor`
    （`tools/executor.py`）负责校验、授权、明确注册的执行前后钩子和工具执行。每个调用有
-   `ToolCallState`（issued → validating → awaiting_approval → running → settled），`begin` / `settle` 是唯一出入口。
+   `ToolCallState`（issued → validating → awaiting_approval → running → settled），`begin` 发布开始事件，
+   `save_result` 补充结果信息并交给 `settle_ready` 按顺序保存、发布结束事件。
+   `awrap_tool_call` 直接组织等待、检查、`executor.execute` 和 `save_result`，没有逐层转交的执行链。
+   `RunContext.history` 是唯一会话存储引用；工具直接返回 ToolResult，由 settlement 保存并返回图消息。
 4. 审批用 LangGraph `interrupt` 暂停，`AgentRuntime.resume` 用 `Command(resume)` 送回答案；同一时间只有一个
    待答问题。
 5. `AgentRuntime.finish` 是唯一结束出口：必要时发 `turn_end`，写 `run_end{reason}`，发 `agent_end`，触发

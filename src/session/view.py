@@ -12,7 +12,7 @@ from ..kernel import (
     freeze_value,
     plain_data,
 )
-from ..models import UsageService
+from ..models import UsageService, to_framework_messages
 from .restart import pending_run_entry
 from .sessions import session_title
 from .store import SqliteSessionStore
@@ -107,7 +107,11 @@ class SessionView:
         )
         if settings is None:
             return {"tokens": None, "window": None, "source": "unavailable"}
-        return ContextMeter(settings).report(snapshot, projection)
+        return ContextMeter(settings).report(
+            snapshot,
+            to_framework_messages(projection.messages, settings.selection),
+            checkpoint=projection.checkpoint,
+        )
 
     async def inspect(self, *, presentation=False):
         snapshot = await self._history.snapshot()

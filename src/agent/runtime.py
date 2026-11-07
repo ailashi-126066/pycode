@@ -3,8 +3,8 @@
 """The single Deep Agents execution boundary."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any
 
 from deepagents import (
@@ -17,10 +17,10 @@ from deepagents.middleware.filesystem import FilesystemMiddleware
 from deepagents.middleware.memory import MemoryMiddleware
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.errors import GraphRecursionError
+from langgraph.graph import END
 from langgraph.types import Command
 
 from ..kernel import (
@@ -28,21 +28,24 @@ from ..kernel import (
     EntryDraft,
     Message,
     ModelError,
-    ModelSelection,
     RunResult,
     SessionTree,
     StorageError,
     ToolSpec,
     data_hash,
 )
+from ..models import to_framework, to_framework_messages
 from ..tools import (
     ToolCallState,
+    ToolDiscovery,
+    ToolSettlementMiddleware,
     empty_failure_guard,
     failure_update,
+    make_framework_tool,
     validate_operation_answer,
 )
-from .boundaries import ModelEventCallbacks
-from .context import PycodeState, RunContext, RunState
+from .boundaries import ModelEventCallbacks, save_message
+from .context import PycodeState, RunContext, transition_phase
 from .loop import HistoryMiddleware, end_turn
 
 AGENTS_MD_PROMPT = (
@@ -54,7 +57,7 @@ AGENTS_MD_PROMPT = (
 
 async def run_end_entry(context, reason, checkpoint_id, error_code):
     """run_end names every input the run answered and its final reply."""
-    snapshot = await context.history_store.snapshot()
+    snapshot = await context.history.snapshot()
     path = SessionTree(snapshot.index).path(snapshot.leaf_id)
     input_id = context.initial_inputs[0].id
     queued = [
@@ -62,7 +65,7 @@ async def run_end_entry(context, reason, checkpoint_id, error_code):
         for entry in path
         if entry.type == "input_queued" and entry.run_id == context.run_id
     ]
-    assistant = context.assistant
+    assistant = await context.last_assistant()
     final_id = next(
         (
             entry.id
@@ -86,27 +89,13 @@ async def run_end_entry(context, reason, checkpoint_id, error_code):
     return EntryDraft("custom", data=data, run_id=context.run_id)
 
 
-@dataclass(frozen=True)
-class RuntimeBindings:
-    """Model and tool conversions the composition hands to the runtime."""
-
-    to_framework: Callable[[Message, ModelSelection], BaseMessage]
-    # convert_to_llm + transform_messages + to_framework for one model request.
-    to_framework_messages: Callable[[Sequence[Message], ModelSelection], Sequence[BaseMessage]]
-    from_assistant: Callable[..., Message]
-    make_framework_tool: Callable[..., object]
-    disclose_model_tools: Callable[[object], Awaitable[object]]
-    model_request_step: Callable[..., object]
-    run_hook: Callable[..., Awaitable[None]]
-    settlement_middleware_factory: Callable[[RunContext], AgentMiddleware[Any, Any, Any]]
-
-
 class AgentRuntime:
     def __init__(
         self,
         model: BaseChatModel,
         *,
-        bindings: RuntimeBindings,
+        run_hook: Callable[..., Awaitable[None]],
+        discovery: ToolDiscovery | None = None,
         middleware: tuple[AgentMiddleware[Any, Any, Any], ...] = (),
         context_transforms=(),
         tool_filters=(),
@@ -119,7 +108,8 @@ class AgentRuntime:
         instruction_backend=None,
     ):
         self.model = model
-        self.bindings = bindings
+        self.run_hook = run_hook
+        self.discovery = discovery if discovery is not None else ToolDiscovery(make_framework_tool)
         self.middleware = middleware
         self.context_transforms = context_transforms
         self.tool_filters = tool_filters
@@ -149,7 +139,7 @@ class AgentRuntime:
         )
         tools = []
         for spec in context.registry.model_specs():
-            tools.append(self.bindings.make_framework_tool(spec, context))
+            tools.append(make_framework_tool(spec, context))
         # Deep Agents always installs FilesystemMiddleware and requires its read_file tool.
         # This replacement keeps only that tool and disables eviction; filter_model_tools
         # hides it, so the model sees Pi's builtin file tools from the registry instead.
@@ -174,9 +164,15 @@ class AgentRuntime:
         middleware.extend(
             [
                 HistoryMiddleware(
-                    self.bindings, self.context_transforms, self.tool_filters, self.before_finish
+                    self.run_hook,
+                    discovery=self.discovery,
+                    context_transforms=self.context_transforms,
+                    tool_filters=self.tool_filters,
+                    before_finish=self.before_finish,
                 ),
-                self.bindings.settlement_middleware_factory(context),
+                ToolSettlementMiddleware(
+                    publish=partial(save_message, context), converter=to_framework
+                ),
             ]
         )
         self.graph = graph = create_deep_agent(
@@ -200,18 +196,15 @@ class AgentRuntime:
 
     async def run(self, inputs, context, *, history=()):
         context.initial_inputs = inputs
-        context.completed = []
         context.failure_guard = empty_failure_guard()
-        context.run_state = RunState()
         initial_entry_ids = []
         for message in inputs:
-            initial_entry_ids.append(await context.journal.append_message(message))
-            context.completed.append(message)
+            initial_entry_ids.append(await context.history.append_message(message))
             if self.assign_title is not None:
                 await self.assign_title(message)
         context.initial_entry_ids = tuple(initial_entry_ids)
         graph = self.build(context)
-        messages = self.bindings.to_framework_messages((*history, *inputs), context.selection)
+        messages = to_framework_messages((*history, *inputs), context.selection)
         return await self.invoke(
             graph,
             {
@@ -219,6 +212,9 @@ class AgentRuntime:
                 "session_id": context.session_id,
                 "run_id": context.run_id,
                 "turn": 0,
+                "phase": "starting",
+                "reason": None,
+                "ended_turn": 0,
                 "final_text": "",
             },
             context,
@@ -226,16 +222,13 @@ class AgentRuntime:
 
     async def continue_task(self, context):
         graph = await self.restore_task(context)
-        if context.run_state.status == "awaiting_input":
-            # Without an answer the rerun tools node asks the open question again.
-            context.run_state.apply("resume")
         return await self.invoke(graph, None, context)
 
     async def restore_task(self, context):
         graph = self.build(context)
         checkpoint = await graph.aget_state(self.config(context))
         state = checkpoint.values
-        snapshot = await context.history_store.snapshot()
+        snapshot = await context.history.snapshot()
         path = SessionTree(snapshot.index).path(snapshot.leaf_id)
         start = next(
             i
@@ -243,23 +236,18 @@ class AgentRuntime:
             if entry.run_id == context.run_id and entry.data.get("kind") == "run_start"
         )
         input_id = path[start].data["input_id"]
-        context.completed = [
-            entry.message
+        context.initial_inputs = tuple(
+            entry.require_message()
             for entry in path
-            if entry.message is not None and entry.message.id == input_id
-        ]
-        context.initial_inputs = tuple(context.completed)
-        context.completed.extend(
-            entry.message
-            for entry in path[start + 1 :]
-            if entry.message is not None and entry.message.id != input_id
+            if entry.type == "message" and entry.require_message().id == input_id
         )
+        messages = await context.run_messages()
         context.model_tools = tuple(ToolSpec(**item) for item in state.get("model_tools", ()))
         # Rebuild the transient settlement buffer from durable results, including results
         # saved after the last checkpoint. Completed effects must not run again.
         context.failure_guard = empty_failure_guard()
         calls = {}
-        for message in context.completed:
+        for message in messages:
             for call in message.tool_calls:
                 calls[(message.id, call.id)] = call
             result = message.tool_result
@@ -270,18 +258,9 @@ class AgentRuntime:
                 context.failure_guard = failure_update(
                     context.failure_guard, call, result, data_hash(call.arguments)
                 )
-        assistant = context.assistant
-        # A reopened process rebuilds the RunState from the checkpoint and the history.
-        status = (
-            "awaiting_input"
-            if checkpoint.interrupts
-            else "tool_turn"
-            if assistant is not None and assistant.tool_calls
-            else "starting"
-        )
-        context.run_state = RunState(status, turn=state["turn"])
+        assistant = await context.last_assistant()
         if assistant is not None:
-            for message in context.completed:
+            for message in messages:
                 result = message.tool_result
                 if result is not None and result.details["source_assistant_id"] == assistant.id:
                     context.settled_calls.add(result.call_id)
@@ -317,7 +296,6 @@ class AgentRuntime:
             )
         context.dispatched_calls.difference_update(context.interrupted_calls)
         context.interrupted_calls.clear()
-        context.run_state.apply("resume")
         return await self.invoke(graph, value, context)
 
     async def invoke(self, graph, value, context):
@@ -326,20 +304,16 @@ class AgentRuntime:
                 value, config=self.config(context), context=context, durability="sync"
             )
         except asyncio.CancelledError:
-            await self.collect_tools(context)
-            if context.summary is not None:
-                await context.summary.cancel_background()
+            await self.cancel_background(context)
             await self.finish(context, "aborted")
             raise
         except (ModelError, GraphRecursionError) as error:
             reason = "model_error" if isinstance(error, ModelError) else "error"
             code = error.code if isinstance(error, ModelError) else "framework_execution_limit"
             await self.finish(context, reason, error_code=code, error=str(error))
-            return RunResult(reason, "", tuple(context.completed))
+            return RunResult(reason, "", await context.run_messages())
         except BaseException as error:
-            await self.collect_tools(context)
-            if context.summary is not None:
-                await context.summary.cancel_background()
+            await self.cancel_background(context)
             code = error.code if isinstance(error, DomainError) else "run_error"
             await self.finish(context, "error", error_code=code, error=str(error))
             raise
@@ -353,41 +327,64 @@ class AgentRuntime:
             pending.append(question)
             await context.events.emit("needs_input", question)
         if pending:
-            context.run_state.apply("wait")
             return RunResult(
-                "needs_input", "", tuple(context.completed), tuple(pending), checkpoint_id
+                "needs_input", "", await context.run_messages(), tuple(pending), checkpoint_id
             )
-        reason = context.run_state.reason or "completed"
-        await self.finish(context, reason, checkpoint_id=checkpoint_id)
+        reason = state.get("reason") or "completed"
+        checkpoint_id = await self.finish(context, reason, state=state, checkpoint_id=checkpoint_id)
         return RunResult(
-            reason, state["final_text"], tuple(context.completed), checkpoint_id=checkpoint_id
+            reason, state["final_text"], await context.run_messages(), checkpoint_id=checkpoint_id
         )
 
-    # Pi: agent_end. Entering finished writes run_end, then emits agent_end.
-    async def finish(self, context, reason, *, checkpoint_id=None, error_code=None, error=""):
-        run = context.run_state
-        if run.apply("finish"):
-            await end_turn(context, self.bindings)
-        run.reason = reason
-        await context.history_store.append_entry(
+    async def finish(
+        self, context, reason, *, state=None, checkpoint_id=None, error_code=None, error=""
+    ):
+        """Settle the last committed graph state, persist run_end, then publish completion."""
+        graph = self.graph
+        if graph is None:
+            raise StorageError("run_expired", "Execution graph is unavailable during finish")
+        if state is None:
+            checkpoint = await graph.aget_state(self.config(context))
+            state = checkpoint.values
+        turn = state.get("turn", 0)
+        if turn > state.get("ended_turn", 0):
+            await end_turn(context, self.run_hook, turn)
+        phase = (
+            state["phase"]
+            if state.get("phase") == "finished"
+            else transition_phase(state, "finish")
+        )
+        final_fields = {"phase": phase, "reason": reason, "ended_turn": turn}
+        if any(state.get(key) != value for key, value in final_fields.items()):
+            saved = await graph.aupdate_state(
+                self.config(context), final_fields, as_node="HistoryMiddleware.after_agent"
+            )
+            # Updating a node can schedule its successors. Finish the checkpoint explicitly.
+            saved = await graph.aupdate_state(saved, None, as_node=END)
+            checkpoint_id = saved.get("configurable", {}).get("checkpoint_id", checkpoint_id)
+        await context.history.append_entry(
             await run_end_entry(context, reason, checkpoint_id, error_code)
         )
         data = {"reason": reason}
         if error_code is not None:
             data.update(error_code=error_code, error=error)
         await context.events.emit("agent_end", data)
-        assistant = context.assistant
-        await self.bindings.run_hook(
+        assistant = await context.last_assistant()
+        await self.run_hook(
             context.scope,
             "run_end",
             message=assistant.text if assistant is not None else "",
             error=error,
         )
+        return checkpoint_id
 
-    async def collect_tools(self, context):
+    async def cancel_background(self, context):
+        """Stop owned tool and summary tasks before closing a cancelled/failed run."""
         pending = tuple(context.tool_tasks)
         for task in pending:
             if not task.done() and not task.cancelling():
                 task.cancel()
         # Cancelled calls settle themselves on the way out.
         await asyncio.gather(*pending, return_exceptions=True)
+        if context.summary is not None:
+            await context.summary.cancel_background()

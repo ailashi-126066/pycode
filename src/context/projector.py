@@ -72,7 +72,9 @@ class ContextProjector:
         contributors: tuple[ProjectionSource, ...] = (),
         *,
         checkpoint_keys: frozenset[str] = frozenset(),
+        cache: bool = True,
     ):
+        self._cache_enabled = cache
         self._contributors = contributors
         self._checkpoint_keys = checkpoint_keys
         self._session_id = None
@@ -137,7 +139,7 @@ class ContextProjector:
             self._cached.checkpoint,
         )
 
-    # Pi: transformContext — compaction, eviction, injected context and orphan-call results.
+    # Pi: transformContext — compaction, context edits, injected context and orphan-call results.
     def transform_context(self, snapshot: SessionSnapshot) -> ProjectedContext:
         self._tree = SessionTree(snapshot.index)
         if self._session_id != snapshot.header.session_id:
@@ -260,11 +262,12 @@ class ContextProjector:
             thinking,
             checkpoint,
         )
-        self._cached = freeze_value(projected)
-        self._key = key
-        # The incremental path re-pairs these; repair_tool_pairing freezes its copy.
-        self._raw_messages = tuple(pinned_messages) + raw_messages
-        return self._cached
+        projected = freeze_value(projected)
+        if self._cache_enabled:
+            self._cached = projected
+            self._key = key
+            self._raw_messages = tuple(pinned_messages) + raw_messages
+        return projected
 
     def messages_for(self, entry: SessionEntry) -> tuple[Message, ...]:
         if entry.type == "message":

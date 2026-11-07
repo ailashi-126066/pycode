@@ -17,7 +17,7 @@ import re
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
 from langchain.agents.middleware import AgentMiddleware, hook_config
@@ -134,7 +134,7 @@ def loop_question(session_id: str, run_id: str, turn: int, evidence: str) -> dic
 class LoopGuardMiddleware(AgentMiddleware):
     """Pi's prepareNextTurn: a second detection is decided before the next model request.
 
-    The agent's RunContext (runtime.context) carries run_state; loop_detected is its reason.
+    The middleware returns the stop reason as an update to the shared graph state.
     """
 
     def __init__(self, feature: "LoopGuard", run: RunScope):
@@ -147,19 +147,20 @@ class LoopGuardMiddleware(AgentMiddleware):
         if guard.evidence is None or not guard.reminded:
             return None
         # The node reruns on resume and interrupt() then returns the answer (LangGraph HITL).
-        run_state = cast(Any, runtime.context).run_state
         stop = True
         if self.feature.asks_user:
             answer = interrupt(
                 loop_question(
-                    self.run.session.session_id, self.run.run_id, run_state.turn, guard.evidence
+                    self.run.session.session_id,
+                    self.run.run_id,
+                    state.get("turn", 0),
+                    guard.evidence,
                 )
             )
             # Only an explicit "continue" keeps going; an Other answer stops.
             stop = answer.get("decision") == "cancel" or answer["answers"]["loop"] != "continue"
         if stop:
-            run_state.reason = "loop_detected"
-            return {"jump_to": "end"}
+            return {"jump_to": "end", "reason": "loop_detected"}
         reset_repeats(guard)
         return None
 

@@ -65,8 +65,7 @@ def durable(tmp_path, context):
     store = SqliteSessionStore(
         tmp_path / "session", SessionHeader(context.session_id, "/workspace", "t"), TestTiming()
     )
-    context.journal = store
-    context.history_store = store
+    context.history = store
     context.projector = ContextProjector()
     return store
 

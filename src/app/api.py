@@ -5,6 +5,7 @@ import sys
 from dataclasses import dataclass
 
 from .. import __version__
+from ..agent import RunOptions
 from ..context import SummaryWorkflow
 from ..kernel import EventStream, SessionScope
 from ..memory import MemoryService
@@ -18,7 +19,7 @@ from ..session import (
     StorageGC,
 )
 from . import composition
-from .composition import RunOptions, SessionResources
+from .composition import SessionResources
 from .config import AppConfig
 
 

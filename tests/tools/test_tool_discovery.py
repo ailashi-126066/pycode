@@ -40,7 +40,7 @@ async def test_catalog_contains_brief_names_but_no_parameter_schema_then_loads()
     )
     # Executing search alone is insufficient: publication must complete.
     assert [t.name for t in (await discovery.disclose(request)).tools] == ["ToolSearch"]
-    context.completed.append(Message("result", "tool_result", tool_result=result))
+    await context.history.append_message(Message("result", "tool_result", tool_result=result))
     assert [t.name for t in (await discovery.disclose(request)).tools] == ["ToolSearch", "echo"]
 
 
@@ -55,7 +55,7 @@ async def test_large_search_result_still_loads_tools_on_next_request():
     found = await discovery.execute(output_context, {"query": "echo"})
     prepared = await TempOutputStore("s1").prepare(output_context, found, "head")
     assert prepared.details["truncation"]["total_bytes"] > 50000
-    context.completed.append(Message("result", "tool_result", tool_result=prepared))
+    await context.history.append_message(Message("result", "tool_result", tool_result=prepared))
     assert [t.name for t in (await discovery.disclose(request)).tools] == ["ToolSearch", "echo"]
 
 
@@ -63,7 +63,7 @@ async def test_permission_removed_tool_is_not_disclosed():
     discovery, request, context, _ = setup_request()
     await discovery.disclose(request)
     result = await discovery.execute(ToolContext("s", "r", "op", "/workspace"), {"query": "echo"})
-    context.completed.append(Message("result", "tool_result", tool_result=result))
+    await context.history.append_message(Message("result", "tool_result", tool_result=result))
     assert len((await discovery.disclose(request.override(tools=[]))).tools) == 1
     assert discovery.catalog == {}
 
@@ -117,7 +117,7 @@ async def test_failed_search_record_does_not_load_and_same_batch_cannot_call_tar
     discovery, request, context, _ = setup_request()
     await discovery.disclose(request)
     found = await discovery.execute(ToolContext("s", "r", "op", "/workspace"), {"query": "echo"})
-    context.completed.append(
+    await context.history.append_message(
         Message("failed", "tool_result", tool_result=replace(found, is_error=True))
     )
     assert [tool.name for tool in (await discovery.disclose(request)).tools] == ["ToolSearch"]

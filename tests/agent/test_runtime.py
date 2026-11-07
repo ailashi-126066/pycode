@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
-from pycode.agent import AgentMessagePublisher, AgentRuntime, RunContext, RuntimeBindings
-from pycode.context import ContextProjector, EvictionBudget, ToolEvictionService
+from pycode.agent import AgentRuntime, RunContext
+from pycode.context import ContextProjector
 from pycode.kernel import (
     EventStream,
     Message,
@@ -23,20 +23,13 @@ from pycode.models import (
     ModelRequestRunner,
     ProviderFailureClassifier,
     RetryPolicy,
-    from_assistant,
-    model_request_step,
-    to_framework,
-    to_framework_messages,
 )
 from pycode.session import PendingInputs, SqliteSessionStore
 from pycode.tools import (
     JsonSchemaValidator,
     ReadOnlyToolGate,
-    ToolDiscovery,
     ToolExecutor,
     ToolRegistry,
-    ToolSettlementMiddleware,
-    make_framework_tool,
 )
 from tests.support.history import Journal, QueuedInputs
 from tests.support.model import ScriptedChatModel
@@ -94,19 +87,7 @@ async def no_hook(*args, **kwargs):
 
 
 def runtime_for(model, **options):
-    bindings = RuntimeBindings(
-        to_framework=to_framework,
-        to_framework_messages=to_framework_messages,
-        from_assistant=from_assistant,
-        make_framework_tool=make_framework_tool,
-        disclose_model_tools=ToolDiscovery(make_framework_tool).disclose,
-        model_request_step=model_request_step,
-        run_hook=no_hook,
-        settlement_middleware_factory=lambda bound: ToolSettlementMiddleware(
-            publish=AgentMessagePublisher(bound).publish, converter=to_framework
-        ),
-    )
-    return AgentRuntime(model, bindings=bindings, **options)
+    return AgentRuntime(model, run_hook=no_hook, **options)
 
 
 def run_scope(events, history):
@@ -143,7 +124,7 @@ def assemble(responses, **options):
         run_id="run-1",
         workspace="/workspace",
         selection=selection,
-        journal=journal,
+        history=journal,
         events=events,
         inputs=queue,
         executor=executor,
@@ -151,9 +132,7 @@ def assemble(responses, **options):
         requests=requests,
         max_turns=100,
         scope=run_scope(events, journal),
-        history_store=journal,
         projector=ContextProjector(),
-        eviction=ToolEvictionService(journal, ContextProjector(), EvictionBudget(100000), events),
         durable_inputs=QueuedInputs(queue),
     )
     runtime = runtime_for(model, **options)
@@ -218,6 +197,17 @@ async def test_model_is_committed_before_tools_and_results_feed_next_request():
     )
     types = [event.kind for event in recorder.events]
     assert types.index("message_end", 4) < types.index("tool_execution_start")
+    checkpoint = await runtime.graph.aget_state(runtime.config(context))
+    assert checkpoint.values["turn"] == 2
+    assert checkpoint.values["phase"] == "finished"
+    assert checkpoint.values["reason"] == "completed"
+    assert checkpoint.values["ended_turn"] == 2
+    assert checkpoint.values["final_text"] == "done"
+    assert checkpoint.config["configurable"]["checkpoint_id"] == result.checkpoint_id
+    assert not checkpoint.next and not checkpoint.interrupts
+    assert not hasattr(context, "run_state")
+    assert not hasattr(context, "completed")
+    assert not hasattr(context, "model_projection")
 
 
 async def test_pi_parallel_completion_and_source_order_vectors():
@@ -394,7 +384,7 @@ async def test_each_run_writes_one_run_end_before_agent_end(tmp_path):
     store = SqliteSessionStore(
         tmp_path / "session", SessionHeader(context.session_id, "/workspace", "t"), TestTiming()
     )
-    context.journal = context.history_store = store
+    context.history = store
     context.projector = ContextProjector()
 
     def run_ends(snapshot):
@@ -477,6 +467,11 @@ async def test_graph_tool_cancellation_is_collected_before_run_returns():
     assert end.data["outcome"] == "interrupted"
     assert recorder.events[-1].kind == "agent_end"
     assert recorder.events[-1].data["reason"] == "aborted"
+    checkpoint = await runtime.graph.aget_state(runtime.config(context))
+    assert checkpoint.values["phase"] == "finished"
+    assert checkpoint.values["reason"] == "aborted"
+    assert checkpoint.values["ended_turn"] == checkpoint.values["turn"]
+    assert not checkpoint.next and not checkpoint.interrupts
 
 
 async def test_partial_stream_is_saved_as_aborted_reply_with_its_text():

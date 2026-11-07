@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from ..kernel import DomainError, StorageError, ToolResult, ToolSpec, data_hash, plain_data
+from ..kernel import DomainError, ToolResult, ToolSpec, plain_data
 
 
 @dataclass(frozen=True)
@@ -56,26 +56,6 @@ def catalog_specs(catalog):
         if tool["enabled"]:
             result.append(mcp_spec(tool))
     return tuple(sorted(result, key=lambda spec: spec.name))
-
-
-def active_mcp(path):
-    catalog = None
-    for entry in path:
-        if entry.type == "compaction" and "mcp" in entry.data.get("checkpoint", {}):
-            catalog = entry.data["checkpoint"]["mcp"]
-        elif entry.type == "mcp_catalog":
-            catalog = entry.data
-    if catalog is not None and any(
-        type(tool.get("enabled")) is not bool or "loading" in tool for tool in catalog["tools"]
-    ):
-        raise StorageError(
-            "invalid_mcp_catalog", "MCP catalog requires current enabled tool declarations"
-        )
-    return catalog
-
-
-def catalog_hash(catalog):
-    return data_hash({key: catalog[key] for key in ("servers", "tools")})
 
 
 def result_from_mcp(content, status, artifact, *, name, call_id="", declaration=None):

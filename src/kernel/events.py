@@ -170,7 +170,7 @@ class TaskEvent(TypedDict):
 
 
 class NotificationEvent(TypedDict):
-    """kind is hook, input_delivered or tool_eviction; the other keys belong to that kind."""
+    """kind identifies the notification; historical kinds remain readable."""
 
     kind: str
     message: NotRequired[str]

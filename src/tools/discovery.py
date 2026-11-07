@@ -102,7 +102,7 @@ class ToolDiscovery:
         self.catalog = catalog
         # 11.1 section 33.1 #2: tool names loaded by successful searches on this branch.
         loaded = set()
-        for message in context.completed:
+        for message in await context.run_messages():
             result = message.tool_result
             if result is not None and result.name == self.spec.name and not result.is_error:
                 loaded.update(result.details["loaded_tools"])

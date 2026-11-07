@@ -145,6 +145,7 @@ REMOVED_ENTRY_TYPES = frozenset(
         "team_transition",
         "hook_call",
         "hook_result",
+        "mcp_catalog",
         "memory_load",
         "memory_recall_error",
         "plan_review",

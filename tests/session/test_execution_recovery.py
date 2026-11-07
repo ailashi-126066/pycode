@@ -5,6 +5,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+from copy import deepcopy
 
 import pytest
 
@@ -54,13 +55,26 @@ async def test_same_process_resumes_permission_without_reissuing_first_model(
     assert tables == {"model_requests"}
 
 
-async def test_reopen_resumes_saved_permission_without_reissuing_model(tmp_path, monkeypatch):
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_reopen_resumes_saved_permission_without_reissuing_model(
+    tmp_path, monkeypatch, legacy
+):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     config = AppConfig(tmp_path, tmp_path / "data", memory_mode="off")
     with protocol_server([chat_completion(tool=True), chat_completion()]) as (url, received):
         tool = WritingEcho()
         first = await session_at(config, provider(url), tool, create=True)
         waiting = await first.run(Message("u1", "user", "write"))
+        if legacy:
+            # Simulate a checkpoint saved before execution fields moved into graph state.
+            saver = await first.history.checkpoint()
+            saved = await saver.aget_tuple({"configurable": {"thread_id": f"s1:{waiting.run_id}"}})
+            assert saved is not None
+            checkpoint = deepcopy(saved.checkpoint)
+            for name in ("phase", "reason", "ended_turn"):
+                checkpoint["channel_values"].pop(name, None)
+                checkpoint["channel_versions"].pop(name, None)
+            await saver.aput(saved.parent_config or saved.config, checkpoint, saved.metadata, {})
         await first.aclose()
         restored = await session_at(config, provider(url), tool)
         try:

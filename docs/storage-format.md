@@ -30,7 +30,7 @@
 | `model_change` / `thinking_level_change` / `tool_set_change` | 模型、思考级别、可见工具集变化 |
 | `system_prompt` | 系统提示快照 |
 | `plan_state` | Plan 模式状态 |
-| `mcp_catalog` / `skill_catalog` | MCP 与 Skill 目录快照 |
+| `skill_catalog` | Skill 目录快照（旧会话里的 `mcp_catalog` 记录读取时被丢弃）|
 | `session_metadata` | 会话标题 |
 
 不影响模型上下文的记录都是 `custom{kind}`（`CustomKind`）：`run_start` / `run_resume` / `run_wait` / `run_end`、

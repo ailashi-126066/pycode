@@ -3,6 +3,20 @@
 Core package: validates, authorizes, executes and settles tool calls, and provides Pi's builtin
 file tools. The application supplies concrete gates and async execution callbacks.
 
+Main execution path: `ToolSettlementMiddleware.awrap_tool_call()` → `ToolExecutor.execute()` →
+the registered tool's `execute()` (for example `Read.execute()`) → `save_result()` persists
+and converts the result before returning it to the graph. The entry point owns the whole
+sequence; `wait_for_turn()` only waits, and `check_tool()` only checks the declaration.
+`save_result()` also attaches operation metadata; `settle_ready()` writes each ready result
+and emits its completion event in call order, without a separate finalize/settle wrapper.
+The executor calls the tool directly after validation and authorization. Its `before_execute`
+callback only records approval/start and releases the preparation barrier; it does not execute
+the tool. Framework adapters expose definitions and return tool messages to the graph, but the
+agent's execution path does not call back through the framework tool handler.
+
+Temporary read errors may retry up to three times. Writes are never retried automatically.
+Execution errors become `ToolResult`; graph interrupts and cancellation propagate.
+
 | File | Contents |
 |---|---|
 | `executor.py` | `ToolRegistry`, `ToolExecutor`, the tool error boundary and the repeated-failure guard |

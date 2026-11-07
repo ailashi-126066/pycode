@@ -38,15 +38,18 @@ class TaskBoardMiddleware(AgentMiddleware):
     async def abefore_model(self, state, runtime):
         context = cast("RunContext", runtime.context)
         # Only a board blocked by this run's last tool batch stops the next model call.
-        for message in reversed(context.completed):
+        for message in reversed(await context.run_messages()):
             if message.role == "assistant":
                 break
             result = message.tool_result
             if result is not None and "task_board" in result.details:
                 board = result.details["task_board"]
                 if board["status"] == "blocked":
-                    context.run_state.reason = "needs_input"
-                    return {"jump_to": "end", "final_text": board["outcome"]}
+                    return {
+                        "jump_to": "end",
+                        "reason": "needs_input",
+                        "final_text": board["outcome"],
+                    }
                 break
         return None
 
@@ -76,8 +79,8 @@ class TaskBoardService:
         text = task_board_text(self.board, full=self.full_view)
         return (*messages, Message(uuid4().hex, "system", text))
 
-    async def before_finish(self, context):
-        if self.checked or context.run_state.turn >= context.max_turns:
+    async def before_finish(self, context, *, turn: int):
+        if self.checked or turn >= context.max_turns:
             return False
         board = await self.current()
         if board is None or board.status != "active":

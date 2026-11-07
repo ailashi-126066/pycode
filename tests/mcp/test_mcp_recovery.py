@@ -16,7 +16,7 @@ from tests.support.execution import provider
 from tests.support.http_provider import chat_completion, protocol_server
 
 
-async def test_changed_server_schema_is_recorded_but_pending_call_keeps_old_contract(
+async def test_pending_call_is_abandoned_after_restart_even_when_the_server_schema_changed(
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
@@ -53,10 +53,6 @@ async def test_changed_server_schema_is_recorded_but_pending_call_keeps_old_cont
             done = await session.run(Message("new-task", "user", "Inspect the new MCP catalog"))
             assert done.outcome == "completed" and not (tmp_path / "effects.txt").exists()
             state = await session.inspect()
-            assert any(
-                entry["type"] == "tool_set_change" and entry["data"].get("source") == "mcp"
-                for entry in state["snapshot"]["entries"]
-            )
             results = [
                 entry["message"]["tool_result"]
                 for entry in state["snapshot"]["entries"]
@@ -71,9 +67,7 @@ async def test_changed_server_schema_is_recorded_but_pending_call_keeps_old_cont
             await session.aclose()
 
 
-async def test_compaction_and_restart_preserve_mcp_catalog_schema_and_loading_mode(
-    tmp_path, monkeypatch
-):
+async def test_mcp_tools_are_available_after_compaction_and_restart(tmp_path, monkeypatch):
     monkeypatch.setenv("PYCODE_RECOVERY_TEST_KEY", "test-key")
     config = AppConfig(
         tmp_path, tmp_path / "data", summary_keep_recent_tokens=1500, memory_mode="off"
@@ -93,10 +87,7 @@ async def test_compaction_and_restart_preserve_mcp_catalog_schema_and_loading_mo
                 for entry in state["snapshot"]["entries"]
                 if entry["type"] == "compaction"
             )
-            assert checkpoint["mcp"]["tools"] and any(
-                spec["name"] == "mcp__srv__echo" for spec in checkpoint["tools"]
-            )
-            assert "MCP servers" not in checkpoint["system_prompt"]
+            assert any(spec["name"] == "mcp__srv__echo" for spec in checkpoint["tools"])
         finally:
             await session.aclose()
         session = await compose_application(config, (configured,)).open_session(
@@ -107,13 +98,6 @@ async def test_compaction_and_restart_preserve_mcp_catalog_schema_and_loading_mo
             assert any(
                 tool["function"]["name"] == "mcp__srv__echo"
                 for tool in requests[-1]["body"]["tools"]
-            )
-            assert (
-                sum(
-                    "MCP servers" in str(message["content"])
-                    for message in requests[-1]["body"]["messages"]
-                )
-                == 1
             )
         finally:
             await session.aclose()

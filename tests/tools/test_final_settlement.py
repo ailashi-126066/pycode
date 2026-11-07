@@ -1,4 +1,4 @@
-"""Framework-owned tool execution and pycode's narrow repeated-failure guard."""
+"""Direct registered-tool execution and pycode's narrow repeated-failure guard."""
 
 from dataclasses import replace
 
@@ -216,7 +216,7 @@ async def test_schema_error_is_redacted_in_result_history_and_complete_output(tm
         SessionHeader(context.session_id, context.workspace, "created"),
         TestTiming(),
     )
-    context.journal = journal
+    context.history = journal
     try:
         result = await runtime.run((Message("u1", "user", "work"),), context)
         assert result.outcome == "completed" and tool.executed == []
@@ -238,7 +238,7 @@ async def test_schema_error_is_redacted_in_result_history_and_complete_output(tm
 pytestmark = pytest.mark.usefixtures("disclosed_tools")
 
 
-async def test_prepared_arguments_reach_the_actual_framework_tool_and_after_hook():
+async def test_prepared_arguments_reach_the_registered_tool_and_after_hook():
     runtime, context, _, tool, _, _ = assemble(
         [
             AIMessage(
@@ -276,3 +276,26 @@ async def test_prepared_arguments_reach_the_actual_framework_tool_and_after_hook
     assert result.outcome == "completed"
     assert tool.executed == [7]
     assert seen == [{"value": 7}]
+
+
+async def test_registered_tool_runs_without_reentering_framework_adapter(monkeypatch):
+    import pycode.agent.runtime as runtime_module
+
+    make_tool = runtime_module.make_framework_tool
+
+    async def forbidden_adapter(**arguments):
+        raise AssertionError("Registered tools must execute directly through ToolExecutor")
+
+    def declaration(spec, context):
+        tool = make_tool(spec, context)
+        tool.coroutine = forbidden_adapter
+        return tool
+
+    monkeypatch.setattr(runtime_module, "make_framework_tool", declaration)
+    runtime, context, _, tool, journal, _ = assemble(
+        [response("direct", value="hello"), AIMessage(id="done", content="done")]
+    )
+    result = await runtime.run((Message("u", "user", "read"),), context)
+    assert result.outcome == "completed" and tool.executed == ["hello"]
+    outputs = [message.require_tool_result() for message in journal.messages if message.tool_result]
+    assert len(outputs) == 1 and outputs[0].text == "echoed: hello"

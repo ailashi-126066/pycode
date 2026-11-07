@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from ..kernel import (
+    BeforeToolCallResult,
     CommandRunner,
     DomainError,
     EntryDraft,
@@ -217,7 +218,9 @@ class HooksService:
             )
         )
 
-    async def before_tool_call(self, run: RunScope, spec: ToolSpec, call: ToolCall):
+    async def before_tool_call(
+        self, run: RunScope, spec: ToolSpec, call: ToolCall
+    ) -> BeforeToolCallResult | None:
         rejection = await self.tool_hook(run, "pre_tool_use", call)
         if rejection is not None:
             return {"block": True, "reason": rejection}

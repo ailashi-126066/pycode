@@ -1,6 +1,7 @@
 """Task service keeps branch state, run exits and explicit progress callbacks."""
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -79,9 +80,9 @@ async def test_finish_reminds_once_and_loop_detection_fails_board(service):
         context, {"goal": "fix", "done_when": ["works"], "steps": [{"title": "edit"}]}
     )
     await save_board(history, result)
-    run = SimpleNamespace(run_id="r", run_state=SimpleNamespace(turn=1), max_turns=3)
-    assert await service.before_finish(run)
-    assert not await service.before_finish(run)
+    run = SimpleNamespace(run_id="r", max_turns=3)
+    assert await service.before_finish(run, turn=1)
+    assert not await service.before_finish(run, turn=1)
     await service.on_event(Event(2, "s", "r", "agent_end", {"reason": "loop_detected"}))
     assert (await service.current()).status == "failed"
     assert service.transform_context(None, ()) == ()
@@ -98,12 +99,10 @@ async def test_blocked_board_stops_before_another_model_request(service):
         context, {"target": "board", "status": "blocked", "note": "Which server?"}
     )
     context = SimpleNamespace(
-        completed=[Message("m", "tool_result", tool_result=blocked)],
-        run_state=SimpleNamespace(reason=None),
+        run_messages=AsyncMock(return_value=(Message("m", "tool_result", tool_result=blocked),)),
     )
     response = await TaskBoardMiddleware().abefore_model({}, SimpleNamespace(context=context))
-    assert response == {"jump_to": "end", "final_text": "Which server?"}
-    assert context.run_state.reason == "needs_input"
+    assert response == {"jump_to": "end", "final_text": "Which server?", "reason": "needs_input"}
 
 
 def test_plan_parser_remains_the_task_write_schema():

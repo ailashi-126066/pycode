@@ -3,7 +3,14 @@
 
 from typing import TYPE_CHECKING, cast
 
-from ..kernel import EntryDraft, SessionEntry, SessionTree, SnapshotError, StorageError
+from ..kernel import (
+    AfterToolCallResult,
+    EntryDraft,
+    SessionEntry,
+    SessionTree,
+    SnapshotError,
+    StorageError,
+)
 from .store import GitSnapshotStore
 from .types import Snapshot
 
@@ -55,7 +62,7 @@ class SnapshotService:
         if spec.category in {"write", "command"}:
             self._before[call.id] = await self.store.capture()
 
-    async def after_tool_call(self, run, call, result):
+    async def after_tool_call(self, run, call, result) -> AfterToolCallResult | None:
         before = self._before.pop(call.id, None)
         if before is None:
             return None

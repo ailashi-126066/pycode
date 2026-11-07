@@ -58,8 +58,7 @@ async def test_parallel_tool_cancellation_collects_both_and_never_restarts_them(
     tool = HeldRead()
     registry = ToolRegistry(validator, (tool,))
     context.registry = registry
-    context.journal = journal
-    context.history_store = journal
+    context.history = journal
     context.projector = ContextProjector()
     context.executor = ToolExecutor(
         registry, validator, InterruptToolGate(), run_scope(context.events)
@@ -106,7 +105,9 @@ async def test_parallel_native_interrupt_answers_preserve_call_result_order(tmp_
     assert pending.outcome == "completed" and tool.executed == 2 and approvals == 2
     assert len(model.requests) == 2
     assert [
-        message.tool_result.call_id for message in context.completed if message.tool_result
+        message.tool_result.call_id
+        for message in await context.run_messages()
+        if message.tool_result
     ] == ["c1", "c2"]
 
 

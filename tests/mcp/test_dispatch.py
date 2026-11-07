@@ -54,7 +54,7 @@ async def test_dispatch_checks_target_schema_and_parent_permission_before_call(
     history = store_for(tmp_path)
     await history.append_message(Message("u1", "user", "task"))
     connections = Connections(trusted=trusted)
-    service = MCPService(history, connections)
+    service = MCPService(connections)
     try:
         await service.initialize()
         validator = JsonSchemaValidator()

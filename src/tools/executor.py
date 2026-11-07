@@ -6,12 +6,9 @@ import re
 import time
 from collections.abc import Mapping
 from dataclasses import replace
-from typing import Any, TypedDict, cast
+from typing import Any, TypedDict
 
-from langchain.agents.middleware import ToolErrorMiddleware
-from langchain.tools import ToolRuntime
-from langchain.tools.tool_node import ToolCallRequest
-from langchain_core.messages import ToolMessage
+from langgraph.errors import GraphBubbleUp
 
 from ..kernel import (
     SECRET_PATTERNS,
@@ -27,7 +24,6 @@ from ..kernel import (
     ToolSpec,
     clone_value,
     freeze_value,
-    json_dumps,
     plain_data,
 )
 from .call_state import ToolCallState
@@ -104,48 +100,19 @@ def failure_update(previous, call, result, arguments_hash) -> FailureGuard:
 
 
 async def execute_tool_errors(call, spec, action):
-    """The official error boundary wraps execution only, inside durable tool settlement.
-
-    Every Exception from execution becomes one error result; LangGraph control flow
-    (interrupts) still propagates, and so does cancellation (a BaseException).
-    """
-    request = ToolCallRequest(
-        tool_call={"type": "tool_call", "id": call.id, "name": call.name, "args": call.arguments},
-        tool=None,
-        state={},
-        runtime=ToolRuntime(
-            state={},
-            context=None,
-            config={},
-            stream_writer=lambda _: None,
-            tool_call_id=call.id,
-            store=None,
-        ),
-    )
-    failure = None
-
-    async def on_error(error, current):
-        nonlocal failure
-        failure = tool_failure(error, call, executed=True, uncertain=spec.category != "read")
-        return json_dumps(
-            {"error_code": failure.error_code, "message": failure.text}, ensure_ascii=False
-        )
-
-    async def invoke(current):
-        result = await action()
-        return ToolMessage(
-            content=result.text,
-            artifact=result,
-            tool_call_id=call.id,
-            name=call.name,
-            status="error" if result.is_error else "success",
-        )
-
-    response = await ToolErrorMiddleware(aon_error=on_error).awrap_tool_call(request, invoke)
-    if failure is not None:
-        return failure
-    # invoke always returns a ToolMessage; the middleware only replaces errors with text.
-    return cast(ToolMessage, response).artifact
+    """Retry temporary reads; convert execution failures while preserving interrupts."""
+    retries = 3 if spec.category == "read" else 0
+    attempt = 0
+    while True:
+        try:
+            return await action()
+        except GraphBubbleUp:
+            raise
+        except Exception as error:
+            if isinstance(error, ToolError) and error.retryable and attempt < retries:
+                attempt += 1
+                continue
+            return tool_failure(error, call, executed=True, uncertain=spec.category != "read")
 
 
 class ToolRegistry:
@@ -245,7 +212,7 @@ class ToolExecutor:
         if not allowed:
             await self.approval.authorize(context, spec, call)
 
-    async def execute(self, context, call, stop_reason, *, spec=None, invoke=None):
+    async def execute(self, context, call, stop_reason, *, spec=None, before_execute=None):
         # Pi: acceptingUpdates. Updates that arrive after the tool returned are dropped.
         accepting_updates = True
 
@@ -271,8 +238,7 @@ class ToolExecutor:
                 raise ToolError("invalid_arguments", call.parse_error)
             if spec is None:
                 spec = self.registry.get_spec(call.name)
-            if invoke is None:
-                tool = self.registry.get(call.name)
+            tool = self.registry.get(call.name)
             # Pi: prepareToolCall — prepareArguments, then Value.Convert, then schema check.
             arguments = clone_value(call.arguments)
             if spec.prepare_arguments is not None:
@@ -299,9 +265,12 @@ class ToolExecutor:
             result = tool_failure(error, call)
         executed = result is None
         if result is None:
+            if before_execute is not None:
+                await before_execute(context, prepared, spec)
 
             async def action():
                 nonlocal accepting_updates
+                accepting_updates = True
                 await self.events.emit(
                     "tool_execution_update",
                     {
@@ -312,9 +281,7 @@ class ToolExecutor:
                     operation_id=context.operation_id,
                 )
                 try:
-                    if invoke is None:
-                        return await tool.execute(context, arguments)
-                    return await invoke(context, prepared, spec)
+                    return await tool.execute(context, arguments)
                 finally:
                     accepting_updates = False
 

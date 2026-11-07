@@ -102,5 +102,7 @@ def truncate(
 
 
 def estimate_text(text: str) -> int:
-    units = len(text) + sum(1 for character in text if ord(character) > 0xFFFF)
-    return max(0, math.floor(units / 4 + 0.5))
+    """Fallback budget, not tokenizer counts: ASCII / 4, non-ASCII by UTF-8 bytes."""
+    ascii_characters = sum(character.isascii() for character in text)
+    non_ascii_bytes = len(text.encode("utf-8")) - ascii_characters
+    return math.ceil(ascii_characters / 4) + non_ascii_bytes

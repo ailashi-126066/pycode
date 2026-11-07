@@ -21,7 +21,6 @@ EntryType = Literal[
     "hook_context",
     "input_queued",
     "input_expired",
-    "mcp_catalog",
     "model_change",
     "thinking_level_change",
     "tool_set_change",
@@ -39,7 +38,7 @@ CustomKind = Literal[
     "run_end",
     "tool_started",
     "tool_approval",
-    "tool_eviction_audit",
+    "tool_eviction_audit",  # Legacy persisted records remain readable.
     "summary_job",
     "compact_request",
     "revert",

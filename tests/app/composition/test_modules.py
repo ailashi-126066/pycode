@@ -25,10 +25,9 @@ async def test_providerless_root_does_not_open_configuration_and_mcp_can_be_disa
         "disabled", create=True, refresh_models=False, startup_hooks=False, connect_mcp=False
     )
     try:
-        assert session.launcher.mcp is None
         assert session.subagents is None
         assert session.memory.mode == "off"
-        assert session.skills is session.launcher.skills.service
+        assert session.skills is not None
     finally:
         await session.aclose()
 

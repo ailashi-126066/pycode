@@ -1,19 +1,20 @@
-"""Model preparation order protects sources and delivers steering only after maintenance."""
+"""One preparation boundary budgets actual tools and projects history after all edits."""
 
 import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+from langchain.agents.middleware import ModelRequest
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
 from pycode.agent import AgentRuntime
 from pycode.agent.loop import HistoryMiddleware, poll_steering
-from pycode.app.composition import build_runtime_bindings
 from pycode.context import ContextProjector, SummaryReport
 from pycode.kernel import Message, ModelError, SessionHeader
 from pycode.session import SqliteSessionStore
+from pycode.tools import make_framework_tool
 from tests.agent.test_runtime import Journal, assemble
 from tests.support.model import ScriptedChatModel
 from tests.support.requests import TestTiming
@@ -30,7 +31,7 @@ class Summary:
         assert tools
         self.trace.append("tools")
 
-    async def prepare(self, *, tail=()):
+    async def prepare(self, *, tail=(), messages=None):
         self.trace.append("summary")
         self.started.set()
         if self.failure is not None:
@@ -38,15 +39,6 @@ class Summary:
         if self.blocked:
             await asyncio.Event().wait()
         return SummaryReport(1, "cached", ("protected-source",), "applied")
-
-
-class Eviction:
-    def __init__(self, trace):
-        self.trace = trace
-
-    async def apply(self, *, protected_entry_ids):
-        assert protected_entry_ids == ("protected-source",)
-        self.trace.append("eviction")
 
 
 class Hooks:
@@ -71,11 +63,19 @@ def preparation():
     trace = []
     _, context, _, _, _, _ = assemble([])
     context.summary = Summary(trace)
-    context.eviction = Eviction(trace)
-    context.journal = SteeringJournal(trace)
-    context.history_store = context.journal
+    context.history = SteeringJournal(trace)
     context.inputs.submit(Message("steer", "user", "new instruction"), "steer")
     return context, trace, Hooks(trace)
+
+
+def model_request(context):
+    return ModelRequest(
+        model=ScriptedChatModel(responses=[]),
+        messages=[],
+        tools=[make_framework_tool(spec, context) for spec in context.registry.model_specs()],
+        state={"turn": 1, "phase": "model_turn", "ended_turn": 0, "reason": None},
+        runtime=SimpleNamespace(context=context),
+    )
 
 
 async def test_preparation_keeps_summary_protection_steering_and_turn_order():
@@ -83,20 +83,21 @@ async def test_preparation_keeps_summary_protection_steering_and_turn_order():
     # Pi polls steering at loop start (abefore_agent); the first turn delivers it after
     # maintenance.
     context.steering = await poll_steering(context)
-    updates = await HistoryMiddleware(
-        build_runtime_bindings(run_hook=hooks.run_hook)
-    ).abefore_model({"turn": 1}, SimpleNamespace(context=context))
+    middleware = HistoryMiddleware(hooks.run_hook)
+    updates = await middleware.abefore_model({"turn": 0}, SimpleNamespace(context=context))
+    assert trace == []  # The lifecycle hook only advances the turn; preparation has one owner.
+    request = await middleware.prepare_request(model_request(context))
     assert trace == [
         "tools",
         "summary",
         "compact",
-        "eviction",
         "steering",
         "turn_start",
+        "pre_send",
     ]
     assert updates["turn"] == 1
-    assert updates["messages"][-1].content == "new instruction"
-    assert len(context.journal.messages) == 1
+    assert request.messages[-1].content == "new instruction"
+    assert len(context.history.messages) == 1
     assert not context.inputs.has("steer")
 
 
@@ -106,11 +107,9 @@ async def test_failed_or_cancelled_maintenance_does_not_execute_dependent_steps(
     context.summary.blocked = cancel
     if not cancel:
         context.summary.failure = ModelError("summary_failed", "test")
-    running = asyncio.create_task(
-        HistoryMiddleware(build_runtime_bindings(run_hook=hooks.run_hook)).abefore_model(
-            {"turn": 0}, SimpleNamespace(context=context)
-        )
-    )
+    middleware = HistoryMiddleware(hooks.run_hook)
+    await middleware.abefore_model({"turn": 0}, SimpleNamespace(context=context))
+    running = asyncio.create_task(middleware.prepare_request(model_request(context)))
     try:
         await asyncio.wait_for(context.summary.started.wait(), 5)
         if cancel:
@@ -119,7 +118,7 @@ async def test_failed_or_cancelled_maintenance_does_not_execute_dependent_steps(
             await running
         assert trace == ["tools", "summary"]
         assert context.inputs.has("steer")
-        assert context.journal.messages == []
+        assert context.history.messages == []
     finally:
         if not running.done():
             running.cancel()
@@ -140,13 +139,45 @@ class ToolCapturingModel(ScriptedChatModel):
         return super().bind_tools(tools, **options)
 
 
+async def test_final_messages_include_maintenance_hook_edits_and_feature_context():
+    _, context, _, _, _, _ = assemble([])
+    extra = Message("feature", "system", "Task progress from the feature service")
+    budgets = []
+
+    class Maintenance:
+        def set_tools(self, tools):
+            assert {tool.name for tool in tools} == {"echo"}
+
+        async def prepare(self, *, tail, messages=None):
+            budgets.append(tail)
+            await context.history.append_message(
+                Message("summary", "compaction_summary", "Earlier work summarized")
+            )
+            return SimpleNamespace(applied_job_id="summary-job", protected_entry_ids=())
+
+    async def run_hook(run, event, **fields):
+        if event == "pre_send":
+            await context.history.append_message(Message("late", "user", "Added by pre_send"))
+
+    def append_feature(run, messages):
+        return (*messages, extra)
+
+    context.summary = Maintenance()
+    middleware = HistoryMiddleware(run_hook, context_transforms=(append_feature,))
+    request = await middleware.prepare_request(model_request(context))
+    contents = [str(message.content) for message in request.messages]
+    assert budgets == [(extra,)]
+    assert any("Earlier work summarized" in text for text in contents)
+    assert contents[-2:] == ["Added by pre_send", extra.text]
+    assert context.model_source_leaf_id == (await context.history.snapshot()).leaf_id
+
+
 async def test_dynamic_tools_after_skills_disclosure_are_in_final_budget_snapshot(tmp_path):
     _, context, _, original, _, _ = assemble([])
     history = SqliteSessionStore(
         tmp_path / "session", SessionHeader(context.session_id, str(tmp_path), "t"), TestTiming()
     )
-    context.journal = history
-    context.history_store = history
+    context.history = history
     context.projector = ContextProjector()
 
     class NewTool:
@@ -164,7 +195,7 @@ async def test_dynamic_tools_after_skills_disclosure_are_in_final_budget_snapsho
     async def run_hook(run, event, **fields):
         pass
 
-    runtime = AgentRuntime(model, bindings=build_runtime_bindings(run_hook=run_hook))
+    runtime = AgentRuntime(model, run_hook=run_hook)
     try:
         # App explicitly refreshes server catalogs before constructing/running the graph.
         await refresh.refresh(context.registry)

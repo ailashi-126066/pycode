@@ -18,7 +18,8 @@ class Launcher:
         self.started = asyncio.Event()
         self.release = None
 
-    async def run(self, provider, store, run_id, inputs, history):
+    async def execute(self, provider, run_id, *, inputs, history):
+        store = self.store
         self.calls.append((provider, inputs, history))
         self.started.set()
         if self.release is not None:
@@ -26,7 +27,7 @@ class Launcher:
         reply = await store.append_message(
             Message("assistant-" + inputs[0].id, "assistant", "done")
         )
-        # The runtime writes run_end when its RunState enters finished.
+        # The runtime writes run_end when the graph execution finishes.
         await store.append_entry(
             EntryDraft(
                 "custom",
@@ -52,6 +53,7 @@ async def assemble(tmp_path):
     models = controller(tmp_path, (provider,), store)
     await models.list_models(refresh=False)
     launcher = Launcher()
+    launcher.store = store
     closing = AsyncExitStack()
     closing.push_async_callback(store.aclose)
     closing.push_async_callback(launcher.aclose)
@@ -115,10 +117,10 @@ async def test_interrupted_execution_with_history_is_not_blindly_reexecuted(tmp_
 async def test_failure_outside_the_runtime_still_ends_the_run_once(tmp_path):
     session, store, launcher = await assemble(tmp_path)
 
-    async def broken(provider, store, run_id, inputs, history):
+    async def broken(provider, run_id, *, inputs, history):
         raise RuntimeError("launcher broke")
 
-    launcher.run = broken
+    launcher.execute = broken
     with pytest.raises(RuntimeError):
         await session.run(Message("input-1", "user", "request"))
     entries = (await store.snapshot()).entries

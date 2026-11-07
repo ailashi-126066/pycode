@@ -4,14 +4,25 @@
 from langchain_core.callbacks import AsyncCallbackHandler
 
 from ..kernel import plain_data
-from .calibration import calibrate_model_request
+from ..tools import make_framework_tool
 from .context import RunContext
 
 
-async def prepare_model_boundary(request, bindings, tool_filters=()):
+async def prepare_model_boundary(request, discovery, tool_filters=()):
+    """Supply, filter and disclose tools without changing conversation history."""
+    context = request.runtime.context
+    tools = list(request.tools)
+    names = {tool.name for tool in tools if not isinstance(tool, dict)}
+    tools.extend(
+        make_framework_tool(spec, context)
+        for spec in context.registry.model_specs()
+        if spec.name not in names
+    )
+    request = request.override(
+        tools=tools, model_settings={**request.model_settings, "stream": True}
+    )
     request = filter_model_tools(request, tool_filters)
-    request = await bindings.disclose_model_tools(request)
-    return await calibrate_model_request(request, bindings.to_framework_messages)
+    return await discovery.disclose(request)
 
 
 def filter_model_tools(request, tool_filters=()):
@@ -91,8 +102,7 @@ class ModelEventCallbacks(AsyncCallbackHandler):
 
 
 async def save_message(context, message):
-    entry_id = await context.journal.append_message(message)
-    context.completed.append(message)
+    entry_id = await context.history.append_message(message)
     # A streamed assistant reply already sent message_start with its first chunk.
     if message.role != "assistant" or context.streamed_text is None:
         await context.events.emit("message_start", {"message": plain_data(message)})
@@ -112,11 +122,3 @@ async def deliver_input(context, message, kind):
             "entry_id": entry_id,
         },
     )
-
-
-class AgentMessagePublisher:
-    def __init__(self, context):
-        self.context = context
-
-    async def publish(self, message):
-        return await save_message(self.context, message)

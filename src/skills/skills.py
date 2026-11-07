@@ -14,6 +14,7 @@ from deepagents.backends.protocol import FileDownloadResponse, ReadResult
 from deepagents.middleware.skills import SkillsMiddleware, SkillsState
 
 from ..kernel import (
+    AfterToolCallResult,
     EntryDraft,
     Event,
     RunScope,
@@ -409,7 +410,7 @@ class SkillsSession:
                 }
         return None
 
-    async def after_tool_call(self, run: RunScope, call, result):
+    async def after_tool_call(self, run: RunScope, call, result) -> AfterToolCallResult | None:
         if not instruction_read(call.name, call.arguments):
             return None
         skill = self._reading.pop(call.id, None)

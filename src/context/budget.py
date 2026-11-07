@@ -6,7 +6,10 @@
 """Input budget and the context estimate, with provenance rather than fabricated live counts."""
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
+
+from langchain_core.messages import AIMessage, BaseMessage
 
 from ..kernel import Message, SessionTree, estimate_text, json_dumps, plain_data
 from ..models import model_tool_text
@@ -57,40 +60,70 @@ def estimate_messages(messages: tuple[Message, ...]) -> int:
     return total
 
 
+def estimate_framework_messages(messages: Sequence[BaseMessage]) -> int:
+    """Estimate the actual framework content and tool arguments prepared for a request."""
+    total = 0
+    for message in messages:
+        total += 4
+        if isinstance(message.content, str):
+            total += estimate_text(message.content)
+        else:
+            for block in message.content:
+                if isinstance(block, dict) and block.get("type") in {"image", "image_url", "file"}:
+                    total += 1024
+                else:
+                    total += estimate_text(
+                        block if isinstance(block, str) else json_dumps(block, ensure_ascii=False)
+                    )
+        if isinstance(message, AIMessage):
+            reasoning = message.additional_kwargs.get("reasoning_content", "")
+            total += estimate_text(reasoning)
+            for call in message.tool_calls:
+                total += estimate_text(
+                    call["name"] + json_dumps(call["args"], ensure_ascii=False, sort_keys=True)
+                )
+    return total
+
+
 class ContextMeter:
     def __init__(self, settings):
         self._settings = settings
 
-    # Pi: estimateProjectedContextTokens — last valid usage plus an estimated tail.
-    def report(self, snapshot, projection, tail: tuple[Message, ...] = ()):
+    def report(self, snapshot, messages: Sequence[BaseMessage], *, checkpoint=None):
+        """Measure prepared request messages; history supplies usage and invalidation metadata."""
         path = SessionTree(snapshot.index).path(snapshot.leaf_id)
-        positions = {entry.id: index for index, entry in enumerate(path)}
-        # Usage from before a later edit, compaction or model switch no longer matches the context.
         invalidating = max(
             (
                 index
                 for index, entry in enumerate(path)
-                if entry.type in {"context_edit", "compaction", "model_change"}
+                if entry.type in {"context_edit", "compaction", "model_change", "system_prompt"}
+                or (
+                    entry.type == "tool_set_change"
+                    and entry.data.get("source") == "effective_model"
+                )
             ),
             default=-1,
         )
-        by_message = {}
-        for item in projection.entries:
-            for message in item.messages:
-                by_message[message.id] = item.entry_id
+        originals = {
+            entry.message.id: (index, entry.message)
+            for index, entry in enumerate(path)
+            if entry.type == "message" and entry.message is not None
+        }
         tokens, source, anchor = None, "estimate", None
-        for index in range(len(projection.messages) - 1, -1, -1):
-            message = projection.messages[index]
-            usage = message.usage
-            if (
-                message.role != "assistant"
-                or usage is None
-                or message.stop_reason in {"error", "aborted"}
-            ):
+        for index in range(len(messages) - 1, -1, -1):
+            message = messages[index]
+            if not isinstance(message, AIMessage) or message.id is None:
                 continue
-            entry_id = by_message.get(message.id)
-            position = positions.get(entry_id, -1) if entry_id is not None else -1
-            if position <= invalidating:
+            original = originals.get(message.id)
+            if original is None:
+                continue
+            position, saved_message = original
+            usage = saved_message.usage
+            if (
+                position <= invalidating
+                or usage is None
+                or saved_message.stop_reason in {"error", "aborted"}
+            ):
                 continue
             reported = (
                 usage.input_tokens + usage.output_tokens
@@ -98,13 +131,14 @@ class ContextMeter:
                 else usage.total_tokens
             )
             if reported is not None and reported > 0:
-                tail = projection.messages[index + 1 :]
-                tokens = reported + estimate_messages(tail)
-                source = "provider_usage_and_estimated_tail" if tail else "provider_usage"
+                added = messages[index + 1 :]
+                tokens = reported + estimate_framework_messages(added)
+                source = "provider_usage_and_estimated_tail" if added else "provider_usage"
                 anchor = usage.request_id
                 break
         if tokens is None:
-            tokens = estimate_messages(projection.messages) + estimate_text(
+            tokens = estimate_framework_messages(messages)
+            tokens += estimate_text(
                 json_dumps(
                     [
                         plain_data(spec)
@@ -114,9 +148,7 @@ class ContextMeter:
                     ensure_ascii=False,
                 )
             )
-            tokens += projection.checkpoint.get("harness_system_tokens", 0)
-            # Messages that services append to each request (for example the task board view).
-            tokens += estimate_messages(tail)
+            tokens += (checkpoint or {}).get("harness_system_tokens", 0)
         budget = self._settings.budget
         return {
             "tokens": tokens,
@@ -129,5 +161,5 @@ class ContextMeter:
             "anchor_request_id": anchor,
         }
 
-    def estimate(self, snapshot, projection, tail: tuple[Message, ...] = ()):
-        return self.report(snapshot, projection, tail)["tokens"]
+    def estimate(self, snapshot, messages: Sequence[BaseMessage], *, checkpoint=None):
+        return self.report(snapshot, messages, checkpoint=checkpoint)["tokens"]
