@@ -1,3 +1,3 @@
-from .app.cli import main
+from .app.tui import main
 
 main()

@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pycode = "pycode.app.cli:main"
+pycode = "pycode.app.tui:main"
 
 [project.optional-dependencies]
 eval = ["langfuse==4.17.0", "openevals==0.2.0", "agentevals==0.0.9"]
