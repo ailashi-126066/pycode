@@ -90,7 +90,7 @@ class CompactionMiddleware(AgentMiddleware):
             context=contextvars.Context(),
         )
         self.job = Job([m.id for m in messages[: cut.index]], task)
-        writer({"compaction": "上下文接近上限，开始在后台生成摘要"})
+        writer({"compaction": "正在生成摘要"})
 
     async def adopt(self, messages, writer, limit: int | None = None):
         """Summary plus the kept messages, or None when they still would not fit under limit."""
@@ -110,3 +110,17 @@ class CompactionMiddleware(AgentMiddleware):
             return None
         writer({"compaction": f"已把前 {info['turns']} 轮对话压缩成摘要"})
         return kept
+
+    async def compact_now(self, agent, config, writer) -> None:
+        """Manual compaction (/compact), whatever the current size."""
+        messages = (await agent.aget_state(config)).values.get("messages", [])
+        if not self.job_covers(messages):
+            self.start_job(messages, writer)
+        if self.job is None:
+            writer({"compaction": "没有可以压缩的内容"})
+            return
+        kept = await self.adopt(messages, writer)
+        if kept is not None:
+            await agent.aupdate_state(
+                config, {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *kept]}
+            )

@@ -2,6 +2,7 @@
 
 import platform
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from langchain.agents import create_agent
@@ -17,7 +18,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from .config import Settings
 from .context import Context
 from .middleware.compaction import CompactionMiddleware
-from .models import create_model, load_providers
+from .models import Provider, create_model, load_providers
 from .sessions.catalog import open_storage
 from .tools.bash import bash
 from .tools.edit import edit
@@ -54,9 +55,8 @@ def tool_error(error: Exception, request) -> str:
 def build_agent(
     model: BaseChatModel,
     workspace: Path,
+    compaction: CompactionMiddleware,
     *,
-    context_window: int,
-    max_output_tokens: int,
     max_turns: int = 100,
     checkpointer=None,
 ):
@@ -67,9 +67,7 @@ def build_agent(
         system_prompt=prompt,
         middleware=[
             # First, so it wraps the retry below and sees context-overflow errors.
-            CompactionMiddleware(
-                model, context_window=context_window, max_output_tokens=max_output_tokens
-            ),
+            compaction,
             # Pauses before these tools run until the user approves or rejects each call.
             HumanInTheLoopMiddleware(
                 interrupt_on={
@@ -86,22 +84,34 @@ def build_agent(
     )
 
 
+@dataclass
+class Opened:
+    """What an interface works with while the agent is open."""
+
+    agent: object  # the compiled LangGraph agent
+    store: object  # session records (sessions/catalog.py)
+    compaction: CompactionMiddleware  # also used for manual compaction
+    provider: Provider
+
+
 @asynccontextmanager
 async def open_agent(settings: Settings):
-    """The agent on persistent SQLite storage, plus the store that holds the session list."""
+    """The agent on persistent SQLite storage; storage closes when the context exits."""
     providers = load_providers(settings.providers_file)
     provider = next((p for p in providers if p.name == settings.provider_name), None)
     if provider is None and settings.provider_name:
         raise ValueError(f"No provider named {settings.provider_name}")
     provider = provider or providers[0]
     model = create_model(provider, settings.workspace)
+    compaction = CompactionMiddleware(
+        model, context_window=provider.context_window, max_output_tokens=provider.max_output_tokens
+    )
     async with open_storage(settings.database) as (checkpointer, store):
         agent = build_agent(
             model,
             settings.workspace,
-            context_window=provider.context_window,
-            max_output_tokens=provider.max_output_tokens,
+            compaction,
             max_turns=settings.max_turns,
             checkpointer=checkpointer,
         )
-        yield agent, store
+        yield Opened(agent, store, compaction, provider)
