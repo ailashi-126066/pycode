@@ -78,12 +78,16 @@ async def events(agent, request, config, context):
                     for item in update:
                         yield Approval(item.id, item.value["action_requests"])
                     continue
-                for message in update.get("messages", []) if isinstance(update, dict) else []:
-                    if isinstance(message, RemoveMessage) or message.id in reported:
-                        continue
-                    reported.add(message.id)
-                    for event in message_events(node, message):
-                        yield event
+                # A node returns one dict, or a list of them when middleware added a Command
+                # (compaction saving the compacted history with the reply); some return None.
+                parts = update if isinstance(update, list) else [update]
+                for part in parts:
+                    for message in part.get("messages", []) if isinstance(part, dict) else []:
+                        if isinstance(message, RemoveMessage) or message.id in reported:
+                            continue
+                        reported.add(message.id)
+                        for event in message_events(node, message):
+                            yield event
 
 
 def message_events(node: str, message):
