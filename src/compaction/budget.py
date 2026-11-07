@@ -24,7 +24,10 @@ def thresholds(window: int, max_output: int) -> tuple[int, int]:
 
 
 def estimate_text(text: str) -> int:
-    return math.ceil(len(text) / 4)
+    """About 4 characters per token for English; one per Chinese (or other non-ASCII) character,
+    which errs on the high side so compaction starts early rather than late."""
+    wide = sum(1 for ch in text if ord(ch) > 127)
+    return wide + math.ceil((len(text) - wide) / 4)
 
 
 def estimate_message(message: BaseMessage) -> int:
@@ -32,6 +35,9 @@ def estimate_message(message: BaseMessage) -> int:
     if isinstance(message, AIMessage):
         for call in message.tool_calls:
             size += estimate_text(call["name"] + json.dumps(call["args"], ensure_ascii=False))
+    # DeepSeek's reasoning is sent back with every request (see models.ReasoningDeepSeek).
+    if reasoning := message.additional_kwargs.get("reasoning_content"):
+        size += estimate_text(reasoning)
     return size
 
 
