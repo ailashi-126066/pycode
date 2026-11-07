@@ -1,6 +1,7 @@
 """The one place the agent is assembled: model, tools, middleware and checkpointer."""
 
 import platform
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from langchain.agents import create_agent
@@ -13,7 +14,10 @@ from langchain.agents.middleware import (
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.memory import InMemorySaver
 
+from .config import Settings
 from .context import Context
+from .models import create_model, load_providers
+from .sessions.catalog import open_storage
 from .tools.bash import bash
 from .tools.edit import edit
 from .tools.files import ToolError
@@ -67,3 +71,18 @@ def build_agent(model: BaseChatModel, workspace: Path, *, max_turns: int = 100, 
         context_schema=Context,
         checkpointer=checkpointer or InMemorySaver(),
     )
+
+
+@asynccontextmanager
+async def open_agent(settings: Settings):
+    """The agent on persistent SQLite storage, plus the store that holds the session list."""
+    providers = load_providers(settings.providers_file)
+    provider = next((p for p in providers if p.name == settings.provider_name), None)
+    if provider is None and settings.provider_name:
+        raise ValueError(f"No provider named {settings.provider_name}")
+    model = create_model(provider or providers[0], settings.workspace)
+    async with open_storage(settings.database) as (checkpointer, store):
+        agent = build_agent(
+            model, settings.workspace, max_turns=settings.max_turns, checkpointer=checkpointer
+        )
+        yield agent, store
