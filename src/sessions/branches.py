@@ -1,11 +1,11 @@
 """Branches are LangGraph checkpoint history. The current branch is always the newest
 checkpoint of the thread; reverting or switching copies an older checkpoint to the top."""
 
-from langchain_core.messages import HumanMessage
+from ..compaction.summarize import count_turns
 
 
-def human_count(state) -> int:
-    return sum(isinstance(m, HumanMessage) for m in state.values.get("messages", []))
+def turn_count(state) -> int:
+    return count_turns(state.values.get("messages", []))
 
 
 async def current_path(agent, config) -> list:
@@ -27,8 +27,8 @@ async def revert(agent, config, turn: int) -> None:
 
     Later turns stay in history as another branch (see `branches`)."""
     for state in await current_path(agent, config):
-        # A finished run has nothing left to execute; its user-message count is the turn.
-        if not state.next and human_count(state) == turn:
+        # A finished run has nothing left to execute; its turn count says which turn it ends.
+        if not state.next and turn_count(state) == turn:
             await agent.aupdate_state(state.config, None)
             return
     raise ValueError(f"This session has no finished turn {turn}")

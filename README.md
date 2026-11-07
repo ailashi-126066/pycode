@@ -1,7 +1,10 @@
 # pycode
 
-终端编程 Agent，基于 LangChain `create_agent` 和 LangGraph。正在按 [计划.md](计划.md) 重构，目前完成阶段 2：
-内置工具（read、write、edit、bash、grep、find、ls）、写入和命令前的审批、会话保存、回退和分支。
+终端编程 Agent，基于 LangChain `create_agent` 和 LangGraph。正在按 [计划.md](计划.md) 重构，目前完成阶段 3：
+内置工具（read、write、edit、bash、grep、find、ls）、写入和命令前的审批、会话保存、回退和分支、
+上下文后台压缩（窗口用到 80% 时在后台生成摘要，90% 时用摘要替换旧消息）。
+
+摘要提示词来自 [Pi](https://github.com/earendil-works/pi)（MIT，见 `licenses/pi-MIT.txt`）。
 
 ## 安装
 

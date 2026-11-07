@@ -7,10 +7,11 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, ToolMessage
 from langgraph.types import Command
 
 from ..agent import open_agent
+from ..compaction.summarize import count_turns, is_summary
 from ..config import Settings
 from ..context import Context
 from ..sessions import branches
@@ -132,10 +133,12 @@ async def branches_command(args, settings, agent, store, config) -> int:
     await require_session(store, args.session, settings)
     head = (await agent.aget_state(config)).config["configurable"]["checkpoint_id"]
     for number, leaf in enumerate(await branches.branches(agent, config), 1):
-        humans = [m for m in leaf.values["messages"] if isinstance(m, HumanMessage)]
+        messages = leaf.values["messages"]
+        asks = [m.text for m in messages if isinstance(m, HumanMessage) and not is_summary(m)]
+        last = asks[-1][:40] if asks else "（已压缩）"
         mark = "（当前）" if leaf.config["configurable"]["checkpoint_id"] == head else ""
         wait = "（等待审批）" if leaf.next else ""
-        print(f"[{number}] {len(humans)} 轮  最后一问：{humans[-1].text[:40]}{mark}{wait}")
+        print(f"[{number}] {count_turns(messages)} 轮  最后一问：{last}{mark}{wait}")
     return 0
 
 
@@ -203,25 +206,32 @@ async def drive(agent, request, config, settings) -> int:
 async def stream_until_pause(agent, request, config, context) -> list:
     """Run until the agent finishes ([]) or pauses for approval (the pending interrupts)."""
     interrupts = []
+    # Middleware nodes repeat messages (approval re-emits the reply, compaction re-adds the
+    # kept history), so each message is shown once, by id.
+    shown = {m.id for m in (await agent.aget_state(config)).values.get("messages", [])}
     async for mode, chunk in agent.astream(
-        request, config, context=context, stream_mode=["messages", "updates"]
+        request, config, context=context, stream_mode=["messages", "updates", "custom"]
     ):
         if mode == "messages":
             # Model text arrives token by token.
             token, metadata = chunk
             if metadata.get("langgraph_node") == "model" and token.text:
                 print(token.text, end="", flush=True)
-            continue
-        # mode == "updates": what each graph node produced once it finished.
-        for node, update in chunk.items():
-            if node == "__interrupt__":
-                # Keep reading: the stream must finish so LangGraph saves the paused state.
-                interrupts = list(update)
-                continue
-            if not isinstance(update, dict):
-                continue
-            for message in update.get("messages", []):
-                show(node, message)
+        elif mode == "custom":
+            # Notices middleware writes with runtime.stream_writer.
+            if "compaction" in chunk:
+                print(f"\n[压缩] {chunk['compaction']}")
+        else:
+            # mode == "updates": what each graph node produced once it finished.
+            for node, update in chunk.items():
+                if node == "__interrupt__":
+                    # Keep reading: the stream must finish so LangGraph saves the paused state.
+                    interrupts = list(update)
+                    continue
+                for message in update.get("messages", []) if isinstance(update, dict) else []:
+                    if message.id not in shown and not isinstance(message, RemoveMessage):
+                        shown.add(message.id)
+                        show(node, message)
     print()
     return interrupts
 
@@ -229,7 +239,10 @@ async def stream_until_pause(agent, request, config, context) -> list:
 def print_history(messages) -> None:
     turn = 0
     for message in messages:
-        if isinstance(message, HumanMessage):
+        if is_summary(message):
+            turn = count_turns([message])
+            print(f"\n[1-{turn}] 前 {turn} 轮已压缩成摘要")
+        elif isinstance(message, HumanMessage):
             turn += 1
             print(f"\n[{turn}] 你：{message.text}")
         elif isinstance(message, AIMessage) and message.text:
@@ -238,12 +251,11 @@ def print_history(messages) -> None:
 
 
 def show(node: str, message) -> None:
-    if isinstance(message, AIMessage) and node == "model":
-        # Its text was already streamed; show which tools it asked for.
+    if isinstance(message, AIMessage):
+        if node != "model" and message.text:
+            print(f"\n{message.text}")  # not streamed, e.g. the notice when --max-turns is hit
         for call in message.tool_calls:
             print(f"\n→ {call['name']} {json.dumps(call['args'], ensure_ascii=False)}")
-    elif isinstance(message, AIMessage) and node.startswith("ModelCallLimitMiddleware"):
-        print(f"\n{message.text}")  # the run hit --max-turns
     elif isinstance(message, ToolMessage):  # from the tools node, or a rejection from approval
         mark = "✗" if message.status == "error" else "←"
         lines = message.text.splitlines() or [""]

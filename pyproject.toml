@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "pycode"
 version = "0.1.0"
 description = "pycode: a terminal coding agent built on LangChain and LangGraph"
+license-files = ["licenses/*.txt"]
 requires-python = ">=3.11"
 dependencies = [
     "deepagents==0.7.32",
