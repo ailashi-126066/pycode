@@ -1,8 +1,0 @@
-{
-  "source": "author-owned skills/install.py and tests/test_skill_install.py; fixed local inventory in docs/source-map.md",
-  "source_sha256": {"install.py": "0393811fad87caf067df6c006cc652298ebb151c86ee9883087d557bc85178b0", "test_skill_install.py": "4ac6d61de194cb9e36e1a3b22e5d55de99b4c0aae97289f5293c432935a4ed61"},
-  "valid": ["https://skills.sh/owner/repo/sample", "https://github.com/owner/repo/tree/main/skills/sample", "https://raw.githubusercontent.com/owner/repo/main/skills/sample/SKILL.md"],
-  "invalid": ["file:///tmp/sample", "https://evil.invalid/sample", "https://github.com/owner/repo/tree/main/%2e%2e/sample", "https://raw.githubusercontent.com/owner/repo/main/sample/tool.py"],
-  "cases": ["old installation and user notes retained in backup", "invalid manifest leaves old installation untouched", "folder sample and manifest vendor-sample can differ", "path traversal and actual oversize rejected", "cancel cleans staging and preserves destination", "publish failure restores old installation", "download and catalog scan never import resource Python"],
-  "adaptations": ["repository-root URLs", "resolve refs to immutable commits before contents download", "record provenance and per-file SHA-256", "portable path validation", "owned asynchronous I/O", "common permission and operation ledger"]
-}

@@ -1,5 +1,0 @@
-{
-  "source": "author-owned sandbox/seatbelt.py and tests/test_os_sandbox.py; fixed inventory in docs/source-map.md",
-  "source_sha256": {"seatbelt.py": "b16d640a21d057388a858dd047302916167e49e08bafbc23c4b2f058750267af", "test_os_sandbox.py": "beff88ea21e32a27b120d180521efc1a2bb970ca331129892e22081775acb76b"},
-  "cases": ["default off", "available requires actual probe", "unavailable never auto approves", "on retains approval", "on-auto applies only to builtin Bash", "no unsandboxed retry after sandbox launch failure", "literal quoted paths", "read allowed and network denied", "state and git write/remove protected"]
-}

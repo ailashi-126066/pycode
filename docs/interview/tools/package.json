@@ -1,9 +1,0 @@
-{
-  "name": "pycode-interview-book",
-  "private": true,
-  "description": "Build-only dependencies; generated HTML has no network dependencies.",
-  "dependencies": {
-    "marked": "17.0.5",
-    "@viz-js/viz": "3.25.0"
-  }
-}

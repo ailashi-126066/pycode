@@ -5,8 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pycode"
 version = "0.1.0"
-description = "pycode: a Python coding agent with persistent conversation branches"
-license-files = ["docs/licenses/*.txt"]
+description = "pycode: a terminal coding agent built on LangChain and LangGraph"
 requires-python = ">=3.11"
 dependencies = [
     "deepagents==0.7.32",
@@ -28,11 +27,11 @@ dependencies = [
 ]
 
 [project.scripts]
-pycode = "pycode.app.cli.main:main"
+pycode = "pycode.app.cli:main"
 
 [project.optional-dependencies]
 eval = ["langfuse==4.17.0", "openevals==0.2.0", "agentevals==0.0.9"]
-dev = ["pytest>=9,<10", "pytest-asyncio>=1,<2", "ruff>=0.17,<1", "build>=1,<2", "setuptools==80.9.0", "wheel==0.45.1", "pyright==1.1.414"]
+dev = ["pytest>=9,<10", "pytest-asyncio>=1,<2", "ruff>=0.17,<1", "setuptools==80.9.0", "wheel==0.45.1"]
 
 [tool.setuptools.package-dir]
 pycode = "src"
@@ -41,8 +40,8 @@ pycode = "src"
 pycode = ["**/*.md", "**/*.tcss"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "evals/tests"]
-norecursedirs = [".git", ".venv", ".runtime-tests", ".t", ".fix-20261013", "audit-20261013", "cache", "work", "results", "dependency-artifacts"]
+testpaths = ["tests"]
+norecursedirs = [".git", ".venv", "cache", "work", "results"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
@@ -52,16 +51,10 @@ addopts = "-ra --import-mode=importlib"
 target-version = "py311"
 line-length = 100
 src = ["src"]
-exclude = [".source-cache", ".venv", ".worktrees", "tests/.runtime-tests", "tests/.t", "tests/.fix-20261013", "tests/audit-20261013", "tests/dependency-artifacts", "evals/cache", "evals/work", "evals/results"]
+exclude = [".venv", ".worktrees", "evals/cache", "evals/work", "evals/results"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "ASYNC"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["pycode", "evals", "scripts", "tests"]
-
-[tool.pyright]
-include = ["src"]
-typeCheckingMode = "basic"
-pythonVersion = "3.11"
-reportMissingTypeStubs = false
+known-first-party = ["pycode", "evals"]

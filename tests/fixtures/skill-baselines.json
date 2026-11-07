@@ -1,9 +1,0 @@
-{
-  "source": "author-owned skills/parser.py, skills/loader.py and tests/test_skills.py; fixed inventory in docs/source-map.md",
-  "source_sha256": {"parser.py": "eba23547c0b392cd13211b38d1f45bc71a86c7de21a05b9998a3cd227ca3a11d", "loader.py": "5888d912116f3a08cca7d75e54234299d6d2e8aa2789ca42c017d804390cc9b3", "test_skills.py": "eed0713948faa550a626815080882a750a25b6fa8212aac116e9ff36c172d313"},
-  "valid": "---\nname: test-skill\ndescription: A test skill\nallowedTools:\n  - Bash\n  - Read\nmode: inline\n---\n# Task\nDo $ARGUMENTS now.\n",
-  "invalid": ["no frontmatter", "---\nname: foo\n", "---\n- list\n---\nbody", "---\nname: foo\ndescription: x\nmode: bad\n---\nbody"],
-  "substitutions": [["Do $ARGUMENTS now", "something", "Do something now"], ["$ARGUMENTS and $ARGUMENTS", "x", "x and x"], ["No placeholder", "ignored", "No placeholder"]],
-  "precedence": ["builtin", "user", "project-agents", "project"],
-  "adaptations": ["recursive SKILL.md discovery", "explicit project trust", "no hot reload of pinned active content", "strict metadata validation", "branch-scoped immutable snapshots"]
-}
