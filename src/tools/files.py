@@ -62,10 +62,14 @@ class Files:
             target.parent.mkdir(parents=True, exist_ok=True)
             # Write a sibling file, then rename it over the target: readers never see half a file.
             temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
-            temporary.write_bytes(data)
-            if target.exists():
-                shutil.copymode(target, temporary)
-            os.replace(temporary, target)
+            try:
+                temporary.write_bytes(data)
+                if target.exists():
+                    shutil.copymode(target, temporary)
+                os.replace(temporary, target)
+            except BaseException:
+                temporary.unlink(missing_ok=True)  # e.g. the disk filled up: leave no stray file
+                raise
             self.seen[target] = hashlib.sha256(data).hexdigest()
 
     def check_unchanged(self, target: Path, path: str) -> None:

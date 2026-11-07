@@ -24,9 +24,6 @@ class Provider:
     api_key_env: str  # the name of an environment variable; the file never holds the key
     context_window: int
     max_output_tokens: int
-    supports_tools: bool = True
-    supports_thinking: bool = False
-    supports_images: bool = False
     thinking: dict[str, Any] = field(default_factory=dict)
     openai_api: Literal["chat_completions", "responses"] | None = None
     reasoning_effort: str | None = None
