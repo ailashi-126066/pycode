@@ -38,17 +38,20 @@ from ..tools.files import ToolError
 
 MAX_RUNNING = 4
 RESULT_LIMIT = 6000  # characters of a subagent's final reply passed to the main agent
-FINISHED = {"completed", "failed", "stopped", "interrupted"}
+FINISHED = {"completed", "limited", "failed", "stopped", "interrupted"}
 STATUS = {
     "queued": "排队中",
     "running": "运行中",
     "waiting": "等待审批",
     "completed": "完成",
+    "limited": "用完了轮数，没做完",
     "failed": "失败",
     "stopped": "已停止",
     "interrupted": "已中断",
 }
 REJECTED = {"type": "reject", "message": "无人审批：这次调用没有执行"}
+# What ModelCallLimitMiddleware writes as the last reply when the turns run out.
+LIMIT_REPLY = "Model call limits exceeded"
 
 
 @dataclass
@@ -200,8 +203,12 @@ class Subagents(AgentMiddleware):
                 )
                 await self.answer_pending(agent, child, config, context)
             messages = (await child.aget_state(config)).values.get("messages", [])
-            reply = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
-            agent.status, agent.result = "completed", reply.text if reply else ""
+            replies = [m.text for m in messages if isinstance(m, AIMessage) and m.text]
+            limited = bool(replies) and replies[-1].startswith(LIMIT_REPLY)
+            if limited:  # its turns ran out: what it last said is the partial result
+                replies.pop()
+            agent.status = "limited" if limited else "completed"
+            agent.result = replies[-1] if replies else ""
         except asyncio.CancelledError:
             agent.status = "interrupted" if self.closing else "stopped"
             await settle_cancelled(child, config)
