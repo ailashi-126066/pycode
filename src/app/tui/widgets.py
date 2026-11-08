@@ -100,10 +100,11 @@ class ApprovalPanel(Vertical, can_focus=True):
         Binding("enter", "choose", "Choose", priority=True),
     ]
 
-    def __init__(self, action: dict, who: str = ""):
+    def __init__(self, action: dict, who: str = "", take_focus: bool = True):
         super().__init__()
         self.action = action
         self.who = who  # e.g. "子 agent a1" when a subagent asks
+        self.take_focus = take_focus
         self.allow = True  # the highlighted option
         self.answer: asyncio.Future = asyncio.get_running_loop().create_future()
 
@@ -124,7 +125,8 @@ class ApprovalPanel(Vertical, can_focus=True):
         return f"{allow}   {reject}"
 
     def on_mount(self) -> None:
-        self.focus()
+        if self.take_focus:
+            self.focus()
 
     def action_toggle(self) -> None:
         self.allow = not self.allow
@@ -138,6 +140,11 @@ class ApprovalPanel(Vertical, can_focus=True):
             self.answer.set_result(allow)
             label = "已允许" if allow else "已拒绝"
             self.query_one("#approval-options", Static).update(label)
+
+    def cancel_panel(self) -> None:
+        """Whoever asked no longer waits (a stopped subagent): the panel stops taking keys."""
+        self.answer.cancel()  # does nothing when already cancelled or answered
+        self.query_one("#approval-options", Static).update("已取消")
 
 
 class PlanPanel(Vertical, can_focus=True):

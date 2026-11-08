@@ -261,17 +261,29 @@ class PycodeApp(App):
         """A subagent paused for approval: ask here, in the main window."""
         async with self.asking:
             decisions = []
-            for action in value["action_requests"]:
-                self.pending = ApprovalPanel(action, who=f"子 agent {agent.name}")
-                await self.transcript.mount(self.pending)
-                allowed = await self.pending.answer
-                decisions.append(
-                    {"type": "approve"}
-                    if allowed
-                    else {"type": "reject", "message": "用户拒绝执行"}
-                )
-            self.pending = None
-            self.query_one(ChatInput).focus()  # back to typing, as after the main agent's
+            try:
+                for action in value["action_requests"]:
+                    # A background subagent asks at any time: do not take the keys from
+                    # someone typing, or their Enter would answer the panel.
+                    typing = bool(self.query_one(ChatInput).text)
+                    who = f"子 agent {agent.name}"
+                    self.pending = ApprovalPanel(action, who=who, take_focus=not typing)
+                    await self.transcript.mount(self.pending)
+                    allowed = await self.pending.answer
+                    decisions.append(
+                        {"type": "approve"}
+                        if allowed
+                        else {"type": "reject", "message": "用户拒绝执行"}
+                    )
+            except asyncio.CancelledError:
+                # StopAgent stopped the subagent while its panel was open (asyncio has
+                # cancelled the panel's answer along with it).
+                if self.pending is not None:
+                    self.pending.cancel_panel()
+                raise
+            finally:
+                self.pending = None
+                self.query_one(ChatInput).focus()  # back to typing, as after the main agent's
             return {"decisions": decisions}
 
     async def subagent_finished(self, agent: Subagent) -> None:
