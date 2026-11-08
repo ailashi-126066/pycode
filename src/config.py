@@ -14,12 +14,18 @@ class Settings:
     providers_file: Path
     provider_name: str | None = None
     max_turns: int = 100
+    sandbox: bool = True  # --no-sandbox turns Seatbelt off
     # Sessions of every workspace live in one SQLite file here; PYCODE_HOME overrides it.
     data_dir: Path = Path(os.environ.get("PYCODE_HOME", Path.home() / ".pycode"))
 
     @property
     def database(self) -> Path:
         return self.data_dir / "sessions.sqlite"
+
+    @property
+    def settings_file(self) -> Path:
+        # "allow_commands": bash commands that run without approval (see sandbox.py).
+        return self.data_dir / "settings.json"
 
     @property
     def mcp_file(self) -> Path:

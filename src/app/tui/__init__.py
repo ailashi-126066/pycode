@@ -19,6 +19,11 @@ def main(argv=None) -> None:
         default=100,
         help="Most model calls before a run stops; counting restarts after each approval",
     )
+    parser.add_argument(
+        "--no-sandbox",
+        action="store_true",
+        help="Run bash commands without Seatbelt (approval still applies)",
+    )
     args = parser.parse_args(argv)
     workspace = args.workspace.resolve()
     settings = Settings(
@@ -26,5 +31,6 @@ def main(argv=None) -> None:
         providers_file=args.providers or workspace / "providers.json",
         provider_name=args.provider,
         max_turns=args.max_turns,
+        sandbox=not args.no_sandbox,
     )
     PycodeApp(settings, args.session).run()

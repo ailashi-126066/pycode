@@ -8,6 +8,7 @@ import subprocess
 from langchain.tools import ToolRuntime, tool
 
 from ..context import Context
+from ..sandbox import denied_command, sandboxed
 from .files import MAX_BYTES, ToolError, output_file, tail
 
 # Variables a shell, git, Python or a virtualenv needs; everything else is withheld.
@@ -41,17 +42,21 @@ async def bash(command: str, runtime: ToolRuntime[Context], timeout: float = 120
         command: The shell command to run.
         timeout: Seconds before the command is stopped, at most 600.
     """
+    if reason := denied_command(command):
+        raise ToolError(f"Command refused: {reason}. Do not try to work around this.")
     shell = shutil.which("bash")
     if shell is None:
         raise ToolError("bash is not installed")
+    workspace = runtime.context.files.workspace
+    argv = [shell, "-c", command]
+    if runtime.context.sandboxed:
+        argv = sandboxed(argv, workspace)
     log = output_file()
     timed_out = False
     with log.open("wb") as output:
         process = await asyncio.create_subprocess_exec(
-            shell,
-            "-c",
-            command,
-            cwd=runtime.context.files.workspace,
+            *argv,
+            cwd=workspace,
             stdout=output,
             stderr=subprocess.STDOUT,
             env=command_environment(),

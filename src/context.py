@@ -8,3 +8,4 @@ from .tools.files import Files
 @dataclass
 class Context:
     files: Files
+    sandboxed: bool = False  # bash commands run under Seatbelt (see sandbox.py)

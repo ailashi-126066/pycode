@@ -15,6 +15,7 @@ from langchain.agents.middleware import (
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.memory import InMemorySaver
 
+from . import sandbox
 from .config import Settings
 from .context import Context
 from .middleware.agents_md import agents_md_middleware
@@ -22,6 +23,7 @@ from .middleware.compaction import CompactionMiddleware
 from .middleware.skills import skills_middleware
 from .middleware.tool_search import ToolSearchMiddleware
 from .models import Provider, create_model, load_providers
+from .sandbox import approval_check, load_allowed
 from .sessions.catalog import open_storage
 from .tools import mcp
 from .tools.bash import bash
@@ -69,8 +71,11 @@ def build_agent(
     workspace = settings.workspace.resolve()
     prompt = f"{SYSTEM_PROMPT}\n\n工作目录：{workspace}\n操作系统：{platform.system()}"
     mcp_tools = [tool for server in servers for tool in server.tools]
-    needs_approval = ["write", "edit", "bash"]
-    needs_approval += [tool.name for server in servers if server.approve for tool in server.tools]
+    ask = {"allowed_decisions": ["approve", "reject"]}
+    approvals = {"write": ask, "edit": ask}
+    # bash asks unless the command is allowed in settings.json, or refused anyway.
+    approvals["bash"] = {**ask, "when": approval_check(load_allowed(settings.settings_file))}
+    approvals |= {tool.name: ask for server in servers if server.approve for tool in server.tools}
     return create_agent(
         model,
         tools=[read, write, edit, bash, grep, find, ls, *mcp_tools],
@@ -84,11 +89,7 @@ def build_agent(
             # Before the retry below, so it sees context-overflow errors.
             compaction,
             # Pauses before these tools run until the user approves or rejects each call.
-            HumanInTheLoopMiddleware(
-                interrupt_on={
-                    name: {"allowed_decisions": ["approve", "reject"]} for name in needs_approval
-                }
-            ),
+            HumanInTheLoopMiddleware(interrupt_on=approvals),
             ModelRetryMiddleware(max_retries=3),
             ModelCallLimitMiddleware(run_limit=settings.max_turns, exit_behavior="end"),
             ToolErrorMiddleware(on_error=tool_error),
@@ -108,6 +109,7 @@ class Opened:
     skills: SkillsMiddleware  # also used to list skills for /skills and /skill
     servers: list[Server]  # MCP servers, connected or with the error that stopped them
     provider: Provider
+    sandboxed: bool  # Seatbelt is on and works here; bash commands run under it
 
 
 @asynccontextmanager
@@ -124,10 +126,11 @@ async def open_agent(settings: Settings):
         model, context_window=provider.context_window, max_output_tokens=provider.max_output_tokens
     )
     skills = skills_middleware(settings.skill_dirs)
+    sandboxed = settings.sandbox and await sandbox.available(settings.workspace)
     mcp_log = settings.data_dir / "mcp.log"
     async with (
         open_storage(settings.database) as (checkpointer, store),
         mcp.connect(settings.mcp_file, mcp_log) as servers,
     ):
         agent = build_agent(model, settings, compaction, skills, servers, checkpointer=checkpointer)
-        yield Opened(agent, store, compaction, skills, servers, provider)
+        yield Opened(agent, store, compaction, skills, servers, provider, sandboxed)

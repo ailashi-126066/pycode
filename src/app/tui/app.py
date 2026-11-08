@@ -104,8 +104,13 @@ class PycodeApp(App):
             await commands.run(self, f"/open {self.session_id}")
         await self.refresh_status()
         self.query_one(ChatInput).focus()
+        problems = []
+        if self.settings.sandbox and not self.opened.sandboxed:
+            problems.append("沙箱不可用：bash 命令不受系统限制，仍然需要审批")
         if failed := [server.name for server in self.opened.servers if server.error]:
-            self.show_notice(f"MCP 服务器连接失败：{', '.join(failed)}，用 /mcp 查看", "error")
+            problems.append(f"MCP 服务器连接失败：{', '.join(failed)}，用 /mcp 查看")
+        if problems:
+            self.show_notice("\n".join(problems), "warning")
 
     async def reopen_agent(self) -> None:
         """Open (or, after /model, reopen) the agent and its storage."""
@@ -163,7 +168,10 @@ class PycodeApp(App):
     async def drive(self, request) -> None:
         """Stream the run into one assistant turn, asking whenever it pauses for approval."""
         skill_dirs = list(self.settings.skill_dirs.values())
-        context = Context(files=Files(self.settings.workspace, read_only=skill_dirs))
+        context = Context(
+            files=Files(self.settings.workspace, read_only=skill_dirs),
+            sandboxed=self.opened.sandboxed,
+        )
         turn = AssistantTurn(self.blocks)
         await self.transcript.mount(turn)
         try:
@@ -259,9 +267,11 @@ class PycodeApp(App):
         state = await self.opened.agent.aget_state(self.config)
         tokens = context_tokens(state.values.get("messages", []), self.opened.compaction.overhead)
         share = tokens * 100 // provider.context_window
+        sandbox = "开" if self.opened.sandboxed else "关"
         self.query_one("#status", Static).update(
             f"模型：{provider.name} / {provider.model_id} · "
-            f"上下文：{tokens:,} / {provider.context_window:,}（{share}%）· 会话 {self.session_id}"
+            f"上下文：{tokens:,} / {provider.context_window:,}（{share}%）· "
+            f"沙箱：{sandbox} · 会话 {self.session_id}"
         )
 
     # ---- keys ----
