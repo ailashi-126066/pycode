@@ -91,6 +91,7 @@ def build_agent(
     workspace = settings.workspace.resolve()
     prompt = f"{SYSTEM_PROMPT}\n\n工作目录：{workspace}\n操作系统：{platform.system()}"
     mcp_tools = [tool for server in servers for tool in server.tools]
+    subagent_tools = subagents.tools if subagents is not None else []
     allowed_commands = load_allowed(settings.settings_file)
     # Who asks the user before a tool runs. `approval` skips asking while planning and while an
     # approved plan runs automatically; the extra checks are the tool's own reasons to skip.
@@ -117,7 +118,8 @@ def build_agent(
     }
     return create_agent(
         model,
-        tools=[read, write, edit, bash, grep, find, ls, *mcp_tools],
+        # Agent, SendMessage and StopAgent come from the subagent manager.
+        tools=[read, write, edit, bash, grep, find, ls, *mcp_tools, *subagent_tools],
         system_prompt=prompt,
         middleware=[
             # Adds the user's words that arrived while the agent was working.
@@ -128,8 +130,6 @@ def build_agent(
             # After ToolSearch: while planning it keeps only the read tools, MCP ones too.
             PlanModeMiddleware(allowed_commands),
             TaskBoardMiddleware(),
-            # Agent, SendMessage and StopAgent; it adds nothing to the requests.
-            *([subagents] if subagents is not None else []),
             skills,
             agents_md_middleware(settings.instruction_files),
             # The memory index in the system prompt, the memory tools, the background pass.

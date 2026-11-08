@@ -4,8 +4,9 @@ The main agent has three tools: Agent starts a subagent, SendMessage continues a
 StopAgent stops a running one. Agent returns at once; when the subagent finishes, `notify`
 (set by the interface) hands its result to the main session, which wakes the main agent.
 
-Each subagent is its own agent (built by `build_child`, see agent.py) on its own thread
-`<session>-<name>`, in the same checkpointer: its history stays out of the main context, and
+Subagents are named a1, a2, ... in the order a session starts them. Each is its own agent
+(built by `build_child`, see agent.py) on its own thread `<session>-<name>`, in the same
+checkpointer: its history stays out of the main context, and
 SendMessage continues that thread. Two modes:
 - readonly: read, ls, grep, find, and bash for the allowed commands only (sandbox.py);
 - worktree: all built-in tools, working in a git worktree of its own on branch
@@ -20,7 +21,6 @@ when pycode closes end as interrupted.
 
 import asyncio
 import os
-import re
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -130,9 +130,12 @@ def notification(agent: Subagent) -> str:
     lines.append(f"它的结果：\n{result or '（没有回复）'}")
     if agent.branch:
         lines.append(
-            f"改动已提交在分支 {agent.branch}（worktree：{agent.worktree}）。用 git merge "
-            f"{agent.branch} 合并，再运行相关测试；有冲突时自己解决，或用 SendMessage 让 "
-            f"{agent.name} 修改后再合并。"
+            f"改动已提交在分支 {agent.branch}（worktree：{agent.worktree}），还没有合并。"
+            f"用 git merge {agent.branch} 合并，再运行相关测试。\n"
+            f"有冲突时你自己解决；想知道它为什么这样改，用 SendMessage 问 {agent.name}。"
+            f"解决不了就 git merge --abort，告诉用户哪些文件冲突、为什么。\n"
+            f"合并好以后清理：git worktree remove {agent.worktree}，"
+            f"再 git branch -d {agent.branch}。"
         )
     elif agent.mode == "worktree":
         lines.append("它没有改动任何文件，worktree 已删除。")
@@ -141,14 +144,13 @@ def notification(agent: Subagent) -> str:
     return "\n\n".join(lines)
 
 
-# ---- the manager, which is also the main agent's middleware ----
+# ---- the manager; its tools go to the main agent ----
 
 
-class Subagents(AgentMiddleware):
+class Subagents:
     def __init__(
         self, build_child, store, workspace: Path, worktree_root: Path, max_turns: int, steering
     ):
-        super().__init__()
         self.steering = steering  # SendMessage reaches a running subagent through it
         self.build_child = build_child  # (Subagent) -> (compiled agent, Context)
         self.store = store
@@ -158,7 +160,7 @@ class Subagents(AgentMiddleware):
         self.limit = asyncio.Semaphore(MAX_RUNNING)
         self.running: dict[str, asyncio.Task] = {}  # thread id -> task
         self.closing = False
-        # Held from picking a name to saving the record: parallel Agent calls get different names.
+        # Held from numbering to saving the record: parallel Agent calls get different names.
         self.naming = asyncio.Lock()
         # Set by the interface. Without them results are only saved, and approvals rejected.
         self.notify = None  # async (Subagent) -> None
@@ -274,7 +276,6 @@ class Subagents(AgentMiddleware):
             prompt: str,
             mode: Literal["readonly", "worktree"],
             runtime: ToolRuntime[Context],
-            name: str | None = None,
             max_turns: int | None = None,
         ) -> str:
             """Start a subagent in the background with its own context; this returns at once.
@@ -284,22 +285,20 @@ class Subagents(AgentMiddleware):
             started from the last commit (uncommitted changes are not there); its changes are
             committed on a branch you then merge with git merge. Give subagents that run at
             the same time different files. At most 4 run at once; more wait their turn.
+            It is named a1, a2, ... in order; this returns the name, which SendMessage and
+            StopAgent take.
 
             Args:
                 description: What it does, in a few words.
                 prompt: The whole task. It knows nothing of this conversation: say what to
                     do, where, and what its final reply must contain.
                 mode: readonly or worktree.
-                name: Lowercase letters, digits and hyphens; a1, a2, ... when left out.
                 max_turns: Fewer model calls than the default, for a small task.
             """
             parent = runtime.config["configurable"]["thread_id"]
             async with manager.naming:
                 used = {agent.name for agent in await manager.list(parent)}
-                if name is None:
-                    name = next(f"a{n}" for n in range(1, 1000) if f"a{n}" not in used)
-                elif not re.fullmatch(r"[a-z0-9-]{1,32}", name) or name in used:
-                    raise ToolError(f"Name {name} is taken, or not made of a-z, 0-9 and -")
+                name = next(f"a{n}" for n in range(1, len(used) + 2) if f"a{n}" not in used)
                 agent = Subagent(name, parent, description, mode, max_turns)
                 agent.workdir = str(manager.workspace)
                 await manager.save(agent)
@@ -326,8 +325,10 @@ class Subagents(AgentMiddleware):
                 return f"Subagent {agent} is working; it reads this before its next step."
             if found.status not in FINISHED:
                 raise ToolError(f"Subagent {agent} is still {found.status}")
-            if found.mode == "worktree" and not found.worktree:
-                raise ToolError(f"Subagent {agent} changed nothing and its worktree was removed")
+            # Removed because nothing changed, or by the main agent after merging.
+            kept = found.worktree and await asyncio.to_thread(os.path.isdir, found.worktree)
+            if found.mode == "worktree" and not kept:
+                raise ToolError(f"Subagent {agent}'s worktree was removed")
             found.status, found.result = "queued", ""
             await manager.save(found)
             manager.launch(found, message)
