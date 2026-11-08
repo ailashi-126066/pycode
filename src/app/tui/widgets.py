@@ -20,9 +20,17 @@ class ChatInput(TextArea):
         Binding("enter", "submit", "Send", priority=True),
         Binding("shift+enter,ctrl+j", "newline", "Newline", priority=True),
         Binding("tab", "complete", "Complete", priority=True, show=False),
+        Binding("escape", "interrupt", show=False),
     ]
 
     class Submitted(Message):
+        def __init__(self, text: str):
+            super().__init__()
+            self.text = text
+
+    class Interrupted(Message):
+        """Esc with text in the box: stop the run and send this instead."""
+
         def __init__(self, text: str):
             super().__init__()
             self.text = text
@@ -41,6 +49,9 @@ class ChatInput(TextArea):
         if self.text.strip():
             self.post_message(self.Submitted(self.text.strip()))
             self.clear()
+
+    def action_interrupt(self) -> None:
+        self.post_message(self.Interrupted(self.text.strip()))
 
     def action_newline(self) -> None:
         self.insert("\n")

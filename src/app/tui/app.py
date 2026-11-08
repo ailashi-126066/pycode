@@ -16,7 +16,7 @@ from textual.worker import WorkerState
 from ... import __version__
 from ...agent import open_agent
 from ...compaction.budget import context_tokens
-from ...compaction.summarize import count_turns, is_skill, is_summary, is_user_turn
+from ...compaction.summarize import count_turns, is_skill, is_steer, is_summary, is_user_turn
 from ...context import Context
 from ...middleware.subagents import Subagent, notification
 from ...middleware.task_board import DONE, render
@@ -99,6 +99,7 @@ class PycodeApp(App):
             asyncio.Lock()
         )  # one approval panel at a time, the main agent's or a subagent's
         self.notices: list[str] = []  # finished subagents waiting to be handed to the main agent
+        self.next_turn: str | None = None  # sent once the run in progress has ended
 
     @property
     def config(self) -> dict:
@@ -163,9 +164,24 @@ class PycodeApp(App):
         if event.text.startswith("/"):
             await commands.run(self, event.text)
         elif self.running():
-            self.show_notice("模型还在运行，按 Ctrl+C 停止", "warning")
+            # Steering: the agent reads it before its next step (middleware/steering.py).
+            self.opened.steering.put(self.session_id, event.text)
+            await self.write_user(event.text, steer=True)
+            self.show_notice(
+                "已插话：模型下一步会看到。Esc 停止并立即发送，Ctrl+C 只停止", "success"
+            )
         else:
             self.run_turn(event.text)
+
+    async def on_chat_input_interrupted(self, event: ChatInput.Interrupted) -> None:
+        """Esc: with words while the model runs, stop this run and send them as the next turn."""
+        if not (event.text and self.running()):
+            self.action_dismiss_notice()
+            return
+        self.query_one(ChatInput).clear()
+        await self.write_user(event.text)
+        self.next_turn = event.text
+        self.action_stop()
 
     def running(self) -> bool:
         return any(worker.group == "agent" and worker.is_running for worker in self.workers)
@@ -173,13 +189,16 @@ class PycodeApp(App):
     # ---- running the agent ----
 
     @work(exclusive=True, group="agent")
-    async def run_turn(self, text: str, skill: str | None = None, plan: bool = False) -> None:
+    async def run_turn(
+        self, text: str, skill: str | None = None, plan: bool = False, echo: bool = True
+    ) -> None:
         """One user turn; with `skill`, that skill's SKILL.md is pinned in after the message;
         with `plan`, the turn starts plan mode (see middleware/plan_mode.py)."""
         session = await get_session(self.opened.store, self.session_id)
         title = session.title if session else text
         await save_session(self.opened.store, self.session_id, self.settings.workspace, title)
-        await self.write_user(text)
+        if echo:  # steering words that became this turn are on screen already
+            await self.write_user(text)
         request = {"messages": [{"role": "user", "content": text}]}
         if skill is not None:
             await self.write_info(f"已加载 Skill：{skill}")
@@ -226,6 +245,9 @@ class PycodeApp(App):
         finally:
             await turn.finish()
             await self.refresh_status()
+            # Words that came after its last model call: they start the next turn.
+            if waiting := self.opened.steering.take(self.session_id):
+                self.next_turn = "\n\n".join([*waiting, *filter(None, [self.next_turn])])
 
     async def resume_command(self, approvals: list[Approval | PlanReview]) -> Command:
         await self.refresh_status()  # the run is paused: show its mode and board while asking
@@ -307,9 +329,14 @@ class PycodeApp(App):
         await self.drive({"messages": [subagent_message("\n\n---\n\n".join(texts))]})
 
     def on_worker_state_changed(self, event) -> None:
-        """A main run ended: results that arrived meanwhile go to the main agent now."""
+        """A main run ended: words typed meanwhile, then finished subagents, go on now."""
         finished = event.state in (WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED)
-        if event.worker.group == "agent" and finished and self.notices and not self.running():
+        if event.worker.group != "agent" or not finished or self.running():
+            return
+        if self.next_turn is not None:
+            text, self.next_turn = self.next_turn, None
+            self.run_turn(text, echo=False)
+        elif self.notices:
             self.wake()
 
     # ---- drawing ----
@@ -318,8 +345,9 @@ class PycodeApp(App):
     def transcript(self) -> Vertical:
         return self.query_one("#transcript", Vertical)
 
-    async def write_user(self, text: str) -> None:
-        await self.transcript.mount(Static("你", classes="user-message"))
+    async def write_user(self, text: str, steer: bool = False) -> None:
+        label = "你（插话）" if steer else "你"
+        await self.transcript.mount(Static(label, classes="user-message"))
         await self.transcript.mount(Static(text, markup=False))
 
     async def write_info(self, text: str, classes: str = "info") -> None:
@@ -342,6 +370,9 @@ class PycodeApp(App):
                 continue
             if is_skill(message):
                 await self.write_info(f"已加载 Skill：{message.additional_kwargs['skill']['name']}")
+                continue
+            if is_steer(message):  # stays inside the assistant's turn, like when it was typed
+                await self.write_user(message.text, steer=True)
                 continue
             if message.additional_kwargs.get("pycode_subagent"):
                 await self.write_info("── 子 agent 已结束，结果交给主 agent ──", "marker")

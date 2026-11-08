@@ -145,8 +145,11 @@ def notification(agent: Subagent) -> str:
 
 
 class Subagents(AgentMiddleware):
-    def __init__(self, build_child, store, workspace: Path, worktree_root: Path, max_turns: int):
+    def __init__(
+        self, build_child, store, workspace: Path, worktree_root: Path, max_turns: int, steering
+    ):
         super().__init__()
+        self.steering = steering  # SendMessage reaches a running subagent through it
         self.build_child = build_child  # (Subagent) -> (compiled agent, Context)
         self.store = store
         self.workspace = workspace.resolve()
@@ -202,6 +205,13 @@ class Subagents(AgentMiddleware):
                     {"messages": [{"role": "user", "content": message}]}, config, context=context
                 )
                 await self.answer_pending(agent, child, config, context)
+                # SendMessage after its last model call: go on with those messages.
+                while waiting := self.steering.take(agent.thread_id):
+                    text = "\n\n".join(waiting)
+                    await child.ainvoke(
+                        {"messages": [{"role": "user", "content": text}]}, config, context=context
+                    )
+                    await self.answer_pending(agent, child, config, context)
             messages = (await child.aget_state(config)).values.get("messages", [])
             replies = [m.text for m in messages if isinstance(m, AIMessage) and m.text]
             limited = bool(replies) and replies[-1].startswith(LIMIT_REPLY)
@@ -210,6 +220,7 @@ class Subagents(AgentMiddleware):
             agent.status = "limited" if limited else "completed"
             agent.result = replies[-1] if replies else ""
         except asyncio.CancelledError:
+            self.steering.take(agent.thread_id)  # undelivered messages go with the stopped run
             agent.status = "interrupted" if self.closing else "stopped"
             await settle_cancelled(child, config)
             await self.end(agent)
@@ -302,13 +313,17 @@ class Subagents(AgentMiddleware):
 
         @tool
         async def SendMessage(agent: str, message: str, runtime: ToolRuntime[Context]) -> str:  # noqa: N802
-            """Continue a finished subagent in its own history, in the background.
+            """Tell a subagent something. A running one reads it before its next step; a
+            finished one continues in its own history, in the background.
 
             Args:
                 agent: The subagent's name.
                 message: What it should do next.
             """
             found = await manager.find(runtime.config["configurable"]["thread_id"], agent)
+            if found.thread_id in manager.running:
+                manager.steering.put(found.thread_id, message)
+                return f"Subagent {agent} is working; it reads this before its next step."
             if found.status not in FINISHED:
                 raise ToolError(f"Subagent {agent} is still {found.status}")
             if found.mode == "worktree" and not found.worktree:

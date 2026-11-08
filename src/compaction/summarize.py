@@ -107,9 +107,20 @@ def is_skill(message: BaseMessage) -> bool:
     return message.additional_kwargs.get("lc_source") == "pinned_skill"
 
 
+def is_steer(message: BaseMessage) -> bool:
+    """Words added while the agent was working (middleware/steering.py); part of that turn."""
+    return message.additional_kwargs.get("pycode_steer", False)
+
+
 def is_user_turn(message: BaseMessage) -> bool:
-    """Only what the user typed starts a turn; summaries and pinned skills are HumanMessages too."""
-    return isinstance(message, HumanMessage) and not is_summary(message) and not is_skill(message)
+    """Only what the user typed starts a turn; summaries, pinned skills and steering messages
+    are HumanMessages too."""
+    return (
+        isinstance(message, HumanMessage)
+        and not is_summary(message)
+        and not is_skill(message)
+        and not is_steer(message)
+    )
 
 
 def summary_text(message: HumanMessage) -> str:

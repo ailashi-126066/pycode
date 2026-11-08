@@ -23,6 +23,7 @@ from .middleware.agents_md import agents_md_middleware
 from .middleware.compaction import CompactionMiddleware
 from .middleware.plan_mode import PlanModeMiddleware, approval, not_planning
 from .middleware.skills import skills_middleware
+from .middleware.steering import Steering
 from .middleware.subagents import ReadOnlyBash, Subagent, Subagents
 from .middleware.task_board import TaskBoardMiddleware, describe_completion, needs_confirmation
 from .middleware.tool_search import ToolSearchMiddleware
@@ -79,6 +80,7 @@ def build_agent(
     skills: SkillsMiddleware,
     servers: list[Server] = (),
     subagents: Subagents | None = None,
+    steering: Steering | None = None,
     *,
     checkpointer=None,
 ):
@@ -114,6 +116,8 @@ def build_agent(
         tools=[read, write, edit, bash, grep, find, ls, *mcp_tools],
         system_prompt=prompt,
         middleware=[
+            # Adds the user's words that arrived while the agent was working.
+            *([steering] if steering is not None else []),
             # These add to the system prompt, the tool list or the messages, so they come before
             # compaction: it then measures exactly what the model is sent.
             ToolSearchMiddleware(deferred=mcp_tools),
@@ -138,7 +142,14 @@ def build_agent(
 
 
 def build_child_agent(
-    model, settings: Settings, provider: Provider, agent: Subagent, *, checkpointer, sandboxed: bool
+    model,
+    settings: Settings,
+    provider: Provider,
+    agent: Subagent,
+    *,
+    checkpointer,
+    sandboxed: bool,
+    steering: Steering,
 ):
     """One subagent: a smaller agent on its own thread, working in `agent.workdir`. No MCP,
     plan mode, task board, skills or subagents of its own."""
@@ -159,6 +170,7 @@ def build_child_agent(
         tools=tools,
         system_prompt=prompt,
         middleware=[
+            steering,  # what the main agent adds with SendMessage while it works
             *gate,
             agents_md_middleware(settings.instruction_files),
             # Its own: compaction keeps a running summary job per agent.
@@ -188,6 +200,7 @@ class Opened:
     provider: Provider
     sandboxed: bool  # Seatbelt is on and works here; bash commands run under it
     subagents: Subagents  # the interface sets its notify and ask, and lists them for /agents
+    steering: Steering  # the interface puts what the user types while the agent works
 
 
 @asynccontextmanager
@@ -210,19 +223,40 @@ async def open_agent(settings: Settings):
         open_storage(settings.database) as (checkpointer, store),
         mcp.connect(settings.mcp_file, mcp_log) as servers,
     ):
+        steering = Steering()
 
         def build_child(subagent: Subagent):
             return build_child_agent(
-                model, settings, provider, subagent, checkpointer=checkpointer, sandboxed=sandboxed
+                model,
+                settings,
+                provider,
+                subagent,
+                checkpointer=checkpointer,
+                sandboxed=sandboxed,
+                steering=steering,
             )
 
         subagents = Subagents(
-            build_child, store, settings.workspace, settings.worktree_dir, settings.max_turns
+            build_child,
+            store,
+            settings.workspace,
+            settings.worktree_dir,
+            settings.max_turns,
+            steering,
         )
         agent = build_agent(
-            model, settings, compaction, skills, servers, subagents, checkpointer=checkpointer
+            model,
+            settings,
+            compaction,
+            skills,
+            servers,
+            subagents,
+            steering,
+            checkpointer=checkpointer,
         )
         try:
-            yield Opened(agent, store, compaction, skills, servers, provider, sandboxed, subagents)
+            yield Opened(
+                agent, store, compaction, skills, servers, provider, sandboxed, subagents, steering
+            )
         finally:
             await subagents.aclose()  # before storage closes: their records are saved
