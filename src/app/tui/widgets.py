@@ -7,8 +7,9 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
-from textual.widgets import Collapsible, Markdown, Static, TextArea
+from textual.widgets import Collapsible, Input, Markdown, Static, TextArea
 
+from ...middleware.task_board import render
 from ..stream import Notice, Text, Thinking, ToolCall, ToolResult, Usage
 
 
@@ -77,6 +78,10 @@ def summarize_args(args: dict) -> str:
     return json.dumps(args, ensure_ascii=False)[:80]
 
 
+# HumanInTheLoopMiddleware's own description starts like this; then the arguments are shown.
+DEFAULT_DESCRIPTION = "Tool execution requires approval"
+
+
 class ApprovalPanel(Vertical, can_focus=True):
     """Ask about one tool call; `answer` resolves to True (allow) or False (reject)."""
 
@@ -103,8 +108,12 @@ class ApprovalPanel(Vertical, can_focus=True):
 
     def compose(self) -> ComposeResult:
         yield Static(f"需要审批：{self.action['name']}", classes="approval-title", markup=False)
-        args = json.dumps(self.action["args"], ensure_ascii=False, indent=2)
-        yield Static(args[:2000], classes="approval-args", markup=False)
+        description = self.action.get("description", "")
+        if description and not description.startswith(DEFAULT_DESCRIPTION):
+            yield Static(description, markup=False)  # written for this tool, e.g. a step to confirm
+        else:
+            args = json.dumps(self.action["args"], ensure_ascii=False, indent=2)
+            yield Static(args[:2000], classes="approval-args", markup=False)
         yield Static(self.options(), id="approval-options", markup=False)
 
     def options(self) -> str:
@@ -126,6 +135,65 @@ class ApprovalPanel(Vertical, can_focus=True):
             self.answer.set_result(allow)
             label = "已允许" if allow else "已拒绝"
             self.query_one("#approval-options", Static).update(label)
+
+
+class PlanPanel(Vertical, can_focus=True):
+    """Review a submitted plan; `answer` resolves to the ExitPlanMode resume value."""
+
+    DEFAULT_CSS = """
+    PlanPanel {height: auto; padding: 1 2; margin-bottom: 1;
+      background: $surface; border: solid $primary;}
+    PlanPanel Static {height: auto;}
+    PlanPanel .approval-title {color: $primary; text-style: bold;}
+    PlanPanel #plan-feedback {display: none;}
+    """
+    BINDINGS = [
+        # Not priority bindings: while the feedback box has focus, letters go into it.
+        Binding("a", "decide('auto')", "自动批准执行"),
+        Binding("r", "decide('review')", "执行但逐项审批"),
+        Binding("f", "feedback", "提修改意见"),
+        Binding("c", "decide('cancel')", "取消"),
+    ]
+    LABELS = {"auto": "已批准：自动执行", "review": "已批准：逐项审批", "cancel": "已取消"}
+
+    def __init__(self, review):
+        super().__init__()
+        self.review = review  # stream.PlanReview
+        self.answer: asyncio.Future = asyncio.get_running_loop().create_future()
+
+    def compose(self) -> ComposeResult:
+        yield Static("计划审批", classes="approval-title")
+        yield Markdown(self.review.plan)
+        yield Static(render(self.review.board), markup=False)
+        order = " → ".join("、".join(layer) for layer in self.review.layers)
+        yield Static(f"分层（同一层可以同时做）：{order}", markup=False)
+        yield Static(
+            "[a] 自动批准执行   [r] 执行但逐项审批   [f] 提修改意见   [c] 取消",
+            id="plan-options",
+            markup=False,
+        )
+        yield Input(placeholder="修改意见，回车发送", id="plan-feedback")
+
+    def on_mount(self) -> None:
+        self.focus()
+
+    def action_feedback(self) -> None:
+        box = self.query_one("#plan-feedback", Input)
+        box.display = True
+        box.focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.value.strip() and not self.answer.done():
+            self.answer.set_result({"decision": "feedback", "feedback": event.value.strip()})
+            event.input.display = False
+            self.query_one("#plan-options", Static).update("已提交修改意见")
+
+    def action_decide(self, decision: str) -> None:
+        if self.query_one("#plan-feedback", Input).has_focus:
+            return  # typing feedback: these letters belong to the text
+        if not self.answer.done():
+            self.answer.set_result({"decision": decision})
+            self.query_one("#plan-options", Static).update(self.LABELS[decision])
 
 
 class AssistantTurn(Vertical):

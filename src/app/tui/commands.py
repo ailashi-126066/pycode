@@ -5,10 +5,11 @@ from uuid import uuid4
 
 from ...compaction.summarize import count_turns, is_user_turn
 from ...middleware.skills import list_skills
+from ...middleware.task_board import render
 from ...models import load_providers
 from ...sessions import branches
 from ...sessions.catalog import delete_session, get_session, list_sessions
-from ..stream import Approval
+from ..stream import pause_event
 
 COMMANDS = {
     "/new": "新建会话",
@@ -19,6 +20,8 @@ COMMANDS = {
     "/switch": "/switch N：切换到 /branches 里的第 N 个分支",
     "/delete": "/delete ID：删除会话",
     "/compact": "立即压缩上下文",
+    "/plan": "/plan 要求：只读规划，再由你审批计划；/plan show 看批准的计划；/plan off 退出",
+    "/tasks": "显示任务板（F7 显示或隐藏输入框上方的任务板）",
     "/skills": "列出可用的 Skill",
     "/skill": "/skill 名字 [要求]：按这个 Skill 的说明完成要求",
     "/mcp": "列出 MCP 服务器和它们的工具",
@@ -28,7 +31,7 @@ COMMANDS = {
     "/quit": "退出",
 }
 # Commands that change the conversation wait until the model stops.
-WHILE_RUNNING = {"/sessions", "/branches", "/skills", "/mcp", "/theme", "/help", "/quit"}
+WHILE_RUNNING = {"/sessions", "/branches", "/skills", "/mcp", "/tasks", "/theme", "/help", "/quit"}
 
 
 async def run(app, text: str) -> None:
@@ -70,7 +73,7 @@ async def open_session(app, argument):
     await app.refresh_status()
     state = await app.opened.agent.aget_state(app.config)
     if state.interrupts:  # it was waiting for approval when last closed
-        app.answer_pending([Approval(i.id, i.value["action_requests"]) for i in state.interrupts])
+        app.answer_pending([pause_event(item) for item in state.interrupts])
 
 
 async def revert(app, argument):
@@ -155,6 +158,25 @@ async def mcp_servers(app, argument):
     await app.write_info("\n".join(lines) or f"没有配置 MCP 服务器（{app.settings.mcp_file}）")
 
 
+async def plan(app, argument):
+    state = await app.opened.agent.aget_state(app.config)
+    if argument == "show":
+        await app.write_info(state.values.get("plan") or "这个会话还没有批准过计划")
+    elif argument == "off":
+        await app.opened.agent.aupdate_state(app.config, {"plan_mode": False})
+        await app.refresh_status()
+        app.show_notice("已退出 Plan 模式")
+    elif argument:
+        app.run_turn(argument, plan=True)
+    else:
+        raise ValueError("用法：/plan 要求 | /plan show | /plan off")
+
+
+async def tasks(app, argument):
+    board = (await app.opened.agent.aget_state(app.config)).values.get("task_board")
+    await app.write_info(render(board) if board else "没有任务板；/plan 的计划批准后才有")
+
+
 async def model(app, argument):
     providers = load_providers(app.settings.providers_file)
     if not argument:
@@ -191,6 +213,8 @@ HANDLERS = {
     "/switch": switch,
     "/delete": delete,
     "/compact": compact,
+    "/plan": plan,
+    "/tasks": tasks,
     "/skills": skills,
     "/skill": skill,
     "/mcp": mcp_servers,

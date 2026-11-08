@@ -17,13 +17,24 @@ from ...agent import open_agent
 from ...compaction.budget import context_tokens
 from ...compaction.summarize import count_turns, is_skill, is_summary, is_user_turn
 from ...context import Context
+from ...middleware.task_board import DONE, render
 from ...sessions.branches import full_history
 from ...sessions.catalog import get_session, save_session
 from ...tools.files import Files
-from ..stream import Approval, Text, events, message_events, settle_cancelled
+from ..stream import (
+    Approval,
+    PlanReview,
+    Text,
+    ToolResult,
+    events,
+    message_events,
+    settle_cancelled,
+)
 from . import commands
 from .theme import themes
-from .widgets import ApprovalPanel, AssistantTurn, ChatInput
+from .widgets import ApprovalPanel, AssistantTurn, ChatInput, PlanPanel
+
+BOARD_TOOLS = {"ExitPlanMode", "TaskWrite", "TaskUpdate"}
 
 
 class PycodeApp(App):
@@ -40,6 +51,8 @@ class PycodeApp(App):
     #notice.error {color: $error;}
     #notice.success {color: $success;}
     #notice.warning {color: $warning;}
+    #tasks {display: none; height: auto; max-height: 14; padding: 0 1; margin: 0 3;
+      border: round $primary-muted; color: $text-muted;}
     #entry {height: auto; padding: 0 3;}
     #completion {display: none; height: auto; max-height: 8; color: $text-muted;}
     #chat-input {height: 3; min-height: 3; max-height: 10; border: none; background: $surface;}
@@ -62,7 +75,8 @@ class PycodeApp(App):
         Binding("ctrl+c", "stop", "Stop", priority=True),
         Binding("ctrl+q", "quit", "Quit", priority=True),
         Binding("escape", "dismiss_notice", show=False),
-        Binding("f6", "toggle_theme", "Theme"),
+        Binding("f6", "toggle_theme", "Theme", priority=True),
+        Binding("f7", "toggle_tasks", "Tasks", priority=True),
     ]
 
     def __init__(self, settings, session_id: str | None = None):
@@ -73,7 +87,8 @@ class PycodeApp(App):
         self.opened = None  # agent.Opened while the agent is open
         self.stack = AsyncExitStack()
         self.blocks: dict = {}  # tool call id → ToolBlock, see AssistantTurn
-        self.pending: ApprovalPanel | None = None
+        self.pending: ApprovalPanel | PlanPanel | None = None
+        self.tasks_hidden = False  # F7
 
     @property
     def config(self) -> dict:
@@ -84,6 +99,7 @@ class PycodeApp(App):
         with VerticalScroll(id="conversation"):
             yield Vertical(id="transcript")
         yield Static("", id="notice", markup=False)
+        yield Static("", id="tasks", markup=False)
         with Vertical(id="entry"):
             yield Static("", id="completion", markup=False)
             yield ChatInput(commands.COMMANDS, id="chat-input")
@@ -145,8 +161,9 @@ class PycodeApp(App):
     # ---- running the agent ----
 
     @work(exclusive=True, group="agent")
-    async def run_turn(self, text: str, skill: str | None = None) -> None:
-        """One user turn; with `skill`, that skill's SKILL.md is pinned in after the message."""
+    async def run_turn(self, text: str, skill: str | None = None, plan: bool = False) -> None:
+        """One user turn; with `skill`, that skill's SKILL.md is pinned in after the message;
+        with `plan`, the turn starts plan mode (see middleware/plan_mode.py)."""
         session = await get_session(self.opened.store, self.session_id)
         title = session.title if session else text
         await save_session(self.opened.store, self.session_id, self.settings.workspace, title)
@@ -158,6 +175,9 @@ class PycodeApp(App):
             # Rescan the skill directories first: /skill checked the name against the disk,
             # and the list this session cached on its first run may not have it yet.
             request["skills_metadata"] = None
+        if plan:
+            await self.write_info("进入 Plan 模式：只读规划，提交计划后由你审批")
+            request["plan_mode"] = True
         await self.drive(request)
 
     @work(exclusive=True, group="agent")
@@ -178,10 +198,12 @@ class PycodeApp(App):
             while request is not None:
                 approvals = []
                 async for event in events(self.opened.agent, request, self.config, context):
-                    if isinstance(event, Approval):
+                    if isinstance(event, Approval | PlanReview):
                         approvals.append(event)
-                    else:
-                        await turn.handle(event)
+                        continue
+                    await turn.handle(event)
+                    if isinstance(event, ToolResult) and event.name in BOARD_TOOLS:
+                        await self.refresh_tasks()
                 await turn.end_text()
                 request = await self.resume_command(approvals) if approvals else None
         except asyncio.CancelledError:
@@ -193,9 +215,15 @@ class PycodeApp(App):
             await turn.finish()
             await self.refresh_status()
 
-    async def resume_command(self, approvals: list[Approval]) -> Command:
+    async def resume_command(self, approvals: list[Approval | PlanReview]) -> Command:
+        await self.refresh_status()  # the run is paused: show its mode and board while asking
         answers = {}
         for approval in approvals:
+            if isinstance(approval, PlanReview):
+                self.pending = PlanPanel(approval)
+                await self.transcript.mount(self.pending)
+                answers[approval.interrupt_id] = await self.pending.answer
+                continue
             decisions = []
             for action in approval.actions:
                 self.pending = ApprovalPanel(action)
@@ -268,22 +296,41 @@ class PycodeApp(App):
         tokens = context_tokens(state.values.get("messages", []), self.opened.compaction.overhead)
         share = tokens * 100 // provider.context_window
         sandbox = "开" if self.opened.sandboxed else "关"
+        mode = " · 规划中" if state.values.get("plan_mode") else ""
+        mode += " · 自动执行计划" if state.values.get("auto_approve") else ""
         self.query_one("#status", Static).update(
             f"模型：{provider.name} / {provider.model_id} · "
             f"上下文：{tokens:,} / {provider.context_window:,}（{share}%）· "
-            f"沙箱：{sandbox} · 会话 {self.session_id}"
+            f"沙箱：{sandbox}{mode} · 会话 {self.session_id}"
         )
+        await self.refresh_tasks()
+
+    async def refresh_tasks(self) -> None:
+        """The board above the input while it has open steps, unless hidden with F7."""
+        state = await self.opened.agent.aget_state(self.config)
+        board = state.values.get("task_board")
+        panel = self.query_one("#tasks", Static)
+        if board:
+            panel.update(render(board))
+        unfinished = board and any(s["status"] not in DONE for s in board["steps"])
+        panel.display = bool(unfinished) and not self.tasks_hidden
 
     # ---- keys ----
 
     def action_stop(self) -> None:
-        if self.pending is not None and not self.pending.answer.done():
+        if isinstance(self.pending, PlanPanel) and not self.pending.answer.done():
+            self.pending.answer.set_result({"decision": "cancel"})  # stopping cancels the plan
+        elif self.pending is not None and not self.pending.answer.done():
             self.pending.action_decide(False)  # stopping at an approval rejects that call
         else:
             self.workers.cancel_group(self, "agent")
 
     def action_dismiss_notice(self) -> None:
         self.query_one("#notice", Static).display = False
+
+    async def action_toggle_tasks(self) -> None:
+        self.tasks_hidden = not self.tasks_hidden
+        await self.refresh_tasks()
 
     def action_toggle_theme(self) -> None:
         self.theme = "pycode-light" if self.theme == "pycode-dark" else "pycode-dark"

@@ -48,7 +48,22 @@ class Notice:  # compaction progress, or the notice when the turn limit ends the
 @dataclass(frozen=True)
 class Approval:  # the run paused; answer with Command(resume={interrupt_id: {"decisions": [...]}})
     interrupt_id: str
-    actions: list  # one {"name", "args", ...} per tool call waiting for a decision
+    actions: list  # one {"name", "args", "description"} per tool call waiting for a decision
+
+
+@dataclass(frozen=True)
+class PlanReview:  # ExitPlanMode paused; answer with {"decision": ..., "feedback": ...}
+    interrupt_id: str
+    plan: str
+    board: dict
+    layers: list
+
+
+def pause_event(item):
+    """The event for one LangGraph interrupt: a plan to review, or tool calls to approve."""
+    if item.value.get("kind") == "plan":
+        return PlanReview(item.id, item.value["plan"], item.value["board"], item.value["layers"])
+    return Approval(item.id, item.value["action_requests"])
 
 
 async def events(agent, request, config, context):
@@ -76,7 +91,7 @@ async def events(agent, request, config, context):
             for node, update in chunk.items():
                 if node == "__interrupt__":
                     for item in update:
-                        yield Approval(item.id, item.value["action_requests"])
+                        yield pause_event(item)
                     continue
                 # A node returns one dict, or a list of them when middleware added a Command
                 # (compaction saving the compacted history with the reply); some return None.

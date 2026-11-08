@@ -6,6 +6,7 @@ import signal
 import subprocess
 
 from langchain.tools import ToolRuntime, tool
+from langchain_core.messages import ToolMessage
 
 from ..context import Context
 from ..sandbox import denied_command, sandboxed
@@ -31,7 +32,7 @@ def command_environment() -> dict[str, str]:
 
 # `timeout` is an argument the model fills in, not an asyncio timeout parameter.
 @tool(parse_docstring=True)
-async def bash(command: str, runtime: ToolRuntime[Context], timeout: float = 120) -> str:  # noqa: ASYNC109
+async def bash(command: str, runtime: ToolRuntime[Context], timeout: float = 120) -> ToolMessage:  # noqa: ASYNC109
     """Run a bash command in the workspace and return stdout and stderr together.
 
     Output keeps the last 2000 lines or 50KB; the complete output is then saved to a file.
@@ -84,4 +85,11 @@ async def bash(command: str, runtime: ToolRuntime[Context], timeout: float = 120
         text += f"\n[Command stopped after {min(timeout, 600):g} seconds]"
     elif process.returncode != 0:
         text += f"\n[Exit code {process.returncode}]"
-    return text or "(no output)"
+    # A command that failed or timed out gives a failed result (task acceptance relies on it).
+    failed = timed_out or process.returncode != 0
+    return ToolMessage(
+        text or "(no output)",
+        tool_call_id=runtime.tool_call_id,
+        name="bash",
+        status="error" if failed else "success",
+    )

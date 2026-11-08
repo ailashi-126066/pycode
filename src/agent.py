@@ -20,7 +20,9 @@ from .config import Settings
 from .context import Context
 from .middleware.agents_md import agents_md_middleware
 from .middleware.compaction import CompactionMiddleware
+from .middleware.plan_mode import PlanModeMiddleware, approval, not_planning
 from .middleware.skills import skills_middleware
+from .middleware.task_board import TaskBoardMiddleware, describe_completion, needs_confirmation
 from .middleware.tool_search import ToolSearchMiddleware
 from .models import Provider, create_model, load_providers
 from .sandbox import approval_check, load_allowed
@@ -71,19 +73,41 @@ def build_agent(
     workspace = settings.workspace.resolve()
     prompt = f"{SYSTEM_PROMPT}\n\n工作目录：{workspace}\n操作系统：{platform.system()}"
     mcp_tools = [tool for server in servers for tool in server.tools]
+    allowed_commands = load_allowed(settings.settings_file)
+    # Who asks the user before a tool runs. `approval` skips asking while planning and while an
+    # approved plan runs automatically; the extra checks are the tool's own reasons to skip.
     ask = {"allowed_decisions": ["approve", "reject"]}
-    approvals = {"write": ask, "edit": ask}
-    # bash asks unless the command is allowed in settings.json, or refused anyway.
-    approvals["bash"] = {**ask, "when": approval_check(load_allowed(settings.settings_file))}
-    approvals |= {tool.name: ask for server in servers if server.approve for tool in server.tools}
+    approvals = {
+        "write": {**ask, "when": approval()},
+        "edit": {**ask, "when": approval()},
+        # Not for allowed commands, nor for dangerous ones: the bash tool refuses those.
+        "bash": {**ask, "when": approval(approval_check(allowed_commands))},
+        # Changing the approved acceptance standards.
+        "TaskWrite": {**ask, "when": approval()},
+        # Completing a step whose acceptance has items without a check command.
+        "TaskUpdate": {
+            **ask,
+            "when": approval(needs_confirmation),
+            "description": describe_completion,
+        },
+    }
+    approvals |= {
+        tool.name: {**ask, "when": not_planning}
+        for server in servers
+        if server.approve
+        for tool in server.tools
+    }
     return create_agent(
         model,
         tools=[read, write, edit, bash, grep, find, ls, *mcp_tools],
         system_prompt=prompt,
         middleware=[
-            # These three add to the system prompt and the tool list, so they come before
+            # These add to the system prompt, the tool list or the messages, so they come before
             # compaction: it then measures exactly what the model is sent.
             ToolSearchMiddleware(deferred=mcp_tools),
+            # After ToolSearch: while planning it keeps only the read tools, MCP ones too.
+            PlanModeMiddleware(allowed_commands),
+            TaskBoardMiddleware(),
             skills,
             agents_md_middleware(settings.instruction_files),
             # Before the retry below, so it sees context-overflow errors.
