@@ -61,7 +61,7 @@ async def run(app, text: str) -> None:
 
 
 async def new(app, argument):
-    app.session_id = uuid4().hex[:12]
+    await app.switch_session(uuid4().hex[:12])
     await app.clear_transcript()
     await app.refresh_status()
     app.show_notice("已新建会话")
@@ -79,7 +79,8 @@ async def open_session(app, argument):
         raise ValueError(f"没有会话 {argument}")
     if session.workspace != str(app.settings.workspace):
         raise ValueError(f"会话 {argument} 属于 {session.workspace}，请用 --workspace 打开")
-    app.session_id = argument
+    if argument != app.session_id:
+        await app.switch_session(argument)
     await app.clear_transcript()
     await app.show_history()
     await app.refresh_status()

@@ -129,6 +129,7 @@ class PycodeApp(App):
             return
         if self.open_session_on_start:
             await commands.run(self, f"/open {self.session_id}")
+        await self.session_hook("session_start")
         await self.refresh_status()
         self.query_one(ChatInput).focus()
         problems = []
@@ -148,7 +149,23 @@ class PycodeApp(App):
         self.opened.subagents.ask = self.ask_for_subagent
 
     async def on_unmount(self) -> None:
+        if self.opened is not None:
+            await self.session_hook("session_end")
         await self.stack.aclose()
+
+    async def switch_session(self, session_id: str) -> None:
+        """/new and /open: the session hooks see one session end and the other start."""
+        await self.session_hook("session_end")
+        self.session_id = session_id
+        await self.session_hook("session_start")
+
+    async def session_hook(self, event: str) -> None:
+        payload = {"session_id": self.session_id, "workspace": str(self.settings.workspace)}
+
+        def tell(update):
+            self.show_notice(update["hook"], "error")
+
+        await self.opened.hooks.fire(event, payload, writer=tell)
 
     # ---- input ----
 

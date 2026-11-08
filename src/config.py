@@ -34,6 +34,11 @@ class Settings:
         return Path.home() / ".cache" / "pycode" / "worktrees"
 
     @property
+    def hooks_file(self) -> Path:
+        # Commands run at fixed moments (middleware/hooks.py); only the user's own file.
+        return self.data_dir / "hooks.json"
+
+    @property
     def mcp_file(self) -> Path:
         # Only the user's own file: a project file would start its commands on opening the repo.
         return self.data_dir / "mcp.json"

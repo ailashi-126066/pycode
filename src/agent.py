@@ -21,6 +21,7 @@ from .config import Settings
 from .context import Context
 from .middleware.agents_md import agents_md_middleware
 from .middleware.compaction import CompactionMiddleware
+from .middleware.hooks import Hooks, load_hooks
 from .middleware.plan_mode import PlanModeMiddleware, approval, not_planning
 from .middleware.skills import skills_middleware
 from .middleware.steering import Steering
@@ -81,6 +82,7 @@ def build_agent(
     servers: list[Server] = (),
     subagents: Subagents | None = None,
     steering: Steering | None = None,
+    hooks: Hooks | None = None,
     *,
     checkpointer=None,
 ):
@@ -134,6 +136,8 @@ def build_agent(
             HumanInTheLoopMiddleware(interrupt_on=approvals),
             ModelRetryMiddleware(max_retries=3),
             ModelCallLimitMiddleware(run_limit=settings.max_turns, exit_behavior="end"),
+            # Next to the tool, outside ToolErrorMiddleware: it sees every result as a message.
+            *([hooks] if hooks is not None else []),
             ToolErrorMiddleware(on_error=tool_error),
         ],
         context_schema=Context,
@@ -150,6 +154,7 @@ def build_child_agent(
     checkpointer,
     sandboxed: bool,
     steering: Steering,
+    hooks: Hooks,
 ):
     """One subagent: a smaller agent on its own thread, working in `agent.workdir`. No MCP,
     plan mode, task board, skills or subagents of its own."""
@@ -180,6 +185,7 @@ def build_child_agent(
             ModelCallLimitMiddleware(
                 run_limit=agent.max_turns or settings.max_turns, exit_behavior="end"
             ),
+            hooks,  # the same tool hooks as the main agent; no stop hooks
             ToolErrorMiddleware(on_error=tool_error),
         ],
         context_schema=Context,
@@ -201,6 +207,7 @@ class Opened:
     sandboxed: bool  # Seatbelt is on and works here; bash commands run under it
     subagents: Subagents  # the interface sets its notify and ask, and lists them for /agents
     steering: Steering  # the interface puts what the user types while the agent works
+    hooks: Hooks  # the interface fires session_start and session_end
 
 
 @asynccontextmanager
@@ -218,6 +225,14 @@ async def open_agent(settings: Settings):
     )
     skills = skills_middleware(settings.skill_dirs)
     sandboxed = settings.sandbox and await sandbox.available(settings.workspace)
+    configured = load_hooks(settings.hooks_file)
+    hooks = Hooks(configured, settings.workspace, sandboxed)
+    child_hooks = Hooks(configured, settings.workspace, sandboxed, stop=False)
+
+    async def before_summary():
+        await hooks.fire("pre_compact", {})
+
+    compaction.before_summary = before_summary
     mcp_log = settings.data_dir / "mcp.log"
     async with (
         open_storage(settings.database) as (checkpointer, store),
@@ -234,6 +249,7 @@ async def open_agent(settings: Settings):
                 checkpointer=checkpointer,
                 sandboxed=sandboxed,
                 steering=steering,
+                hooks=child_hooks,
             )
 
         subagents = Subagents(
@@ -252,11 +268,21 @@ async def open_agent(settings: Settings):
             servers,
             subagents,
             steering,
+            hooks,
             checkpointer=checkpointer,
         )
         try:
             yield Opened(
-                agent, store, compaction, skills, servers, provider, sandboxed, subagents, steering
+                agent,
+                store,
+                compaction,
+                skills,
+                servers,
+                provider,
+                sandboxed,
+                subagents,
+                steering,
+                hooks,
             )
         finally:
             await subagents.aclose()  # before storage closes: their records are saved

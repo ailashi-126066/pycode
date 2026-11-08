@@ -32,6 +32,8 @@ class CompactionMiddleware(AgentMiddleware):
         self.model = model  # the agent's own model, called here without tools
         self.start_at, self.adopt_at = thresholds(context_window, max_output_tokens)
         self.max_tokens = min(8192, max_output_tokens)
+        # Set by agent.py: runs the pre_compact hooks before a summary is made.
+        self.before_summary = None  # async () -> None
         # Estimated system prompt plus tool definitions, refreshed on every model request.
         self.overhead = 0
         # Lives only in this process; a summary lost on exit is generated again when needed.
@@ -88,12 +90,14 @@ class CompactionMiddleware(AgentMiddleware):
         if cut is None:
             return
         # An empty context detaches the summary call from the run's streaming callbacks.
-        task = asyncio.create_task(
-            summarize(self.model, messages, cut.index, cut.ongoing, self.max_tokens),
-            context=contextvars.Context(),
-        )
+        task = asyncio.create_task(self.make_summary(messages, cut), context=contextvars.Context())
         self.job = Job([m.id for m in messages[: cut.index]], task)
         writer({"compaction": "正在生成摘要"})
+
+    async def make_summary(self, messages, cut):
+        if self.before_summary is not None:
+            await self.before_summary()
+        return await summarize(self.model, messages, cut.index, cut.ongoing, self.max_tokens)
 
     async def adopt(self, messages, writer, limit: int | None = None):
         """Summary plus the kept messages, or None when they still would not fit under limit."""
