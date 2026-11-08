@@ -100,14 +100,17 @@ class ApprovalPanel(Vertical, can_focus=True):
         Binding("enter", "choose", "Choose", priority=True),
     ]
 
-    def __init__(self, action: dict):
+    def __init__(self, action: dict, who: str = ""):
         super().__init__()
         self.action = action
+        self.who = who  # e.g. "子 agent a1" when a subagent asks
         self.allow = True  # the highlighted option
         self.answer: asyncio.Future = asyncio.get_running_loop().create_future()
 
     def compose(self) -> ComposeResult:
-        yield Static(f"需要审批：{self.action['name']}", classes="approval-title", markup=False)
+        who = f"{self.who} " if self.who else ""
+        title = f"{who}需要审批：{self.action['name']}"
+        yield Static(title, classes="approval-title", markup=False)
         description = self.action.get("description", "")
         if description and not description.startswith(DEFAULT_DESCRIPTION):
             yield Static(description, markup=False)  # written for this tool, e.g. a step to confirm

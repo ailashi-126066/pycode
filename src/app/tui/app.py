@@ -4,21 +4,23 @@ import asyncio
 from contextlib import AsyncExitStack
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Static
+from textual.worker import WorkerState
 
 from ... import __version__
 from ...agent import open_agent
 from ...compaction.budget import context_tokens
 from ...compaction.summarize import count_turns, is_skill, is_summary, is_user_turn
 from ...context import Context
+from ...middleware.subagents import Subagent, notification
 from ...middleware.task_board import DONE, render
-from ...sessions.branches import full_history
+from ...sessions.branches import full_history, settle_cancelled
 from ...sessions.catalog import get_session, save_session
 from ...tools.files import Files
 from ..stream import (
@@ -28,13 +30,17 @@ from ..stream import (
     ToolResult,
     events,
     message_events,
-    settle_cancelled,
 )
 from . import commands
 from .theme import themes
 from .widgets import ApprovalPanel, AssistantTurn, ChatInput, PlanPanel
 
 BOARD_TOOLS = {"ExitPlanMode", "TaskWrite", "TaskUpdate"}
+
+
+def subagent_message(text: str) -> HumanMessage:
+    """Finished subagents, as a message to the main agent; marked so history draws it apart."""
+    return HumanMessage(text, additional_kwargs={"pycode_subagent": True})
 
 
 class PycodeApp(App):
@@ -89,6 +95,10 @@ class PycodeApp(App):
         self.blocks: dict = {}  # tool call id → ToolBlock, see AssistantTurn
         self.pending: ApprovalPanel | PlanPanel | None = None
         self.tasks_hidden = False  # F7
+        self.asking = (
+            asyncio.Lock()
+        )  # one approval panel at a time, the main agent's or a subagent's
+        self.notices: list[str] = []  # finished subagents waiting to be handed to the main agent
 
     @property
     def config(self) -> dict:
@@ -133,6 +143,8 @@ class PycodeApp(App):
         await self.stack.aclose()
         self.stack = AsyncExitStack()
         self.opened = await self.stack.enter_async_context(open_agent(self.settings))
+        self.opened.subagents.notify = self.subagent_finished
+        self.opened.subagents.ask = self.ask_for_subagent
 
     async def on_unmount(self) -> None:
         await self.stack.aclose()
@@ -217,6 +229,10 @@ class PycodeApp(App):
 
     async def resume_command(self, approvals: list[Approval | PlanReview]) -> Command:
         await self.refresh_status()  # the run is paused: show its mode and board while asking
+        async with self.asking:
+            return await self.ask_all(approvals)
+
+    async def ask_all(self, approvals: list[Approval | PlanReview]) -> Command:
         answers = {}
         for approval in approvals:
             if isinstance(approval, PlanReview):
@@ -239,6 +255,51 @@ class PycodeApp(App):
         self.query_one(ChatInput).focus()
         return Command(resume=answers)
 
+    # ---- subagents ----
+
+    async def ask_for_subagent(self, agent: Subagent, value: dict) -> dict:
+        """A subagent paused for approval: ask here, in the main window."""
+        async with self.asking:
+            decisions = []
+            for action in value["action_requests"]:
+                self.pending = ApprovalPanel(action, who=f"子 agent {agent.name}")
+                await self.transcript.mount(self.pending)
+                allowed = await self.pending.answer
+                decisions.append(
+                    {"type": "approve"}
+                    if allowed
+                    else {"type": "reject", "message": "用户拒绝执行"}
+                )
+            self.pending = None
+            self.query_one(ChatInput).focus()  # back to typing, as after the main agent's
+            return {"decisions": decisions}
+
+    async def subagent_finished(self, agent: Subagent) -> None:
+        """Hand the result to the main agent of its session: now if it is idle, else after."""
+        text = notification(agent)
+        if agent.parent != self.session_id:  # the user opened another session meanwhile
+            config = {"configurable": {"thread_id": agent.parent}}
+            await self.opened.agent.aupdate_state(config, {"messages": [subagent_message(text)]})
+            self.show_notice(
+                f"会话 {agent.parent} 的子 agent {agent.name} 已结束，结果已存入那个会话"
+            )
+            return
+        self.notices.append(text)
+        if not self.running():
+            self.wake()
+
+    @work(exclusive=True, group="agent")
+    async def wake(self) -> None:
+        texts, self.notices = self.notices, []
+        await self.write_info("── 子 agent 已结束，结果交给主 agent ──", "marker")
+        await self.drive({"messages": [subagent_message("\n\n---\n\n".join(texts))]})
+
+    def on_worker_state_changed(self, event) -> None:
+        """A main run ended: results that arrived meanwhile go to the main agent now."""
+        finished = event.state in (WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED)
+        if event.worker.group == "agent" and finished and self.notices and not self.running():
+            self.wake()
+
     # ---- drawing ----
 
     @property
@@ -253,6 +314,8 @@ class PycodeApp(App):
         await self.transcript.mount(Static(text, classes=classes, markup=False))
 
     async def clear_transcript(self) -> None:
+        if isinstance(self.pending, ApprovalPanel) and not self.pending.answer.done():
+            self.pending.action_decide(False)  # its panel is about to go: reject that call
         await self.transcript.remove_children()
         self.blocks.clear()
 
@@ -267,6 +330,10 @@ class PycodeApp(App):
                 continue
             if is_skill(message):
                 await self.write_info(f"已加载 Skill：{message.additional_kwargs['skill']['name']}")
+                continue
+            if message.additional_kwargs.get("pycode_subagent"):
+                await self.write_info("── 子 agent 已结束，结果交给主 agent ──", "marker")
+                turn = None
                 continue
             if is_user_turn(message):
                 if turn is not None:

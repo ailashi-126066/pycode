@@ -28,6 +28,12 @@ class Settings:
         return self.data_dir / "settings.json"
 
     @property
+    def worktree_dir(self) -> Path:
+        # Subagent worktrees: outside the workspace, so grep and find do not see the copies,
+        # and under ~/.cache, which the sandbox lets commands write.
+        return Path.home() / ".cache" / "pycode" / "worktrees"
+
+    @property
     def mcp_file(self) -> Path:
         # Only the user's own file: a project file would start its commands on opening the repo.
         return self.data_dir / "mcp.json"

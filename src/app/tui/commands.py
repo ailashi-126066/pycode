@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from ...compaction.summarize import count_turns, is_user_turn
 from ...middleware.skills import list_skills
+from ...middleware.subagents import STATUS
 from ...middleware.task_board import render
 from ...models import load_providers
 from ...sessions import branches
@@ -22,6 +23,7 @@ COMMANDS = {
     "/compact": "立即压缩上下文",
     "/plan": "/plan 要求：只读规划，再由你审批计划；/plan show 看批准的计划；/plan off 退出",
     "/tasks": "显示任务板（F7 显示或隐藏输入框上方的任务板）",
+    "/agents": "列出这个会话的子 agent 和它们的状态",
     "/skills": "列出可用的 Skill",
     "/skill": "/skill 名字 [要求]：按这个 Skill 的说明完成要求",
     "/mcp": "列出 MCP 服务器和它们的工具",
@@ -31,7 +33,17 @@ COMMANDS = {
     "/quit": "退出",
 }
 # Commands that change the conversation wait until the model stops.
-WHILE_RUNNING = {"/sessions", "/branches", "/skills", "/mcp", "/tasks", "/theme", "/help", "/quit"}
+WHILE_RUNNING = {
+    "/sessions",
+    "/branches",
+    "/skills",
+    "/mcp",
+    "/tasks",
+    "/agents",
+    "/theme",
+    "/help",
+    "/quit",
+}
 
 
 async def run(app, text: str) -> None:
@@ -177,6 +189,14 @@ async def tasks(app, argument):
     await app.write_info(render(board) if board else "没有任务板；/plan 的计划批准后才有")
 
 
+async def agents(app, argument):
+    lines = []
+    for agent in await app.opened.subagents.list(app.session_id):
+        line = f"{agent.name}  {STATUS[agent.status]}  {agent.mode}  {agent.description}"
+        lines.append(line + (f"\n    分支 {agent.branch}" if agent.branch else ""))
+    await app.write_info("\n".join(lines) or "这个会话还没有子 agent")
+
+
 async def model(app, argument):
     providers = load_providers(app.settings.providers_file)
     if not argument:
@@ -215,6 +235,7 @@ HANDLERS = {
     "/compact": compact,
     "/plan": plan,
     "/tasks": tasks,
+    "/agents": agents,
     "/skills": skills,
     "/skill": skill,
     "/mcp": mcp_servers,

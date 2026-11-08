@@ -1,6 +1,8 @@
 """Branches are LangGraph checkpoint history. The current branch is always the newest
 checkpoint of the thread; reverting or switching copies an older checkpoint to the top."""
 
+from langchain_core.messages import AIMessage, ToolMessage
+
 from ..compaction.summarize import count_turns, is_summary
 
 
@@ -71,3 +73,27 @@ async def switch(agent, config, leaf) -> None:
             "That branch is waiting for approval; only finished branches can be opened"
         )
     await agent.aupdate_state(leaf.config, None)
+
+
+async def settle_cancelled(agent, config) -> None:
+    """After the user stops a run, answer tool calls that never got a result.
+
+    A reply whose tool calls have no results would make the next model request invalid."""
+    state = await agent.aget_state(config)
+    if state.interrupts:
+        return  # still waiting for approval; answering it settles those calls
+    messages = state.values.get("messages", [])
+    reply = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
+    answered = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)}
+    missing = [call for call in (reply.tool_calls if reply else []) if call["id"] not in answered]
+    if missing:
+        results = [
+            ToolMessage(
+                "The user stopped the run before this tool finished; its effects are unknown.",
+                tool_call_id=call["id"],
+                name=call["name"],
+                status="error",
+            )
+            for call in missing
+        ]
+        await agent.aupdate_state(config, {"messages": results})
