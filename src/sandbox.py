@@ -6,7 +6,8 @@ A bash call passes three checks, in this order:
    approval; every other command waits for the user (see `needs_approval`, given to the
    framework's HumanInTheLoopMiddleware).
 3. On macOS the command runs under Seatbelt (`sandboxed`): it can read almost anything except
-   credentials, and write only inside the workspace and the temporary directory.
+   credentials, and write only inside the workspace, the temporary directory and download
+   caches (~/.npm, ~/.cache, ~/Library/Caches).
 
 The patterns in 1 are an extra guard only: a shell can spell a command in ways no regular
 expression recognises. Seatbelt and approval are what actually limit a command.
@@ -47,6 +48,8 @@ SHELL_SYNTAX = set(";&|<>`$\\\n\r")
 # Under HOME, never readable or writable from a command: keys, and pycode's own sessions
 # and configuration (mcp.json may hold tokens).
 PRIVATE_HOME = (".ssh", ".aws", ".gnupg", ".pycode")
+# Under HOME, writable: download caches of npm, pip, uv and others, which hold no credentials.
+CACHE_HOME = (".npm", ".cache", "Library/Caches")
 
 
 def denied_command(command: str) -> str | None:
@@ -90,13 +93,14 @@ def profile(workspace: Path) -> str:
 
     private = " ".join(f"(subpath {path(home / name)})" for name in PRIVATE_HOME)
     temporary = path(tempfile.gettempdir())
+    caches = " ".join(f"(subpath {path(home / name)})" for name in CACHE_HOME)
     return "\n".join(
         [
             "(version 1)",
             "(allow default)",
-            # Writing: only the workspace, temporary files and the terminal devices.
+            # Writing: only the workspace, temporary files, caches and the terminal devices.
             "(deny file-write*)",
-            f"(allow file-write* (subpath {path(workspace)}) (subpath {temporary})"
+            f"(allow file-write* (subpath {path(workspace)}) (subpath {temporary}) {caches}"
             ' (subpath "/private/tmp") (literal "/dev/null") (regex #"^/dev/tty"))',
             # The project's own pycode directory stays as protected as for the file tools.
             f"(deny file-write* (subpath {path(workspace / '.pycode')}))",
