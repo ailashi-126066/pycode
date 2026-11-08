@@ -271,5 +271,10 @@ class AssistantTurn(Vertical):
     async def finish(self) -> None:
         await self.end_text()
         if self.usage is not None:
-            line = f"输入 {self.usage.input_tokens:,} · 输出 {self.usage.output_tokens:,} tokens"
+            usage = self.usage
+            hit = usage.cached_tokens / usage.input_tokens if usage.input_tokens else 0
+            line = (
+                f"输入 {usage.input_tokens:,}（缓存命中 {usage.cached_tokens:,}，{hit:.0%}）"
+                f" · 输出 {usage.output_tokens:,} tokens"
+            )
             await self.mount(Static(line, classes="message-usage", markup=False))

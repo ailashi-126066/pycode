@@ -36,8 +36,9 @@ class ToolResult:
 
 @dataclass(frozen=True)
 class Usage:  # tokens of one finished model reply
-    input_tokens: int
+    input_tokens: int  # all of the input, the cached part included
     output_tokens: int
+    cached_tokens: int = 0  # input read from the provider's prompt cache
 
 
 @dataclass(frozen=True)
@@ -117,7 +118,8 @@ def message_events(node: str, message):
             yield ToolCall(call["id"], call["name"], call["args"])
         if message.usage_metadata:
             usage = message.usage_metadata
-            yield Usage(usage["input_tokens"], usage["output_tokens"])
+            cached = usage.get("input_token_details", {}).get("cache_read", 0) or 0
+            yield Usage(usage["input_tokens"], usage["output_tokens"], cached)
     elif isinstance(message, ToolMessage):
         yield ToolResult(
             message.tool_call_id, message.name, message.text, message.status == "error"
