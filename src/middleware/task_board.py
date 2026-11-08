@@ -17,7 +17,7 @@ model request; it is not saved, and the start of the request stays the same for 
 """
 
 from graphlib import CycleError, TopologicalSorter
-from typing import Annotated, NotRequired
+from typing import Annotated, NotRequired, TypedDict
 
 from langchain.agents.middleware import AgentMiddleware, AgentState
 from langchain.tools import ToolRuntime, tool
@@ -48,13 +48,33 @@ class Acceptance(BaseModel):
 
 
 class StepInput(BaseModel):
+    """A step as the model writes it in ExitPlanMode and TaskWrite."""
+
     id: str
     title: str
     depends_on: list[str] = []
     acceptance: list[Acceptance] = []
 
 
-def apply_board(old: dict | None, new: dict | None) -> dict | None:
+class Step(TypedDict):
+    """A step on the board: the model's StepInput plus what the system keeps up to date."""
+
+    id: str
+    title: str
+    depends_on: list[str]  # ids of steps that must be completed or skipped first
+    acceptance: list[dict]  # {"text": str, "check": str | None}, as in Acceptance
+    status: str  # pending, in_progress, completed, blocked or skipped (see NEXT)
+    note: str  # what was done, or why it is blocked or skipped
+    started: str | None  # id of the TaskUpdate call that moved it to in_progress
+    evidence: list[str]  # the check runs found, or the user's confirmation
+
+
+class Board(TypedDict):
+    goal: str
+    steps: list[Step]
+
+
+def apply_board(old: Board | None, new: dict | None) -> Board | None:
     """Reducer: a value with a goal is a whole new board; one with only steps changes or adds
     those steps, so parallel TaskUpdate calls on different steps do not overwrite each other."""
     if new is None or "goal" in new or old is None:
@@ -69,30 +89,24 @@ def apply_board(old: dict | None, new: dict | None) -> dict | None:
 
 
 class TaskBoardState(AgentState):
-    task_board: NotRequired[Annotated[dict | None, apply_board]]
+    task_board: NotRequired[Annotated[Board | None, apply_board]]
 
 
 # ---- the board as data ----
 
 
-def new_step(item) -> dict:
+def new_step(item) -> Step:
     item = item if isinstance(item, StepInput) else StepInput.model_validate(item)
-    return {
-        **item.model_dump(),
-        "status": "pending",
-        "note": "",
-        "started": None,  # id of the TaskUpdate call that started it
-        "evidence": [],
-    }
+    return Step(**item.model_dump(), status="pending", note="", started=None, evidence=[])
 
 
-def new_board(goal: str, steps: list) -> dict:
-    board = {"goal": goal, "steps": [new_step(item) for item in steps]}
+def new_board(goal: str, steps: list) -> Board:
+    board = Board(goal=goal, steps=[new_step(item) for item in steps])
     validate(board)
     return board
 
 
-def validate(board: dict) -> None:
+def validate(board: Board) -> None:
     ids = [step["id"] for step in board["steps"]]
     if not ids:
         raise ToolError("A task board needs at least one step")
@@ -108,7 +122,7 @@ def validate(board: dict) -> None:
     layers(board)  # raises on a dependency cycle
 
 
-def layers(board: dict) -> list[list[str]]:
+def layers(board: Board) -> list[list[str]]:
     """Steps grouped by when they can start; steps in one group do not depend on each other."""
     sorter = TopologicalSorter({step["id"]: step["depends_on"] for step in board["steps"]})
     try:
@@ -124,7 +138,7 @@ def layers(board: dict) -> list[list[str]]:
     return result
 
 
-def render(board: dict) -> str:
+def render(board: Board) -> str:
     done = {step["id"] for step in board["steps"] if step["status"] in DONE}
     lines = [f"目标：{board['goal']}"]
     for step in board["steps"]:
@@ -140,7 +154,7 @@ def render(board: dict) -> str:
     return "\n".join(lines)
 
 
-def find_step(board: dict | None, step_id: str) -> dict:
+def find_step(board: Board | None, step_id: str) -> Step:
     if board is None:
         raise ToolError("There is no task board; one is created when a plan is approved")
     step = next((s for s in board["steps"] if s["id"] == step_id), None)
@@ -178,7 +192,7 @@ def check_run(messages: list, started: str | None, command: str) -> str | None:
     return None
 
 
-def unproven_checks(step: dict, messages: list) -> list[str]:
+def unproven_checks(step: Step, messages: list) -> list[str]:
     return [
         item["check"]
         for item in step["acceptance"]
@@ -213,7 +227,7 @@ def describe_completion(tool_call, state, runtime) -> str:
 # ---- tools ----
 
 
-def board_result(name: str, text: str, runtime, update: dict, board: dict) -> Command:
+def board_result(name: str, text: str, runtime, update: dict, board: Board) -> Command:
     result = ToolMessage(f"{text}\n\n{render(board)}", tool_call_id=runtime.tool_call_id, name=name)
     return Command(update={"task_board": update, "messages": [result]})
 
