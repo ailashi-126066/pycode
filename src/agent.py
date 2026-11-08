@@ -22,6 +22,7 @@ from .context import Context
 from .middleware.agents_md import agents_md_middleware
 from .middleware.compaction import CompactionMiddleware
 from .middleware.hooks import Hooks, load_hooks
+from .middleware.memory import Memory
 from .middleware.plan_mode import PlanModeMiddleware, approval, not_planning
 from .middleware.skills import skills_middleware
 from .middleware.steering import Steering
@@ -83,6 +84,7 @@ def build_agent(
     subagents: Subagents | None = None,
     steering: Steering | None = None,
     hooks: Hooks | None = None,
+    memory: Memory | None = None,
     *,
     checkpointer=None,
 ):
@@ -130,6 +132,8 @@ def build_agent(
             *([subagents] if subagents is not None else []),
             skills,
             agents_md_middleware(settings.instruction_files),
+            # The memory index in the system prompt, the memory tools, the background pass.
+            *([memory] if memory is not None else []),
             # Before the retry below, so it sees context-overflow errors.
             compaction,
             # Pauses before these tools run until the user approves or rejects each call.
@@ -208,6 +212,7 @@ class Opened:
     subagents: Subagents  # the interface sets its notify and ask, and lists them for /agents
     steering: Steering  # the interface puts what the user types while the agent works
     hooks: Hooks  # the interface fires session_start and session_end
+    memory: Memory  # the interface sets its notify, and lists memories for /memory
 
 
 @asynccontextmanager
@@ -229,7 +234,10 @@ async def open_agent(settings: Settings):
     hooks = Hooks(configured, settings.workspace, sandboxed)
     child_hooks = Hooks(configured, settings.workspace, sandboxed, stop=False)
 
-    async def before_summary():
+    memory = Memory(settings.memory_dir, model)
+
+    async def before_summary(messages):
+        memory.before_compaction(messages)
         await hooks.fire("pre_compact", {})
 
     compaction.before_summary = before_summary
@@ -269,6 +277,7 @@ async def open_agent(settings: Settings):
             subagents,
             steering,
             hooks,
+            memory,
             checkpointer=checkpointer,
         )
         try:
@@ -283,6 +292,8 @@ async def open_agent(settings: Settings):
                 subagents,
                 steering,
                 hooks,
+                memory,
             )
         finally:
             await subagents.aclose()  # before storage closes: their records are saved
+            await memory.aclose()

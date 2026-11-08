@@ -39,6 +39,11 @@ class Settings:
         return self.data_dir / "hooks.json"
 
     @property
+    def memory_dir(self) -> Path:
+        # Long-term memory (middleware/memory.py): the user's, shared by every project.
+        return self.data_dir / "memory"
+
+    @property
     def mcp_file(self) -> Path:
         # Only the user's own file: a project file would start its commands on opening the repo.
         return self.data_dir / "mcp.json"

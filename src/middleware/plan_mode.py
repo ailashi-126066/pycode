@@ -35,7 +35,7 @@ class PlanState(AgentState):
     auto_approve: NotRequired[bool]  # this run executes an approved plan without asking
 
 
-PLANNING_TOOLS = {"read", "ls", "grep", "find", "bash", "ExitPlanMode"}
+PLANNING_TOOLS = {"read", "ls", "grep", "find", "bash", "memory_read", "ExitPlanMode"}
 
 PROMPT = """## Plan 模式
 

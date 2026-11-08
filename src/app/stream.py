@@ -89,6 +89,8 @@ async def events(agent, request, config, context):
                 yield Notice(chunk["compaction"])
             if "hook" in chunk:  # a hook that failed (middleware/hooks.py)
                 yield Notice(chunk["hook"])
+            if "memory" in chunk:  # the model saved or deleted a memory (middleware/memory.py)
+                yield Notice(chunk["memory"])
         else:  # "updates": what each graph node produced once it finished
             for node, update in chunk.items():
                 if node == "__interrupt__":

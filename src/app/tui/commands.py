@@ -27,6 +27,7 @@ COMMANDS = {
     "/skills": "列出可用的 Skill",
     "/skill": "/skill 名字 [要求]：按这个 Skill 的说明完成要求",
     "/mcp": "列出 MCP 服务器和它们的工具",
+    "/memory": "列出长期记忆；/memory delete 名字：删除一条",
     "/model": "/model [名字]：列出或切换 providers.json 里的模型",
     "/theme": "切换深色和浅色主题",
     "/help": "列出所有命令",
@@ -38,6 +39,7 @@ WHILE_RUNNING = {
     "/branches",
     "/skills",
     "/mcp",
+    "/memory",
     "/tasks",
     "/agents",
     "/theme",
@@ -198,6 +200,21 @@ async def agents(app, argument):
     await app.write_info("\n".join(lines) or "这个会话还没有子 agent")
 
 
+async def memory(app, argument):
+    action, _, name = argument.partition(" ")
+    if action == "delete":
+        if not app.opened.memory.delete(name.strip()):
+            raise ValueError(f"没有叫 {name.strip()} 的记忆")
+        app.show_notice(f"已删除记忆 {name.strip()}")
+        return
+    if action:
+        raise ValueError("用法：/memory | /memory delete 名字")
+    entries = app.opened.memory.entries()
+    lines = [f"{e.name}  {e.type}  {e.modified}  {e.description}" for e in entries]
+    where = f"\n\n文件在 {app.settings.memory_dir}"
+    await app.write_info("\n".join(lines) + where if lines else "还没有长期记忆")
+
+
 async def model(app, argument):
     providers = load_providers(app.settings.providers_file)
     if not argument:
@@ -240,6 +257,7 @@ HANDLERS = {
     "/skills": skills,
     "/skill": skill,
     "/mcp": mcp_servers,
+    "/memory": memory,
     "/model": model,
     "/theme": theme,
     "/help": help_command,

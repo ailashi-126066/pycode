@@ -147,6 +147,8 @@ class PycodeApp(App):
         self.opened = await self.stack.enter_async_context(open_agent(self.settings))
         self.opened.subagents.notify = self.subagent_finished
         self.opened.subagents.ask = self.ask_for_subagent
+        # A background memory pass may finish at any time, also while the model runs.
+        self.opened.memory.notify = self.show_notice
 
     async def on_unmount(self) -> None:
         if self.opened is not None:

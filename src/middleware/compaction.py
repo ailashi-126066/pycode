@@ -32,8 +32,9 @@ class CompactionMiddleware(AgentMiddleware):
         self.model = model  # the agent's own model, called here without tools
         self.start_at, self.adopt_at = thresholds(context_window, max_output_tokens)
         self.max_tokens = min(8192, max_output_tokens)
-        # Set by agent.py: runs the pre_compact hooks before a summary is made.
-        self.before_summary = None  # async () -> None
+        # Set by agent.py: runs the pre_compact hooks and lets long-term memory read the user's
+        # words before they are summarized. Gets the messages the summary will replace.
+        self.before_summary = None  # async (messages) -> None
         # Estimated system prompt plus tool definitions, refreshed on every model request.
         self.overhead = 0
         # Lives only in this process; a summary lost on exit is generated again when needed.
@@ -96,7 +97,7 @@ class CompactionMiddleware(AgentMiddleware):
 
     async def make_summary(self, messages, cut):
         if self.before_summary is not None:
-            await self.before_summary()
+            await self.before_summary(messages[: cut.index])
         return await summarize(self.model, messages, cut.index, cut.ongoing, self.max_tokens)
 
     async def adopt(self, messages, writer, limit: int | None = None):
