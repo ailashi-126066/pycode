@@ -429,7 +429,7 @@ class PycodeApp(App):
         mode += " · 自动执行计划" if state.values.get("auto_approve") else ""
         self.query_one("#status", Static).update(
             f"模型：{provider.name} / {provider.model_id} · "
-            f"上下文：{tokens:,} / {provider.context_window:,}（{share}%）· "
+            f"上下文：{share}% · "
             f"沙箱：{sandbox}{mode} · 会话 {self.session_id}"
         )
         await self.refresh_tasks()
