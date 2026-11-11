@@ -1,6 +1,6 @@
 # AgentDock
 
-通用 Agent 执行平台，基于 [DeerFlow](https://github.com/bytedance/deer-flow) 的本地定制版本。下方保留上游文档作为参考，原始版权和许可证声明保留在 [LICENSE](./LICENSE) 中。
+AgentDock 是一个通用 AI Agent 执行平台，支持工具调用、沙箱执行、子 Agent 协作、技能扩展、长期记忆与任务进度流式返回。
 
 [English](./README.md) | 中文 | [日本語](./README_ja.md) | [Français](./README_fr.md) | [Русский](./README_ru.md) | [Português](./README_pt.md) | [한국어](./README_ko.md)
 

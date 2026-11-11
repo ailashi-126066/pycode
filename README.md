@@ -1,6 +1,6 @@
 # AgentDock
 
-A general-purpose Agent execution platform based on [DeerFlow](https://github.com/bytedance/deer-flow). This repository starts from the locally customized DeerFlow codebase; upstream documentation below is retained for reference. Original copyright and license notices are preserved in [LICENSE](./LICENSE).
+AgentDock is a general-purpose AI Agent execution platform with tool calling, sandbox execution, subagents, skills, long-term memory, and streaming task progress.
 
 ## Local study checkout
 
